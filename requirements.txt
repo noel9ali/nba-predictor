@@ -72,6 +72,7 @@ pure_eval==0.2.3
 pycparser==3.0
 Pygments==2.19.2
 python-dateutil==2.9.0.post0
+python-dotenv==1.2.2
 python-json-logger==4.0.0
 pywinpty==3.0.3
 PyYAML==6.0.3
@@ -104,3 +105,4 @@ webcolors==25.10.0
 webencodings==0.5.1
 websocket-client==1.9.0
 widgetsnbextension==4.0.15
+xgboost==3.2.0
