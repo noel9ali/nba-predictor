@@ -11,6 +11,10 @@ echo Running features.py...
 python src/features.py
 
 echo.
+echo Running elo.py...
+python src/elo.py
+
+echo.
 echo Running model.py...
 python src/model.py
 
