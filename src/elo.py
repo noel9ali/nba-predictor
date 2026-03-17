@@ -49,13 +49,17 @@ def compute_elo():
     print("Loading games...")
     df = load_games()
 
-    # initialize all teams at 1500
+    # pre-build away team lookup to avoid slow per-row filtering
+    away_df = df[df['MATCHUP'].str.contains('@')].drop_duplicates(subset='GAME_ID').set_index('GAME_ID')
+    away_lookup = away_df[['TEAM_ID', 'TEAM_ABBREVIATION']].to_dict('index')
+
+    # get home games only sorted by date
+    home_games = df[df['MATCHUP'].str.contains('vs.')].copy()
+
+    # initialize
     ratings = {}
     elo_records = []
     current_season = None
-
-    # get one row per game (home team only)
-    home_games = df[df['MATCHUP'].str.contains('vs.')].copy()
 
     print(f"Computing Elo across {len(home_games)} games...")
 
@@ -64,15 +68,12 @@ def compute_elo():
         game_id = game['GAME_ID']
         game_date = game['GAME_DATE']
         home_team_id = game['TEAM_ID']
-        home_abbr = game['TEAM_ABBREVIATION']
 
-        # get away team for this game
-        away_row = df[(df['GAME_ID'] == game_id) & (df['MATCHUP'].str.contains('@'))]
-        if len(away_row) == 0:
+        # fast lookup instead of filtering entire dataframe
+        if game_id not in away_lookup:
             continue
 
-        away_team_id = away_row.iloc[0]['TEAM_ID']
-        away_abbr = away_row.iloc[0]['TEAM_ABBREVIATION']
+        away_team_id = away_lookup[game_id]['TEAM_ID']
 
         # apply mean reversion at start of each new season
         if season != current_season:
@@ -127,6 +128,16 @@ def get_current_ratings():
     """, conn)
     conn.close()
     return dict(zip(df['TEAM_ID'], df['ELO']))
+
+def get_last_elo_date():
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        df = pd.read_sql("SELECT MAX(GAME_DATE) as last_date FROM elo", conn)
+        return df['last_date'].iloc[0]
+    except:
+        return None
+    finally:
+        conn.close()
 
 if __name__ == '__main__':
     final_ratings = compute_elo()
