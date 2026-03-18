@@ -35,20 +35,23 @@ def split_data(df):
 
 # train_model() rescales features to a unified scale and trains a logistic
 #   regression model on the data
-def train_model(train):
+ddef train_model(train):
     train = train.dropna(subset=FEATURES)
 
     scaler = StandardScaler()
     X_train = scaler.fit_transform(train[FEATURES])
     y_train = train[TARGET]
 
-    model = XGBClassifier(
+    base_model = XGBClassifier(
         n_estimators=100,
         max_depth=4,
         learning_rate=0.05,
         eval_metric='logloss',
         random_state=42
     )
+
+    # wrap xgboost with calibration
+    model = CalibratedClassifierCV(base_model, cv=5, method='isotonic')
     model.fit(X_train, y_train)
 
     return model, scaler
