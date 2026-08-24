@@ -3,257 +3,244 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>🏀 NBA Predictor Dashboard</title>
+  <title>NBA Fan Betting Board</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
-<body>
-  <header>
-    <div class="header-inner">
-      <h1>🏀 NBA Predictor</h1>
-      <div class="header-meta">
-        <span id="workflow-badge" class="badge badge-idle">Idle</span>
-        <button id="run-btn" class="btn btn-primary" onclick="runWorkflow()">▶ Run Now</button>
-      </div>
+<body class="theme-court">
+  <div class="court-overlay"></div>
+  <header class="site-header">
+    <div class="brand-wrap">
+      <h1>NBA Fan Betting Board</h1>
+      <p>Daily picks and season tracking for basketball fans.</p>
+    </div>
+    <div class="header-controls">
+      <button id="theme-switch-btn" class="switch-btn" type="button">Switch Design: Wooden Court</button>
+      <form method="GET" action="/" class="year-filter">
+        <label for="year">Season Year</label>
+        <select id="year" name="year" onchange="this.form.submit()">
+          {% for year in years %}
+          <option value="{{ year }}" {{ 'selected' if year == selected_year else '' }}>{{ year }}</option>
+          {% endfor %}
+        </select>
+      </form>
     </div>
   </header>
 
-  <main>
-
-    <!-- ── Stats Bar ───────────────────────────────────────────── -->
-    {% if stats %}
-    <section class="stats-bar">
-      <div class="stat">
-        <div class="stat-value">{{ stats.correct }}-{{ stats.wrong }}</div>
-        <div class="stat-label">Record</div>
+  <main class="layout">
+    <section class="results-panel">
+      <div class="panel-header">
+        <h2>YTD Betting Results ({{ ytd_summary.year }})</h2>
       </div>
-      <div class="stat">
-        <div class="stat-value">{{ stats.accuracy }}</div>
-        <div class="stat-label">Accuracy</div>
-      </div>
-      <div class="stat">
-        <div class="stat-value {{ 'positive' if stats.total_pl[0] == '+' else 'negative' }}">
-          ${{ stats.total_pl }}
+      <div class="kpi-grid">
+        <div class="kpi">
+          <span class="kpi-label">Record</span>
+          <span class="kpi-value">{{ ytd_summary.wins }}-{{ ytd_summary.losses }}</span>
         </div>
-        <div class="stat-label">Total P/L</div>
-      </div>
-      <div class="stat">
-        <div class="stat-value">{{ bankroll }}</div>
-        <div class="stat-label">Bankroll</div>
+        <div class="kpi">
+          <span class="kpi-label">Win Rate</span>
+          <span class="kpi-value">{{ ytd_summary.accuracy }}</span>
+        </div>
+        <div class="kpi">
+          <span class="kpi-label">Bets Placed</span>
+          <span class="kpi-value">{{ ytd_summary.bets_placed }}</span>
+        </div>
+        <div class="kpi">
+          <span class="kpi-label">Total Staked</span>
+          <span class="kpi-value">${{ "%.2f"|format(ytd_summary.total_staked) }}</span>
+        </div>
+        <div class="kpi">
+          <span class="kpi-label">Net P/L</span>
+          <span class="kpi-value {{ 'pos' if ytd_summary.total_pl >= 0 else 'neg' }}">
+            {{ "+$%.2f"|format(ytd_summary.total_pl) if ytd_summary.total_pl >= 0 else "-$%.2f"|format(ytd_summary.total_pl|abs) }}
+          </span>
+        </div>
+        <div class="kpi">
+          <span class="kpi-label">ROI</span>
+          <span class="kpi-value">{{ ytd_summary.roi }}</span>
+        </div>
+        <div class="kpi">
+          <span class="kpi-label">Games Tracked</span>
+          <span class="kpi-value">{{ ytd_summary.games }}</span>
+        </div>
+        <div class="kpi">
+          <span class="kpi-label">Bankroll</span>
+          <span class="kpi-value">
+            {% if ytd_summary.bankroll is not none %}
+            ${{ "%.2f"|format(ytd_summary.bankroll) }}
+            {% else %}
+            n/a
+            {% endif %}
+          </span>
+        </div>
       </div>
     </section>
-    {% endif %}
 
-    <!-- ── Today's Predictions ─────────────────────────────────── -->
-    <section class="card">
-      <h2>Today's Predictions <span class="date-tag">{{ today }}</span></h2>
-      {% if predictions %}
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Matchup</th>
-              <th>Prediction</th>
-              <th>Home Win %</th>
-              <th>Away Win %</th>
-              <th>Bet</th>
-              <th>Odds</th>
-              <th>Bet Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for g in predictions %}
-            <tr>
-              <td class="matchup">{{ g.away_team }} @ {{ g.home_team }}</td>
-              <td>
-                <span class="pill pill-blue">{{ g.predicted_winner }}</span>
-              </td>
-              <td>{{ "%.1f%%"|format(g.home_win_prob * 100) if g.home_win_prob else '—' }}</td>
-              <td>{{ "%.1f%%"|format(g.away_win_prob * 100) if g.away_win_prob else '—' }}</td>
-              <td>{{ g.bet_placed or '—' }}</td>
-              <td>
-                {% if g.odds %}
-                  {{ "+%d"|format(g.odds|int) if g.odds > 0 else "%d"|format(g.odds|int) }}
-                {% else %}—{% endif %}
-              </td>
-              <td>{{ "$%.2f"|format(g.bet_amount) if g.bet_amount else '—' }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+    <section class="recommendations-panel">
+      <div class="panel-header">
+        <h2>Daily Betting Recommendations</h2>
+        <span class="date-pill">{{ today }}</span>
       </div>
+
+      {% if recommendations %}
+      <ul class="game-list">
+        {% for game in recommendations %}
+        <li class="game-item">
+          <button
+            type="button"
+            class="game-button"
+            data-game='{{ game|tojson }}'
+            onclick="openSummary(this)"
+          >
+            <span class="matchup">{{ game.matchup }}</span>
+            <span class="pick">
+              Pick: <strong>{{ game.predicted_winner }}</strong>
+              {% if game.expected_win_prob is not none %}
+              ({{ "%.1f%%"|format(game.expected_win_prob * 100) }})
+              {% else %}
+              (n/a)
+              {% endif %}
+            </span>
+            <span class="bet">
+              {% if game.bet_amount and game.bet_amount > 0 %}
+              Bet ${{ "%.2f"|format(game.bet_amount) }}
+              {% if game.odds %}
+              @ {{ "+%d"|format(game.odds|int) if game.odds > 0 else "%d"|format(game.odds|int) }}
+              {% endif %}
+              {% else %}
+              No bet edge
+              {% endif %}
+            </span>
+          </button>
+        </li>
+        {% endfor %}
+      </ul>
+      <p class="hint">Tip: click any game for win probability, Elo, and rolling average details.</p>
       {% else %}
-      <p class="empty">No predictions available for today. Run the workflow to generate them.</p>
+      <p class="empty">No recommendations are available for today yet.</p>
       {% endif %}
     </section>
-
-    <!-- ── Yesterday's Results ─────────────────────────────────── -->
-    <section class="card">
-      <h2>Yesterday's Results <span class="date-tag">{{ yesterday }}</span></h2>
-      {% if results %}
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Matchup</th>
-              <th>Predicted</th>
-              <th>Actual</th>
-              <th>Correct</th>
-              <th>Bet</th>
-              <th>P/L</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for g in results %}
-            {% set correct = g.correct == 1 %}
-            <tr class="{{ 'row-win' if correct else 'row-loss' }}">
-              <td class="matchup">{{ g.away_team }} @ {{ g.home_team }}</td>
-              <td>{{ g.predicted_winner }}</td>
-              <td>{{ g.actual_winner }}</td>
-              <td>
-                {% if correct %}
-                  <span class="pill pill-green">✓</span>
-                {% else %}
-                  <span class="pill pill-red">✗</span>
-                {% endif %}
-              </td>
-              <td>{{ g.bet_placed or '—' }}</td>
-              <td class="{{ 'positive' if g.profit_loss and g.profit_loss >= 0 else 'negative' }}">
-                {% if g.profit_loss is not none %}
-                  {{ "+$%.2f"|format(g.profit_loss) if g.profit_loss >= 0 else "-$%.2f"|format(g.profit_loss|abs) }}
-                {% else %}—{% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% else %}
-      <p class="empty">No results recorded for yesterday.</p>
-      {% endif %}
-    </section>
-
-    <!-- ── Workflow Log ─────────────────────────────────────────── -->
-    <section class="card">
-      <h2>Workflow Log</h2>
-      {% if workflow_log %}
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Started</th>
-              <th>Finished</th>
-              <th>Status</th>
-              <th>Pipeline</th>
-              <th>Predict</th>
-              <th>SMS</th>
-              <th>Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for run in workflow_log %}
-            <tr>
-              <td>{{ run.run_date }}</td>
-              <td class="mono">{{ run.started_at }}</td>
-              <td class="mono">{{ run.finished_at }}</td>
-              <td>
-                <span class="pill
-                  {% if run.status == 'success' %}pill-green
-                  {% elif run.status == 'failed' %}pill-red
-                  {% else %}pill-yellow{% endif %}">
-                  {{ run.status }}
-                </span>
-              </td>
-              <td>{{ '✓' if run.pipeline_ok else '✗' }}</td>
-              <td>{{ '✓' if run.predict_ok else '✗' }}</td>
-              <td>{{ '✓' if run.sms_sent else '—' }}</td>
-              <td class="notes">{{ run.notes or '' }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% else %}
-      <p class="empty">No workflow runs logged yet. Click "Run Now" to trigger the first run.</p>
-      {% endif %}
-    </section>
-
   </main>
 
-  <footer>
-    <span>NBA Predictor · Auto-refreshes every 60s</span>
-    <span id="last-refresh"></span>
-  </footer>
+  <div id="summary-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-card">
+      <button type="button" class="close-modal" onclick="closeSummary()" aria-label="Close summary">x</button>
+      <h3 id="modal-title">Game Summary</h3>
+      <p id="modal-matchup" class="modal-matchup"></p>
+      <div class="summary-grid">
+        <div class="summary-row">
+          <span>Predicted Winner</span><strong id="m-pick">n/a</strong>
+        </div>
+        <div class="summary-row">
+          <span>Expected Win Probability</span><strong id="m-exp-prob">n/a</strong>
+        </div>
+        <div class="summary-row">
+          <span>Home Elo</span><strong id="m-home-elo">n/a</strong>
+        </div>
+        <div class="summary-row">
+          <span>Away Elo</span><strong id="m-away-elo">n/a</strong>
+        </div>
+      </div>
 
-  <div id="toast" class="toast hidden"></div>
+      <h4>Running Averages</h4>
+      <div class="running-avg-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th id="m-home-team">Home</th>
+              <th id="m-away-team">Away</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>PTS</td><td id="m-home-pts">n/a</td><td id="m-away-pts">n/a</td></tr>
+            <tr><td>FG%</td><td id="m-home-fg">n/a</td><td id="m-away-fg">n/a</td></tr>
+            <tr><td>REB</td><td id="m-home-reb">n/a</td><td id="m-away-reb">n/a</td></tr>
+            <tr><td>AST</td><td id="m-home-ast">n/a</td><td id="m-away-ast">n/a</td></tr>
+            <tr><td>TOV</td><td id="m-home-tov">n/a</td><td id="m-away-tov">n/a</td></tr>
+            <tr><td>STOCKS</td><td id="m-home-stocks">n/a</td><td id="m-away-stocks">n/a</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 
   <script>
-    // ── Auto-refresh every 60 seconds ───────────────────────────
-    let refreshTimer = setTimeout(() => location.reload(), 60_000);
+    const THEMES = [
+      { key: "theme-court", label: "Wooden Court" },
+      { key: "theme-scoreboard", label: "Scoreboard" },
+      { key: "theme-myleague", label: "NBA 2K MyLeague" }
+    ];
 
-    function resetRefreshTimer() {
-      clearTimeout(refreshTimer);
-      refreshTimer = setTimeout(() => location.reload(), 60_000);
+    function prettyNum(v, digits = 1) {
+      if (v === null || v === undefined || v === "") return "n/a";
+      return Number(v).toFixed(digits);
     }
 
-    // ── Last refresh timestamp ───────────────────────────────────
-    document.getElementById('last-refresh').textContent =
-      'Last refresh: ' + new Date().toLocaleTimeString();
-
-    // ── Toast helper ─────────────────────────────────────────────
-    function showToast(msg, type = 'info') {
-      const toast = document.getElementById('toast');
-      toast.textContent = msg;
-      toast.className = `toast toast-${type}`;
-      setTimeout(() => { toast.className = 'toast hidden'; }, 4000);
+    function prettyPct(v) {
+      if (v === null || v === undefined || v === "") return "n/a";
+      return `${(Number(v) * 100).toFixed(1)}%`;
     }
 
-    // ── Workflow status polling ───────────────────────────────────
-    let statusInterval = null;
-
-    function pollWorkflowStatus() {
-      fetch('/api/workflow-status')
-        .then(r => r.json())
-        .then(data => {
-          const badge = document.getElementById('workflow-badge');
-          const btn   = document.getElementById('run-btn');
-          if (data.running) {
-            badge.className = 'badge badge-running';
-            badge.textContent = '⏳ Running…';
-            btn.disabled = true;
-          } else {
-            badge.className = 'badge badge-idle';
-            badge.textContent = 'Idle';
-            btn.disabled = false;
-            if (statusInterval) {
-              clearInterval(statusInterval);
-              statusInterval = null;
-              showToast('✓ Workflow completed — refreshing…', 'success');
-              setTimeout(() => location.reload(), 2000);
-            }
-          }
-        })
-        .catch(() => {});
+    function setTheme(index) {
+      const body = document.body;
+      THEMES.forEach(t => body.classList.remove(t.key));
+      body.classList.add(THEMES[index].key);
+      localStorage.setItem("fan-board-theme", String(index));
+      document.getElementById("theme-switch-btn").textContent = `Switch Design: ${THEMES[index].label}`;
     }
 
-    // ── Run workflow ─────────────────────────────────────────────
-    function runWorkflow() {
-      fetch('/api/run-workflow', { method: 'POST' })
-        .then(r => r.json())
-        .then(data => {
-          if (data.ok) {
-            showToast('Workflow started…', 'info');
-            statusInterval = setInterval(pollWorkflowStatus, 3000);
-            pollWorkflowStatus();
-          } else {
-            showToast(data.message, 'error');
-          }
-        })
-        .catch(() => showToast('Failed to start workflow', 'error'));
+    (function initThemeSwitcher() {
+      const btn = document.getElementById("theme-switch-btn");
+      let idx = Number(localStorage.getItem("fan-board-theme") || "0");
+      if (Number.isNaN(idx) || idx < 0 || idx > 2) idx = 0;
+      setTheme(idx);
+
+      btn.addEventListener("click", () => {
+        idx = (idx + 1) % THEMES.length;
+        setTheme(idx);
+      });
+    })();
+
+    function openSummary(btn) {
+      const game = JSON.parse(btn.dataset.game);
+      const d = game.details || {};
+
+      document.getElementById("modal-title").textContent = `Game Summary: ${game.matchup}`;
+      document.getElementById("modal-matchup").textContent = `Date: {{ today }}`;
+      document.getElementById("m-pick").textContent = game.predicted_winner || "n/a";
+      document.getElementById("m-exp-prob").textContent = prettyPct(game.expected_win_prob);
+      document.getElementById("m-home-elo").textContent = prettyNum(d.home_elo, 0);
+      document.getElementById("m-away-elo").textContent = prettyNum(d.away_elo, 0);
+
+      document.getElementById("m-home-team").textContent = game.home_team || "Home";
+      document.getElementById("m-away-team").textContent = game.away_team || "Away";
+
+      document.getElementById("m-home-pts").textContent = prettyNum(d.home_roll_pts);
+      document.getElementById("m-home-fg").textContent = prettyNum(d.home_roll_fg_pct, 3);
+      document.getElementById("m-home-reb").textContent = prettyNum(d.home_roll_reb);
+      document.getElementById("m-home-ast").textContent = prettyNum(d.home_roll_ast);
+      document.getElementById("m-home-tov").textContent = prettyNum(d.home_roll_tov);
+      document.getElementById("m-home-stocks").textContent = prettyNum(d.home_roll_stocks);
+
+      document.getElementById("m-away-pts").textContent = prettyNum(d.away_roll_pts);
+      document.getElementById("m-away-fg").textContent = prettyNum(d.away_roll_fg_pct, 3);
+      document.getElementById("m-away-reb").textContent = prettyNum(d.away_roll_reb);
+      document.getElementById("m-away-ast").textContent = prettyNum(d.away_roll_ast);
+      document.getElementById("m-away-tov").textContent = prettyNum(d.away_roll_tov);
+      document.getElementById("m-away-stocks").textContent = prettyNum(d.away_roll_stocks);
+
+      document.getElementById("summary-modal").classList.remove("hidden");
     }
 
-    // Check status on page load in case workflow is already running
-    pollWorkflowStatus();
+    function closeSummary() {
+      document.getElementById("summary-modal").classList.add("hidden");
+    }
+
+    document.getElementById("summary-modal").addEventListener("click", (e) => {
+      if (e.target.id === "summary-modal") {
+        closeSummary();
+      }
+    });
   </script>
 </body>
 </html>
