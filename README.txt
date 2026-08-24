@@ -5,9 +5,9 @@ An end-to-end machine learning pipeline that predicts NBA game outcomes and simu
 ## How It Works
 
 1. Historical game data is pulled from the NBA API across 7 seasons (14,000+ games)
-2. Rolling average features (points, FG%, rebounds, assists, turnovers, stocks) are engineered with strict temporal validation to prevent data leakage
+2. Rolling average features (points, FG%, rebounds, assists, turnovers, stocks)
 3. Elo ratings are computed across all 7 seasons with mean reversion between seasons and merged with rolling features
-4. A logistic regression classifier is trained on the combined features, achieving 71.1% accuracy on held-out test data
+4. A logistic regression classifier is trained on the combined features, achieving 72% accuracy on held-out test data
 5. Real-time odds are fetched from The Odds API and line shopped across multiple bookmakers to find the best price
 6. Kelly Criterion bet sizing is used to simulate paper bets — only placed when model edge exceeds implied odds
 7. All predictions and results are logged to a local SQLite database with daily bankroll tracking

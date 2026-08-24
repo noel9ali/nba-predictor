@@ -35,7 +35,7 @@ def split_data(df):
 
 # train_model() rescales features to a unified scale and trains a logistic
 #   regression model on the data
-ddef train_model(train):
+def train_model(train):
     train = train.dropna(subset=FEATURES)
 
     scaler = StandardScaler()

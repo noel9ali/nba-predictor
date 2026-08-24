@@ -7,6 +7,7 @@ from nba_api.stats.endpoints import scoreboardv3
 # --- Config ---
 DB_PATH = 'data/nba.db'
 STARTING_BANKROLL = 1000.00
+CUTOFF = 5
 
 # setup_tables() creates two tables in the database for predictions and bankroll
 def setup_tables():
@@ -86,6 +87,9 @@ def kelly_bet(prob, odds, bankroll, fraction=0.25):
         decimal_odds = (odds / 100) + 1
     else:
         decimal_odds = (100 / abs(odds)) + 1
+
+    if decimal_odds > CUTOFF:
+        return 0
 
     edge = (prob * decimal_odds) - 1
     kelly = edge / (decimal_odds - 1)
