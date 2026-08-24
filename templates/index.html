@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🏀 NBA Predictor Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <h1>🏀 NBA Predictor</h1>
+      <div class="header-meta">
+        <span id="workflow-badge" class="badge badge-idle">Idle</span>
+        <button id="run-btn" class="btn btn-primary" onclick="runWorkflow()">▶ Run Now</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ── Stats Bar ───────────────────────────────────────────── -->
+    {% if stats %}
+    <section class="stats-bar">
+      <div class="stat">
+        <div class="stat-value">{{ stats.correct }}-{{ stats.wrong }}</div>
+        <div class="stat-label">Record</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">{{ stats.accuracy }}</div>
+        <div class="stat-label">Accuracy</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value {{ 'positive' if stats.total_pl[0] == '+' else 'negative' }}">
+          ${{ stats.total_pl }}
+        </div>
+        <div class="stat-label">Total P/L</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">{{ bankroll }}</div>
+        <div class="stat-label">Bankroll</div>
+      </div>
+    </section>
+    {% endif %}
+
+    <!-- ── Today's Predictions ─────────────────────────────────── -->
+    <section class="card">
+      <h2>Today's Predictions <span class="date-tag">{{ today }}</span></h2>
+      {% if predictions %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Matchup</th>
+              <th>Prediction</th>
+              <th>Home Win %</th>
+              <th>Away Win %</th>
+              <th>Bet</th>
+              <th>Odds</th>
+              <th>Bet Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for g in predictions %}
+            <tr>
+              <td class="matchup">{{ g.away_team }} @ {{ g.home_team }}</td>
+              <td>
+                <span class="pill pill-blue">{{ g.predicted_winner }}</span>
+              </td>
+              <td>{{ "%.1f%%"|format(g.home_win_prob * 100) if g.home_win_prob else '—' }}</td>
+              <td>{{ "%.1f%%"|format(g.away_win_prob * 100) if g.away_win_prob else '—' }}</td>
+              <td>{{ g.bet_placed or '—' }}</td>
+              <td>
+                {% if g.odds %}
+                  {{ "+%d"|format(g.odds|int) if g.odds > 0 else "%d"|format(g.odds|int) }}
+                {% else %}—{% endif %}
+              </td>
+              <td>{{ "$%.2f"|format(g.bet_amount) if g.bet_amount else '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="empty">No predictions available for today. Run the workflow to generate them.</p>
+      {% endif %}
+    </section>
+
+    <!-- ── Yesterday's Results ─────────────────────────────────── -->
+    <section class="card">
+      <h2>Yesterday's Results <span class="date-tag">{{ yesterday }}</span></h2>
+      {% if results %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Matchup</th>
+              <th>Predicted</th>
+              <th>Actual</th>
+              <th>Correct</th>
+              <th>Bet</th>
+              <th>P/L</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for g in results %}
+            {% set correct = g.correct == 1 %}
+            <tr class="{{ 'row-win' if correct else 'row-loss' }}">
+              <td class="matchup">{{ g.away_team }} @ {{ g.home_team }}</td>
+              <td>{{ g.predicted_winner }}</td>
+              <td>{{ g.actual_winner }}</td>
+              <td>
+                {% if correct %}
+                  <span class="pill pill-green">✓</span>
+                {% else %}
+                  <span class="pill pill-red">✗</span>
+                {% endif %}
+              </td>
+              <td>{{ g.bet_placed or '—' }}</td>
+              <td class="{{ 'positive' if g.profit_loss and g.profit_loss >= 0 else 'negative' }}">
+                {% if g.profit_loss is not none %}
+                  {{ "+$%.2f"|format(g.profit_loss) if g.profit_loss >= 0 else "-$%.2f"|format(g.profit_loss|abs) }}
+                {% else %}—{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="empty">No results recorded for yesterday.</p>
+      {% endif %}
+    </section>
+
+    <!-- ── Workflow Log ─────────────────────────────────────────── -->
+    <section class="card">
+      <h2>Workflow Log</h2>
+      {% if workflow_log %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Started</th>
+              <th>Finished</th>
+              <th>Status</th>
+              <th>Pipeline</th>
+              <th>Predict</th>
+              <th>SMS</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for run in workflow_log %}
+            <tr>
+              <td>{{ run.run_date }}</td>
+              <td class="mono">{{ run.started_at }}</td>
+              <td class="mono">{{ run.finished_at }}</td>
+              <td>
+                <span class="pill
+                  {% if run.status == 'success' %}pill-green
+                  {% elif run.status == 'failed' %}pill-red
+                  {% else %}pill-yellow{% endif %}">
+                  {{ run.status }}
+                </span>
+              </td>
+              <td>{{ '✓' if run.pipeline_ok else '✗' }}</td>
+              <td>{{ '✓' if run.predict_ok else '✗' }}</td>
+              <td>{{ '✓' if run.sms_sent else '—' }}</td>
+              <td class="notes">{{ run.notes or '' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="empty">No workflow runs logged yet. Click "Run Now" to trigger the first run.</p>
+      {% endif %}
+    </section>
+
+  </main>
+
+  <footer>
+    <span>NBA Predictor · Auto-refreshes every 60s</span>
+    <span id="last-refresh"></span>
+  </footer>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script>
+    // ── Auto-refresh every 60 seconds ───────────────────────────
+    let refreshTimer = setTimeout(() => location.reload(), 60_000);
+
+    function resetRefreshTimer() {
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => location.reload(), 60_000);
+    }
+
+    // ── Last refresh timestamp ───────────────────────────────────
+    document.getElementById('last-refresh').textContent =
+      'Last refresh: ' + new Date().toLocaleTimeString();
+
+    // ── Toast helper ─────────────────────────────────────────────
+    function showToast(msg, type = 'info') {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.className = `toast toast-${type}`;
+      setTimeout(() => { toast.className = 'toast hidden'; }, 4000);
+    }
+
+    // ── Workflow status polling ───────────────────────────────────
+    let statusInterval = null;
+
+    function pollWorkflowStatus() {
+      fetch('/api/workflow-status')
+        .then(r => r.json())
+        .then(data => {
+          const badge = document.getElementById('workflow-badge');
+          const btn   = document.getElementById('run-btn');
+          if (data.running) {
+            badge.className = 'badge badge-running';
+            badge.textContent = '⏳ Running…';
+            btn.disabled = true;
+          } else {
+            badge.className = 'badge badge-idle';
+            badge.textContent = 'Idle';
+            btn.disabled = false;
+            if (statusInterval) {
+              clearInterval(statusInterval);
+              statusInterval = null;
+              showToast('✓ Workflow completed — refreshing…', 'success');
+              setTimeout(() => location.reload(), 2000);
+            }
+          }
+        })
+        .catch(() => {});
+    }
+
+    // ── Run workflow ─────────────────────────────────────────────
+    function runWorkflow() {
+      fetch('/api/run-workflow', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+          if (data.ok) {
+            showToast('Workflow started…', 'info');
+            statusInterval = setInterval(pollWorkflowStatus, 3000);
+            pollWorkflowStatus();
+          } else {
+            showToast(data.message, 'error');
+          }
+        })
+        .catch(() => showToast('Failed to start workflow', 'error'));
+    }
+
+    // Check status on page load in case workflow is already running
+    pollWorkflowStatus();
+  </script>
+</body>
+</html>
