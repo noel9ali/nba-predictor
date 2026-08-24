@@ -3,121 +3,157 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NBA Fan Betting Board</title>
+  <title>NBA Fan Board</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
-<body class="theme-court">
+<body>
+  {% set ytd = dashboard_state.ytd_summary %}
   <div class="court-overlay"></div>
+
   <header class="site-header">
     <div class="brand-wrap">
-      <h1>NBA Fan Betting Board</h1>
-      <p>Daily picks and season tracking for basketball fans.</p>
+      <h1>NBA Fan Board</h1>
+      <p>Bright hardwood vibes with clear daily picks and season insights.</p>
     </div>
-    <div class="header-controls">
-      <button id="theme-switch-btn" class="switch-btn" type="button">Switch Design: Wooden Court</button>
-      <form method="GET" action="/" class="year-filter">
-        <label for="year">Season Year</label>
+
+    <form method="GET" action="/" class="filters">
+      <div class="field">
+        <label for="year">Season</label>
         <select id="year" name="year" onchange="this.form.submit()">
           {% for year in years %}
-          <option value="{{ year }}" {{ 'selected' if year == selected_year else '' }}>{{ year }}</option>
+          <option value="{{ year }}" {{ "selected" if year == selected_year else "" }}>{{ year }}</option>
           {% endfor %}
         </select>
-      </form>
-    </div>
+      </div>
+      <div class="field">
+        <label for="game_date">Game Day</label>
+        <select id="game_date" name="game_date" onchange="this.form.submit()">
+          {% for d in available_dates %}
+          <option value="{{ d }}" {{ "selected" if d == selected_date else "" }}>{{ d }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </form>
   </header>
 
-  <main class="layout">
-    <section class="results-panel">
-      <div class="panel-header">
-        <h2>YTD Betting Results ({{ ytd_summary.year }})</h2>
-      </div>
-      <div class="kpi-grid">
-        <div class="kpi">
-          <span class="kpi-label">Record</span>
-          <span class="kpi-value">{{ ytd_summary.wins }}-{{ ytd_summary.losses }}</span>
-        </div>
-        <div class="kpi">
-          <span class="kpi-label">Win Rate</span>
-          <span class="kpi-value">{{ ytd_summary.accuracy }}</span>
-        </div>
-        <div class="kpi">
-          <span class="kpi-label">Bets Placed</span>
-          <span class="kpi-value">{{ ytd_summary.bets_placed }}</span>
-        </div>
-        <div class="kpi">
-          <span class="kpi-label">Total Staked</span>
-          <span class="kpi-value">${{ "%.2f"|format(ytd_summary.total_staked) }}</span>
-        </div>
-        <div class="kpi">
-          <span class="kpi-label">Net P/L</span>
-          <span class="kpi-value {{ 'pos' if ytd_summary.total_pl >= 0 else 'neg' }}">
-            {{ "+$%.2f"|format(ytd_summary.total_pl) if ytd_summary.total_pl >= 0 else "-$%.2f"|format(ytd_summary.total_pl|abs) }}
-          </span>
-        </div>
-        <div class="kpi">
-          <span class="kpi-label">ROI</span>
-          <span class="kpi-value">{{ ytd_summary.roi }}</span>
-        </div>
-        <div class="kpi">
-          <span class="kpi-label">Games Tracked</span>
-          <span class="kpi-value">{{ ytd_summary.games }}</span>
-        </div>
-        <div class="kpi">
-          <span class="kpi-label">Bankroll</span>
-          <span class="kpi-value">
-            {% if ytd_summary.bankroll is not none %}
-            ${{ "%.2f"|format(ytd_summary.bankroll) }}
-            {% else %}
-            n/a
-            {% endif %}
-          </span>
-        </div>
-      </div>
-    </section>
-
-    <section class="recommendations-panel">
-      <div class="panel-header">
-        <h2>Daily Betting Recommendations</h2>
-        <span class="date-pill">{{ today }}</span>
+  <main class="thirds-layout">
+    <section class="third-card left-third">
+      <div class="panel-head">
+        <h2>Game Center</h2>
+        <span class="tag">{{ selected_date }}</span>
       </div>
 
-      {% if recommendations %}
-      <ul class="game-list">
-        {% for game in recommendations %}
-        <li class="game-item">
-          <button
-            type="button"
-            class="game-button"
-            data-game='{{ game|tojson }}'
-            onclick="openSummary(this)"
-          >
-            <span class="matchup">{{ game.matchup }}</span>
-            <span class="pick">
+      <div class="control-stack">
+        <input id="search-games" class="search" type="text" placeholder="Search team or matchup..." />
+        <div class="chip-row" id="filter-chips">
+          <button type="button" class="chip is-active" data-chip="all">All</button>
+          <button type="button" class="chip" data-chip="bet">Bets</button>
+          <button type="button" class="chip" data-chip="no_edge">No Edge</button>
+          <button type="button" class="chip" data-chip="high">High Confidence</button>
+        </div>
+      </div>
+
+      <ul class="game-list" id="game-list">
+        {% for game in dashboard_state.recommendations %}
+        <li class="game-item"
+            data-filter-type="{{ game.recommendation_type }}"
+            data-confidence="{{ game.confidence_bucket }}"
+            data-search="{{ (game.matchup ~ ' ' ~ game.home_team ~ ' ' ~ game.away_team)|lower }}">
+          <button class="game-button" type="button" data-game='{{ game|tojson }}' onclick="openSummary(this)">
+            <div class="game-row">
+              <span class="matchup">{{ game.matchup }}</span>
+              <span class="confidence {{ game.confidence_bucket }}"> {{ game.confidence_bucket|upper }} </span>
+            </div>
+            <div class="pick">
               Pick: <strong>{{ game.predicted_winner }}</strong>
               {% if game.expected_win_prob is not none %}
               ({{ "%.1f%%"|format(game.expected_win_prob * 100) }})
-              {% else %}
-              (n/a)
               {% endif %}
-            </span>
-            <span class="bet">
+            </div>
+            <div class="bet">
               {% if game.bet_amount and game.bet_amount > 0 %}
               Bet ${{ "%.2f"|format(game.bet_amount) }}
-              {% if game.odds %}
-              @ {{ "+%d"|format(game.odds|int) if game.odds > 0 else "%d"|format(game.odds|int) }}
-              {% endif %}
+              {% if game.odds %}@ {{ "+%d"|format(game.odds|int) if game.odds > 0 else "%d"|format(game.odds|int) }}{% endif %}
               {% else %}
-              No bet edge
+              No edge against the line
               {% endif %}
-            </span>
+            </div>
+            <div class="edge-line">
+              {% if game.edge is not none %}
+              Edge: <span class="{{ 'pos' if game.edge >= 0 else 'neg' }}">{{ "%+.2f%%"|format(game.edge * 100) }}</span>
+              {% else %}
+              Edge: n/a
+              {% endif %}
+            </div>
           </button>
         </li>
         {% endfor %}
       </ul>
-      <p class="hint">Tip: click any game for win probability, Elo, and rolling average details.</p>
-      {% else %}
-      <p class="empty">No recommendations are available for today yet.</p>
-      {% endif %}
+
+      <p id="empty-filter-msg" class="empty hidden">No games match your current filter.</p>
+    </section>
+
+    <section class="third-card middle-third">
+      <div class="panel-head">
+        <h2>Insights Hub</h2>
+        <span class="tag">YTD {{ ytd.year }}</span>
+      </div>
+
+      <div class="kpi-grid">
+        <article class="kpi"><span class="kpi-label">Record</span><strong>{{ ytd.wins }}-{{ ytd.losses }}</strong></article>
+        <article class="kpi"><span class="kpi-label">Win Rate</span><strong>{{ ytd.accuracy }}</strong></article>
+        <article class="kpi"><span class="kpi-label">ROI</span><strong>{{ ytd.roi }}</strong></article>
+        <article class="kpi">
+          <span class="kpi-label">Net P/L</span>
+          <strong class="{{ 'pos' if ytd.total_pl >= 0 else 'neg' }}">
+            {{ "+$%.2f"|format(ytd.total_pl) if ytd.total_pl >= 0 else "-$%.2f"|format(ytd.total_pl|abs) }}
+          </strong>
+        </article>
+        <article class="kpi"><span class="kpi-label">Longest W Streak</span><strong>{{ ytd.longest_win_streak }}</strong></article>
+        <article class="kpi"><span class="kpi-label">Longest L Streak</span><strong>{{ ytd.longest_loss_streak }}</strong></article>
+        <article class="kpi"><span class="kpi-label">Max Drawdown</span><strong>${{ "%.2f"|format(ytd.max_drawdown) }}</strong></article>
+        <article class="kpi"><span class="kpi-label">Games Tracked</span><strong>{{ ytd.games }}</strong></article>
+      </div>
+
+      <section class="subpanel">
+        <h3>Confidence Mix</h3>
+        <div id="confidence-bars" class="confidence-bars"></div>
+      </section>
+
+      <section class="subpanel">
+        <h3>Top Model Edges</h3>
+        <ul class="edge-list">
+          {% for rec in dashboard_state.top_edges %}
+          <li>
+            <span>{{ rec.matchup }}</span>
+            <span class="{{ 'pos' if rec.edge >= 0 else 'neg' }}">{{ "%+.2f%%"|format(rec.edge * 100) }}</span>
+          </li>
+          {% else %}
+          <li class="empty-inline">No edge data available.</li>
+          {% endfor %}
+        </ul>
+      </section>
+    </section>
+
+    <section class="third-card right-third">
+      <div class="panel-head">
+        <h2>Trend Board</h2>
+        <span class="tag">Season Curve</span>
+      </div>
+
+      <div class="chart-controls">
+        <label><input type="checkbox" id="show-bankroll" checked /> Bankroll</label>
+        <label><input type="checkbox" id="show-cumpl" checked /> Cumulative P/L</label>
+      </div>
+
+      <div class="chart-wrap">
+        <svg id="bankroll-chart" viewBox="0 0 560 340" role="img" aria-label="Bankroll and cumulative P/L chart"></svg>
+      </div>
+
+      <div class="trend-notes">
+        <div>Peak: {% if dashboard_state.peak_point %}${{ "%.2f"|format(dashboard_state.peak_point.balance) }} on {{ dashboard_state.peak_point.date }}{% else %}n/a{% endif %}</div>
+        <div>Trough: {% if dashboard_state.trough_point %}${{ "%.2f"|format(dashboard_state.trough_point.balance) }} on {{ dashboard_state.trough_point.date }}{% else %}n/a{% endif %}</div>
+      </div>
     </section>
   </main>
 
@@ -127,29 +163,18 @@
       <h3 id="modal-title">Game Summary</h3>
       <p id="modal-matchup" class="modal-matchup"></p>
       <div class="summary-grid">
-        <div class="summary-row">
-          <span>Predicted Winner</span><strong id="m-pick">n/a</strong>
-        </div>
-        <div class="summary-row">
-          <span>Expected Win Probability</span><strong id="m-exp-prob">n/a</strong>
-        </div>
-        <div class="summary-row">
-          <span>Home Elo</span><strong id="m-home-elo">n/a</strong>
-        </div>
-        <div class="summary-row">
-          <span>Away Elo</span><strong id="m-away-elo">n/a</strong>
-        </div>
+        <div class="summary-row"><span>Predicted Winner</span><strong id="m-pick">n/a</strong></div>
+        <div class="summary-row"><span>Expected Win Probability</span><strong id="m-exp-prob">n/a</strong></div>
+        <div class="summary-row"><span>Implied Probability</span><strong id="m-impl-prob">n/a</strong></div>
+        <div class="summary-row"><span>Model Edge</span><strong id="m-edge">n/a</strong></div>
+        <div class="summary-row"><span>Home Elo</span><strong id="m-home-elo">n/a</strong></div>
+        <div class="summary-row"><span>Away Elo</span><strong id="m-away-elo">n/a</strong></div>
       </div>
-
       <h4>Running Averages</h4>
       <div class="running-avg-wrap">
         <table>
           <thead>
-            <tr>
-              <th>Metric</th>
-              <th id="m-home-team">Home</th>
-              <th id="m-away-team">Away</th>
-            </tr>
+            <tr><th>Metric</th><th id="m-home-team">Home</th><th id="m-away-team">Away</th></tr>
           </thead>
           <tbody>
             <tr><td>PTS</td><td id="m-home-pts">n/a</td><td id="m-away-pts">n/a</td></tr>
@@ -165,11 +190,7 @@
   </div>
 
   <script>
-    const THEMES = [
-      { key: "theme-court", label: "Wooden Court" },
-      { key: "theme-scoreboard", label: "Scoreboard" },
-      { key: "theme-myleague", label: "NBA 2K MyLeague" }
-    ];
+    const dashboardState = {{ dashboard_state|tojson }};
 
     function prettyNum(v, digits = 1) {
       if (v === null || v === undefined || v === "") return "n/a";
@@ -181,23 +202,40 @@
       return `${(Number(v) * 100).toFixed(1)}%`;
     }
 
-    function setTheme(index) {
-      const body = document.body;
-      THEMES.forEach(t => body.classList.remove(t.key));
-      body.classList.add(THEMES[index].key);
-      localStorage.setItem("fan-board-theme", String(index));
-      document.getElementById("theme-switch-btn").textContent = `Switch Design: ${THEMES[index].label}`;
+    function applyGameFilters() {
+      const q = document.getElementById("search-games").value.trim().toLowerCase();
+      const activeChip = document.querySelector(".chip.is-active")?.dataset.chip || "all";
+      const items = Array.from(document.querySelectorAll(".game-item"));
+
+      let visibleCount = 0;
+      items.forEach((item) => {
+        const searchText = item.dataset.search || "";
+        const type = item.dataset.filterType;
+        const confidence = item.dataset.confidence;
+
+        const searchMatch = !q || searchText.includes(q);
+        let chipMatch = true;
+        if (activeChip === "bet") chipMatch = type === "bet";
+        else if (activeChip === "no_edge") chipMatch = type === "no_edge";
+        else if (activeChip === "high") chipMatch = confidence === "high";
+
+        const show = searchMatch && chipMatch;
+        item.classList.toggle("hidden", !show);
+        if (show) visibleCount += 1;
+      });
+
+      document.getElementById("empty-filter-msg").classList.toggle("hidden", visibleCount > 0);
     }
 
-    (function initThemeSwitcher() {
-      const btn = document.getElementById("theme-switch-btn");
-      let idx = Number(localStorage.getItem("fan-board-theme") || "0");
-      if (Number.isNaN(idx) || idx < 0 || idx > 2) idx = 0;
-      setTheme(idx);
+    (function initFilters() {
+      const input = document.getElementById("search-games");
+      input.addEventListener("input", applyGameFilters);
 
-      btn.addEventListener("click", () => {
-        idx = (idx + 1) % THEMES.length;
-        setTheme(idx);
+      document.getElementById("filter-chips").addEventListener("click", (e) => {
+        if (!e.target.classList.contains("chip")) return;
+        document.querySelectorAll(".chip").forEach((chip) => chip.classList.remove("is-active"));
+        e.target.classList.add("is-active");
+        applyGameFilters();
       });
     })();
 
@@ -206,22 +244,23 @@
       const d = game.details || {};
 
       document.getElementById("modal-title").textContent = `Game Summary: ${game.matchup}`;
-      document.getElementById("modal-matchup").textContent = `Date: {{ today }}`;
+      document.getElementById("modal-matchup").textContent = `Game Date: ${dashboardState.game_date}`;
       document.getElementById("m-pick").textContent = game.predicted_winner || "n/a";
       document.getElementById("m-exp-prob").textContent = prettyPct(game.expected_win_prob);
+      document.getElementById("m-impl-prob").textContent = prettyPct(game.implied_prob);
+      const edgeText = game.edge === null || game.edge === undefined ? "n/a" : `${(game.edge * 100).toFixed(2)}%`;
+      document.getElementById("m-edge").textContent = edgeText;
       document.getElementById("m-home-elo").textContent = prettyNum(d.home_elo, 0);
       document.getElementById("m-away-elo").textContent = prettyNum(d.away_elo, 0);
 
       document.getElementById("m-home-team").textContent = game.home_team || "Home";
       document.getElementById("m-away-team").textContent = game.away_team || "Away";
-
       document.getElementById("m-home-pts").textContent = prettyNum(d.home_roll_pts);
       document.getElementById("m-home-fg").textContent = prettyNum(d.home_roll_fg_pct, 3);
       document.getElementById("m-home-reb").textContent = prettyNum(d.home_roll_reb);
       document.getElementById("m-home-ast").textContent = prettyNum(d.home_roll_ast);
       document.getElementById("m-home-tov").textContent = prettyNum(d.home_roll_tov);
       document.getElementById("m-home-stocks").textContent = prettyNum(d.home_roll_stocks);
-
       document.getElementById("m-away-pts").textContent = prettyNum(d.away_roll_pts);
       document.getElementById("m-away-fg").textContent = prettyNum(d.away_roll_fg_pct, 3);
       document.getElementById("m-away-reb").textContent = prettyNum(d.away_roll_reb);
@@ -237,10 +276,112 @@
     }
 
     document.getElementById("summary-modal").addEventListener("click", (e) => {
-      if (e.target.id === "summary-modal") {
-        closeSummary();
-      }
+      if (e.target.id === "summary-modal") closeSummary();
     });
+
+    function drawConfidenceBars() {
+      const el = document.getElementById("confidence-bars");
+      const counts = dashboardState.confidence_distribution || { high: 0, medium: 0, low: 0, unknown: 0 };
+      const keys = ["high", "medium", "low", "unknown"];
+      const max = Math.max(...keys.map((k) => counts[k] || 0), 1);
+      el.innerHTML = "";
+      keys.forEach((k) => {
+        const v = counts[k] || 0;
+        const pct = (v / max) * 100;
+        const row = document.createElement("div");
+        row.className = "confidence-row";
+        row.innerHTML = `<span>${k.toUpperCase()}</span><div class="bar-shell"><div class="bar-fill ${k}" style="width:${pct}%"></div></div><strong>${v}</strong>`;
+        el.appendChild(row);
+      });
+    }
+
+    function drawTrendChart(points, showBankroll, showCumPl) {
+      const svg = document.getElementById("bankroll-chart");
+      svg.innerHTML = "";
+
+      if (!points || points.length === 0) {
+        svg.innerHTML = '<text x="50%" y="50%" text-anchor="middle" fill="#946546" font-size="16">No season bankroll data yet</text>';
+        return;
+      }
+
+      const width = 560;
+      const height = 340;
+      const padL = 46;
+      const padR = 16;
+      const padT = 18;
+      const padB = 38;
+      const plotW = width - padL - padR;
+      const plotH = height - padT - padB;
+
+      function sx(i) {
+        if (points.length === 1) return padL + plotW / 2;
+        return padL + (i / (points.length - 1)) * plotW;
+      }
+
+      const series = [];
+      if (showBankroll) series.push({ key: "balance", color: "#d8752d", label: "Bankroll" });
+      if (showCumPl) series.push({ key: "cum_pl", color: "#7f69d8", label: "Cumulative P/L" });
+      if (series.length === 0) return;
+
+      const allValues = [];
+      series.forEach((s) => points.forEach((p) => allValues.push(Number(p[s.key]))));
+      const minY = Math.min(...allValues);
+      const maxY = Math.max(...allValues);
+      const spanY = Math.max(maxY - minY, 1);
+
+      function sy(v) {
+        return padT + ((maxY - v) / spanY) * plotH;
+      }
+
+      for (let i = 0; i < 5; i++) {
+        const y = padT + (i / 4) * plotH;
+        const val = maxY - (i / 4) * spanY;
+        svg.insertAdjacentHTML("beforeend",
+          `<line x1="${padL}" y1="${y}" x2="${width - padR}" y2="${y}" stroke="rgba(135,90,60,0.23)" stroke-width="1"/>
+           <text x="${padL - 8}" y="${y + 4}" text-anchor="end" fill="#946546" font-size="11">${val.toFixed(0)}</text>`
+        );
+      }
+
+      svg.insertAdjacentHTML("beforeend",
+        `<line x1="${padL}" y1="${height - padB}" x2="${width - padR}" y2="${height - padB}" stroke="#9a6d45" stroke-width="2"/>
+         <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${height - padB}" stroke="#9a6d45" stroke-width="2"/>`
+      );
+
+      series.forEach((s) => {
+        const d = points.map((p, i) => `${i === 0 ? "M" : "L"} ${sx(i)} ${sy(Number(p[s.key]))}`).join(" ");
+        svg.insertAdjacentHTML("beforeend",
+          `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" />`
+        );
+      });
+
+      const first = points[0];
+      const last = points[points.length - 1];
+      [first, last].forEach((pt) => {
+        const idx = points.indexOf(pt);
+        if (showBankroll) {
+          svg.insertAdjacentHTML("beforeend",
+            `<circle cx="${sx(idx)}" cy="${sy(Number(pt.balance))}" r="4" fill="#fff4e4" stroke="#a8632f" stroke-width="1.5">
+               <title>${pt.date} bankroll: ${pt.balance.toFixed(2)}</title>
+             </circle>`
+          );
+        }
+      });
+    }
+
+    function redrawChartFromToggles() {
+      drawTrendChart(
+        dashboardState.bankroll_series || [],
+        document.getElementById("show-bankroll").checked,
+        document.getElementById("show-cumpl").checked
+      );
+    }
+
+    document.getElementById("show-bankroll").addEventListener("change", redrawChartFromToggles);
+    document.getElementById("show-cumpl").addEventListener("change", redrawChartFromToggles);
+
+    drawConfidenceBars();
+    redrawChartFromToggles();
+    applyGameFilters();
   </script>
 </body>
 </html>
