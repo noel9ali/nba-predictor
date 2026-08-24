@@ -26,6 +26,7 @@ SCALER_PATH = "data/scaler.pkl"
 METADATA_PATH = "data/model_metadata.json"
 LEADERBOARD_PATH = "data/model_leaderboard.csv"
 RANDOM_STATE = 42
+DEFAULT_PRODUCTION_MODEL = "legacy-calibrated-logistic"
 
 FEATURES = [
     "HOME_roll_PTS",
@@ -241,14 +242,28 @@ def _fit_tuned_lstm(X_train, y_train):
     return _fit_with_grid_search(estimator, param_grid, X_train, y_train)
 
 
+def model_registry():
+    return {
+        "legacy-calibrated-logistic": _fit_calibrated_logistic,
+        "current-xgboost": _fit_current_xgboost,
+        "gradient-boosting-gridsearch": _fit_tuned_gradient_boosting,
+        "random-forest-gridsearch": _fit_tuned_random_forest,
+        "lstm-gridsearch": _fit_tuned_lstm,
+    }
+
+
+def available_models():
+    return list(model_registry().keys())
+
+
+def get_production_model_name():
+    configured = os.getenv("NBA_PRODUCTION_MODEL", DEFAULT_PRODUCTION_MODEL).strip()
+    return configured if configured else DEFAULT_PRODUCTION_MODEL
+
+
 def _candidate_specs():
-    return [
-        ("legacy-calibrated-logistic", _fit_calibrated_logistic),
-        ("current-xgboost", _fit_current_xgboost),
-        ("gradient-boosting-gridsearch", _fit_tuned_gradient_boosting),
-        ("random-forest-gridsearch", _fit_tuned_random_forest),
-        ("lstm-gridsearch", _fit_tuned_lstm),
-    ]
+    registry = model_registry()
+    return [(name, registry[name]) for name in available_models()]
 
 
 def _extract_feature_signal(model):
@@ -345,11 +360,26 @@ def train_model(train):
     return best_model, scaler
 
 
-def train_best_model(train):
+def train_selected_model(train, model_name=None):
+    selected_name = model_name or get_production_model_name()
+    registry = model_registry()
+    if selected_name not in registry:
+        raise ValueError(
+            f"Unknown model '{selected_name}'. Available models: {', '.join(available_models())}"
+        )
+
     clean_train, X_train_df, y_train = _split_xy(train)
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train_df)
-    model, _ = _fit_calibrated_logistic(X_train, y_train.to_numpy())
+    model, search = registry[selected_name](X_train, y_train.to_numpy())
+    return model, scaler, clean_train, selected_name, search
+
+
+def train_best_model(train):
+    model, scaler, clean_train, selected_name, search = train_selected_model(
+        train,
+        DEFAULT_PRODUCTION_MODEL,
+    )
     return model, scaler, clean_train
 
 
@@ -403,6 +433,8 @@ def _save_leaderboard(leaderboard, best_model_name, cutoff):
     leaderboard.to_csv(LEADERBOARD_PATH, index=False)
     metadata = {
         "best_model": best_model_name,
+        "production_model": best_model_name,
+        "available_models": available_models(),
         "trained_at": pd.Timestamp.now(tz="UTC").isoformat(),
         "cutoff_date": cutoff,
         "features": FEATURES,
@@ -443,8 +475,19 @@ def run():
         ].to_string(index=False)
     )
 
-    best_model_name = leaderboard.iloc[0]["model"]
-    best_model = next(item["model"] for item in fitted if item["model_name"] == best_model_name)
+    leaderboard_best = leaderboard.iloc[0]["model"]
+    production_model_name = get_production_model_name()
+    fitted_lookup = {item["model_name"]: item["model"] for item in fitted}
+    if production_model_name in fitted_lookup:
+        best_model_name = production_model_name
+    else:
+        print(
+            f"Configured production model '{production_model_name}' is unavailable. "
+            f"Falling back to leaderboard best '{leaderboard_best}'."
+        )
+        best_model_name = leaderboard_best
+
+    best_model = fitted_lookup[best_model_name]
     cutoff = (pd.Timestamp.today() - pd.Timedelta(days=30)).strftime("%Y-%m-%d")
     _save_leaderboard(leaderboard, best_model_name, cutoff)
 

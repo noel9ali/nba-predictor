@@ -8,9 +8,10 @@ from model import (
     FEATURES,
     TARGET,
     compute_classification_metrics,
+    get_production_model_name,
     load_features,
     split_data_by_season,
-    train_best_model,
+    train_selected_model,
 )
 from track import STARTING_BANKROLL, kelly_bet
 
@@ -142,8 +143,9 @@ def run():
     if len(test) == 0:
         raise ValueError(f"No test rows found for season {TEST_SEASON}.")
 
-    print("Training best production model (legacy calibrated logistic)...")
-    model, scaler, _ = train_best_model(train)
+    production_model_name = get_production_model_name()
+    print(f"Training configured production model ({production_model_name})...")
+    model, scaler, _, _, _ = train_selected_model(train, production_model_name)
 
     print("Scoring test season...")
     scored_test = prepare_test_predictions(model, scaler, test)
@@ -173,7 +175,7 @@ def run():
     sim_df.to_csv(RESULTS_PATH, index=False)
     summary = {
         "test_season": TEST_SEASON,
-        "model": "legacy-calibrated-logistic",
+        "model": production_model_name,
         "metrics": metrics,
         "simulation": sim_summary,
         "results_path": RESULTS_PATH,
