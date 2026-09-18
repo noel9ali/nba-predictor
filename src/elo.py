@@ -37,7 +37,7 @@ def load_games():
     return select_rows(
         "games",
         columns="GAME_ID,GAME_DATE,TEAM_ID,TEAM_ABBREVIATION,WL,MATCHUP,SEASON",
-        order_by="GAME_DATE",
+        order_by=["GAME_DATE", "GAME_ID", "TEAM_ID"],
     )
 
 # compute_elo() loops through all games updating elo ratings
@@ -114,15 +114,44 @@ def compute_elo():
 # get_current_ratings() returns every team's most recent elo rating
 def get_current_ratings():
     # returns the most recent elo rating for every team
-    df = select_rows("elo", columns="GAME_DATE,HOME_TEAM_ID,HOME_ELO", order_by="GAME_DATE", descending=True)
-    if len(df) == 0:
+    elo = select_rows(
+        "elo",
+        columns="GAME_ID,GAME_DATE,HOME_TEAM_ID,AWAY_TEAM_ID,HOME_ELO,AWAY_ELO",
+        order_by=["GAME_DATE", "GAME_ID"],
+        descending=True,
+    )
+    if len(elo) == 0:
         return {}
-    latest_date = df["GAME_DATE"].iloc[0]
-    df = df[df["GAME_DATE"] == latest_date]
-    return dict(zip(df["HOME_TEAM_ID"], df["HOME_ELO"]))
+    games = select_rows(
+        "games",
+        columns="GAME_ID,TEAM_ID,MATCHUP,WL",
+        order_by=["GAME_ID", "TEAM_ID"],
+    )
+    home_games = games[games["MATCHUP"].str.contains("vs.", na=False)]
+    outcomes = home_games.set_index("GAME_ID")["WL"].to_dict()
+
+    ratings = {}
+    for _, game in elo.iterrows():
+        home_id = game["HOME_TEAM_ID"]
+        away_id = game["AWAY_TEAM_ID"]
+        game_id = game["GAME_ID"]
+        home_elo, away_elo = update_elo(
+            game["HOME_ELO"],
+            game["AWAY_ELO"],
+            outcomes.get(game_id) == "W",
+        )
+        ratings.setdefault(home_id, home_elo)
+        ratings.setdefault(away_id, away_elo)
+    return ratings
 
 def get_last_elo_date():
-    df = select_rows("elo", columns="GAME_DATE", order_by="GAME_DATE", descending=True, limit=1)
+    df = select_rows(
+        "elo",
+        columns="GAME_DATE",
+        order_by=["GAME_DATE", "GAME_ID"],
+        descending=True,
+        limit=1,
+    )
     return None if len(df) == 0 else df["GAME_DATE"].iloc[0]
 
 if __name__ == '__main__':

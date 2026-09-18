@@ -66,6 +66,11 @@ def _raise_response_error(operation: str, response: Any) -> None:
     safe_message = f"{operation} failed"
     if code == "23505":
         raise DuplicateRecordError(safe_message) from None
+    if code == "42P10":
+        raise DatabaseError(
+            f"{safe_message}: configured upsert conflict target is not backed "
+            "by a database unique constraint"
+        ) from None
     raise DatabaseError(f"{safe_message} ({code})" if code else safe_message) from None
 
 
@@ -81,14 +86,20 @@ def _run(operation: str, callback):
 
 
 def _normalize_value(value: Any) -> Any:
-    if value is None or value is pd.NA:
+    if value is None:
         return None
+    try:
+        missing = pd.isna(value)
+        if not hasattr(missing, "__len__") and bool(missing):
+            return None
+    except (TypeError, ValueError):
+        pass
     if isinstance(value, (datetime, date, pd.Timestamp)):
         return value.isoformat()
-    if isinstance(value, float) and math.isnan(value):
-        return None
     if hasattr(value, "item"):
-        return value.item()
+        value = value.item()
+        if isinstance(value, float) and math.isnan(value):
+            return None
     return value
 
 
@@ -121,7 +132,7 @@ def select_rows(
     *,
     columns: str = "*",
     filters: Iterable[tuple[str, str, Any]] = (),
-    order_by: str | None = None,
+    order_by: str | Iterable[str] | None = None,
     descending: bool = False,
     limit: int | None = None,
     page_size: int = 1000,
@@ -129,6 +140,11 @@ def select_rows(
     """Read a table through PostgREST, paginating large result sets."""
     if page_size < 1:
         raise ValueError("page_size must be positive")
+    if limit is None and order_by is None:
+        raise ValueError(
+            f"Reading {table} requires a deterministic order when pagination is enabled"
+        )
+    order_columns = [order_by] if isinstance(order_by, str) else list(order_by or [])
     rows: list[dict[str, Any]] = []
     offset = 0
     while True:
@@ -137,8 +153,8 @@ def select_rows(
         def request():
             query = get_client().table(table).select(columns)
             query = _apply_filters(query, filters)
-            if order_by:
-                query = query.order(order_by, desc=descending)
+            for order_column in order_columns:
+                query = query.order(order_column, desc=descending)
             return query.range(offset, offset + batch_limit - 1).execute()
 
         if limit is not None and len(rows) >= limit:

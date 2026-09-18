@@ -5,7 +5,7 @@ from database import select_rows, upsert_rows
 ROLLING_WINDOW = 10
 
 def load_games():
-    return select_rows("games")
+    return select_rows("games", order_by=["GAME_DATE", "GAME_ID", "TEAM_ID"])
 
 def label_home_away(df):
     df['HOME'] = df['MATCHUP'].apply(lambda x: 1 if 'vs.' in x else 0)
@@ -62,7 +62,7 @@ def add_rest_days(df):
     return df
 
 def add_elo(df):
-    elo = select_rows("elo")
+    elo = select_rows("elo", order_by=["GAME_DATE", "GAME_ID"])
 
     # merge elo to features table
     df = df.merge(

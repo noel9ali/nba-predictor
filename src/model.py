@@ -49,7 +49,7 @@ TARGET = "home_win"
 
 
 def load_features():
-    return select_rows("features")
+    return select_rows("features", order_by=["GAME_DATE", "GAME_ID"])
 
 
 def split_data(df):
@@ -62,7 +62,11 @@ def split_data(df):
 
 def split_data_by_season(df, test_season):
     if "SEASON" not in df.columns:
-        season_lookup = select_rows("games", columns="GAME_ID,SEASON")
+        season_lookup = select_rows(
+            "games",
+            columns="GAME_ID,SEASON",
+            order_by=["GAME_ID", "TEAM_ID"],
+        )
         season_lookup = season_lookup.drop_duplicates(subset=["GAME_ID"])
         season_lookup["GAME_ID"] = season_lookup["GAME_ID"].astype(str)
 

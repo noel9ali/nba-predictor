@@ -30,6 +30,7 @@ def load_logged_odds():
         "predictions",
         columns="game_id,bet_placed,odds",
         filters=[("odds", "not_is", "null"), ("bet_placed", "not_is", "null")],
+        order_by="game_id",
     )
     if len(odds_logs) == 0:
         return pd.DataFrame(columns=["game_id", "bet_placed", "odds"])

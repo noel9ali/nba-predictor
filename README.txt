@@ -47,8 +47,9 @@ Fetches tonight's games and line shops odds across multiple bookmakers, generate
 
 ### Local fixture testing
 `scripts\seed_test_games.py` creates a deterministic SQLite fixture for isolated
-offline development only. It is not part of the production database path and
-must never target the migrated Supabase data.
+offline data-generation testing only. It is not consumed by the production
+pipeline, which now requires Supabase credentials, and must never target the
+migrated Supabase data.
 
 To seed only the games table, use:
 
@@ -57,7 +58,9 @@ python scripts\seed_test_games.py --reset
 ```
 
 The command replaces the local fixture at `data\nba.db`; use a separate
-worktree and never point it at production data.
+worktree and never point it at production data. Run
+`python -m unittest discover -s tests -v` for the non-destructive application
+database-layer tests.
 
 ## Results
 

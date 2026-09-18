@@ -102,6 +102,7 @@ def update_results():
             ("game_date", "eq", yesterday),
             ("actual_winner", "is", "null"),
         ],
+        order_by="game_id",
     )
 
     if len(pending) == 0:
@@ -156,6 +157,7 @@ def update_results():
         "predictions",
         columns="profit_loss",
         filters=[("profit_loss", "not_is", "null")],
+        order_by="game_id",
     )
     total_pl = completed["profit_loss"].sum() if len(completed) else 0
     new_balance = STARTING_BANKROLL + total_pl
@@ -174,6 +176,7 @@ def print_summary():
     preds = select_rows(
         "predictions",
         filters=[("correct", "not_is", "null")],
+        order_by="game_id",
     )
     bankroll = select_rows(
         "bankroll",

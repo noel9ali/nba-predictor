@@ -3,6 +3,9 @@ import sys
 import unittest
 from unittest.mock import patch
 
+import numpy as np
+import pandas as pd
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import database
@@ -16,7 +19,8 @@ class Response:
 
 class FakeQuery:
     def __init__(self, response):
-        self.response = response
+        self.responses = response if isinstance(response, list) else [response]
+        self.default_response = self.responses[-1]
         self.calls = []
 
     def select(self, columns):
@@ -44,7 +48,9 @@ class FakeQuery:
         return self
 
     def execute(self):
-        return self.response
+        if len(self.responses) > 1:
+            return self.responses.pop(0)
+        return self.default_response
 
 
 class FakeClient:
@@ -77,6 +83,36 @@ class DatabaseTests(unittest.TestCase):
         self.assertIn(("eq", "TEAM_ID", 7), client.query.calls)
         self.assertIn(("order", "GAME_DATE", True), client.query.calls)
 
+    def test_select_requires_order_for_paginated_reads(self):
+        database._client = FakeClient(Response([{"GAME_ID": "g1"}]))
+        with self.assertRaises(ValueError):
+            database.select_rows("games")
+
+    def test_select_paginates_in_stable_order(self):
+        client = FakeClient(
+            [
+                Response([{"GAME_ID": "g1"}]),
+                Response([{"GAME_ID": "g2"}]),
+                Response([]),
+            ]
+        )
+        database._client = client
+
+        result = database.select_rows("games", order_by=["GAME_DATE", "GAME_ID"], page_size=1)
+
+        self.assertEqual(result["GAME_ID"].tolist(), ["g1", "g2"])
+        self.assertEqual(
+            [call for call in client.query.calls if call[0] == "order"],
+            [
+                ("order", "GAME_DATE", False),
+                ("order", "GAME_ID", False),
+                ("order", "GAME_DATE", False),
+                ("order", "GAME_ID", False),
+                ("order", "GAME_DATE", False),
+                ("order", "GAME_ID", False),
+            ],
+        )
+
     def test_insert_and_upsert_use_explicit_rows_and_batches(self):
         client = FakeClient(Response([{"GAME_ID": "g1"}]))
         database._client = client
@@ -87,6 +123,20 @@ class DatabaseTests(unittest.TestCase):
 
         self.assertIn(("insert", [row]), client.query.calls)
         self.assertIn(("upsert", [row], "GAME_ID"), client.query.calls)
+
+    def test_write_normalizes_pandas_missing_values(self):
+        client = FakeClient(Response([{"GAME_ID": "g1"}]))
+        database._client = client
+
+        database.insert_rows(
+            "features",
+            [{"GAME_ID": "g1", "DATE": pd.NaT, "VALUE": np.float32(np.nan)}],
+        )
+
+        self.assertIn(
+            ("insert", [{"GAME_ID": "g1", "DATE": None, "VALUE": None}]),
+            client.query.calls,
+        )
 
     def test_failed_write_is_translated_without_secret(self):
         error = type("Error", (), {"code": "23505", "message": "duplicate"})()
