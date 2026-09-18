@@ -46,6 +46,24 @@ Fetches new games, recomputes features, updates Elo ratings, retrains model, upd
 ### Evening — `run_predict.bat`
 Fetches tonight's games and line shops odds across multiple bookmakers, generates win probabilities, sizes paper bets using Kelly Criterion, logs predictions to database
 
+### Local testing — `run_local_test.bat`
+Creates a deterministic 45-day test set for four synthetic teams, resets the
+derived tables, and runs Elo, feature engineering, and model evaluation without
+calling NBA or sportsbook APIs. Run it independently from each branch worktree:
+
+```
+run_local_test.bat
+```
+
+To seed only the games table, use:
+
+```
+python scripts\seed_test_games.py --reset
+```
+
+The command replaces `data\nba.db`, so use a separate worktree or back up the
+database before running it against real data.
+
 ## Results
 
 | Metric | Value |
