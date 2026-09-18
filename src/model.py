@@ -1,10 +1,10 @@
 import json
 import os
-import sqlite3
 
 import joblib
 import numpy as np
 import pandas as pd
+from database import select_rows
 from model_wrappers import TorchLSTMClassifier
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
@@ -20,7 +20,6 @@ from sklearn.preprocessing import StandardScaler
 from xgboost import XGBClassifier
 
 # --- Config ---
-DB_PATH = "data/nba.db"
 MODEL_PATH = "data/model.pkl"
 SCALER_PATH = "data/scaler.pkl"
 METADATA_PATH = "data/model_metadata.json"
@@ -50,26 +49,20 @@ TARGET = "home_win"
 
 
 def load_features():
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql("SELECT * FROM features", conn)
-    conn.close()
-    return df
+    return select_rows("features")
 
 
 def split_data(df):
-    game_dates = pd.to_datetime(df["GAME_DATE"])
-    reference_date = min(pd.Timestamp.today().normalize(), game_dates.max().normalize())
-    cutoff = (reference_date - pd.Timedelta(days=30)).strftime("%Y-%m-%d")
-    train = df[df["GAME_DATE"] < cutoff]
-    test = df[df["GAME_DATE"] >= cutoff]
+    ordered = df.assign(_GAME_DATE=pd.to_datetime(df["GAME_DATE"])).sort_values("_GAME_DATE")
+    split_index = max(1, int(len(ordered) * 0.8))
+    train = ordered.iloc[:split_index].drop(columns="_GAME_DATE")
+    test = ordered.iloc[split_index:].drop(columns="_GAME_DATE")
     return train, test
 
 
 def split_data_by_season(df, test_season):
     if "SEASON" not in df.columns:
-        conn = sqlite3.connect(DB_PATH)
-        season_lookup = pd.read_sql("SELECT GAME_ID, SEASON FROM games", conn)
-        conn.close()
+        season_lookup = select_rows("games", columns="GAME_ID,SEASON")
         season_lookup = season_lookup.drop_duplicates(subset=["GAME_ID"])
         season_lookup["GAME_ID"] = season_lookup["GAME_ID"].astype(str)
 
@@ -488,7 +481,7 @@ def run():
         best_model_name = leaderboard_best
 
     best_model = fitted_lookup[best_model_name]
-    cutoff = (pd.Timestamp.today() - pd.Timedelta(days=30)).strftime("%Y-%m-%d")
+    cutoff = pd.to_datetime(test["GAME_DATE"]).min().strftime("%Y-%m-%d")
     _save_leaderboard(leaderboard, best_model_name, cutoff)
 
     print("\nEvaluating selected production model...")

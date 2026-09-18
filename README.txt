@@ -10,14 +10,13 @@ An end-to-end machine learning pipeline that predicts NBA game outcomes and simu
 4. A logistic regression classifier is trained on the combined features, achieving 71.1% accuracy on held-out test data
 5. Real-time odds are fetched from The Odds API and line shopped across multiple bookmakers to find the best price
 6. Kelly Criterion bet sizing is used to simulate paper bets — only placed when model edge exceeds implied odds
-7. All predictions and results are logged to a local SQLite database with daily bankroll tracking
+7. All predictions and results are logged to the existing Supabase PostgreSQL database with daily bankroll tracking
 
 ## Project Structure
 
     nba-predictor/
-    ├── data/
-    │   └── nba.db          ← SQLite database (games, features, elo, predictions, bankroll)
     ├── src/
+    │   ├── database.py     ← centralized server-side Supabase access
     │   ├── collect.py      ← fetch game data from NBA API
     │   ├── features.py     ← feature engineering and rolling averages
     │   ├── elo.py          ← compute and store Elo ratings across all seasons
@@ -27,16 +26,16 @@ An end-to-end machine learning pipeline that predicts NBA game outcomes and simu
     │   └── track.py        ← log results and track paper trading bankroll
     ├── run_pipeline.bat    ← morning automation script
     ├── run_predict.bat     ← evening automation script
-    ├── .env.example        ← API key template
+    ├── .env.example        ← server/API key template
     └── requirements.txt    ← Python dependencies
 
 ## Setup
 
 1. Sign up for a free API key at [the-odds-api.com](https://the-odds-api.com)
-2. Copy `.env.example` to `.env` and fill in your key
+2. Copy `.env.example` to `.env` and fill in the API and server-only Supabase credentials
 3. Create and activate a virtual environment: `python -m venv venv` then `venv\Scripts\activate`
 4. Install dependencies: `pip install -r requirements.txt`
-5. Run initial data collection: `python src/collect.py` → `python src/features.py` → `python src/elo.py` → `python src/model.py`
+5. Run processing against the already-migrated Supabase tables: `python src\collect.py` → `python src\elo.py` → `python src\features.py` → `python src\model.py`
 
 ## Daily Usage
 
@@ -46,14 +45,10 @@ Fetches new games, recomputes features, updates Elo ratings, retrains model, upd
 ### Evening — `run_predict.bat`
 Fetches tonight's games and line shops odds across multiple bookmakers, generates win probabilities, sizes paper bets using Kelly Criterion, logs predictions to database
 
-### Local testing — `run_local_test.bat`
-Creates a deterministic 45-day test set for four synthetic teams, resets the
-derived tables, and runs Elo, feature engineering, and model evaluation without
-calling NBA or sportsbook APIs. Run it independently from each branch worktree:
-
-```
-run_local_test.bat
-```
+### Local fixture testing
+`scripts\seed_test_games.py` creates a deterministic SQLite fixture for isolated
+offline development only. It is not part of the production database path and
+must never target the migrated Supabase data.
 
 To seed only the games table, use:
 
@@ -61,8 +56,8 @@ To seed only the games table, use:
 python scripts\seed_test_games.py --reset
 ```
 
-The command replaces `data\nba.db`, so use a separate worktree or back up the
-database before running it against real data.
+The command replaces the local fixture at `data\nba.db`; use a separate
+worktree and never point it at production data.
 
 ## Results
 
@@ -79,7 +74,7 @@ database before running it against real data.
 | Component | Tool |
 |-----------|------|
 | Data collection | nba_api |
-| Data storage | SQLite + sqlalchemy |
+| Data storage | Supabase PostgreSQL |
 | Feature engineering | pandas |
 | Elo ratings | Custom implementation |
 | Machine learning | scikit-learn |
@@ -88,7 +83,7 @@ database before running it against real data.
 
 ## Notes
 
-- Model retrains daily on a rolling window using the most recent 30 days as the test set
+- Model retrains daily using the first 80% of games chronologically for training and the final 20% for testing
 - Elo ratings apply 25% mean reversion between seasons to account for roster changes
 - Paper trading uses quarter-Kelly sizing with a 5% bankroll cap per game
 - Bets are only placed when the model edge exceeds the implied odds from the sportsbook line

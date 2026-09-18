@@ -1,4 +1,3 @@
-import sqlite3
 import joblib
 import pandas as pd
 from nba_api.stats.endpoints import scoreboardv3
@@ -6,9 +5,9 @@ from datetime import date
 from track import setup_tables, save_prediction, kelly_bet, get_current_bankroll
 from odds import get_tonights_odds
 from elo import get_current_ratings
+from database import select_rows
 
 # --- Config ---
-DB_PATH = 'data/nba.db'
 FEATURES = [
     'HOME_roll_PTS', 'HOME_roll_FG_PCT', 'HOME_roll_REB', 'HOME_roll_AST', 'HOME_roll_TOV', 'HOME_roll_STOCKS',
     'AWAY_roll_PTS', 'AWAY_roll_FG_PCT', 'AWAY_roll_REB', 'AWAY_roll_AST', 'AWAY_roll_TOV', 'AWAY_roll_STOCKS',
@@ -46,32 +45,33 @@ def get_todays_games():
 
 # get_team_rolling_stats() looks up rolling averages for a team's past 10 games
 def get_team_rolling_stats(team_id, prefix):
-    conn = sqlite3.connect(DB_PATH)
-    query = f"""
-        SELECT {prefix}_roll_PTS, {prefix}_roll_FG_PCT, 
-               {prefix}_roll_REB, {prefix}_roll_AST, {prefix}_roll_TOV,
-               {prefix}_roll_STOCKS, GAME_DATE
-        FROM features
-        WHERE {prefix}_TEAM_ID = {team_id}
-        ORDER BY GAME_DATE DESC
-        LIMIT 1
-    """
-    df = pd.read_sql(query, conn)
-    conn.close()
-    return df
+    if prefix not in {"HOME", "AWAY"}:
+        raise ValueError("prefix must be HOME or AWAY")
+    columns = (
+        f"{prefix}_roll_PTS,{prefix}_roll_FG_PCT,{prefix}_roll_REB,"
+        f"{prefix}_roll_AST,{prefix}_roll_TOV,{prefix}_roll_STOCKS,GAME_DATE"
+    )
+    return select_rows(
+        "features",
+        columns=columns,
+        filters=[(f"{prefix}_TEAM_ID", "eq", team_id)],
+        order_by="GAME_DATE",
+        descending=True,
+        limit=1,
+    )
 
 # get_rest_days() calculates the amount of days since last game for a given team
 def get_rest_days(team_id, prefix):
-    conn = sqlite3.connect(DB_PATH)
-    query = f"""
-        SELECT GAME_DATE
-        FROM features
-        WHERE {prefix}_TEAM_ID = {team_id}
-        ORDER BY GAME_DATE DESC
-        LIMIT 1
-    """
-    df = pd.read_sql(query, conn)
-    conn.close()
+    if prefix not in {"HOME", "AWAY"}:
+        raise ValueError("prefix must be HOME or AWAY")
+    df = select_rows(
+        "features",
+        columns="GAME_DATE",
+        filters=[(f"{prefix}_TEAM_ID", "eq", team_id)],
+        order_by="GAME_DATE",
+        descending=True,
+        limit=1,
+    )
     if len(df) == 0:
         return 2  # default if no data
     last_game = pd.to_datetime(df['GAME_DATE'].iloc[0])

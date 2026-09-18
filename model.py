@@ -1,14 +1,12 @@
-import sqlite3
 import joblib
 import pandas as pd
+from src.database import select_rows
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, log_loss
 from sklearn.calibration import CalibratedClassifierCV
 
 # --- Config ---
-DB_PATH = 'data/nba.db'
-
 FEATURES = [
     'HOME_roll_PTS', 'HOME_roll_FG_PCT', 'HOME_roll_REB', 'HOME_roll_AST', 'HOME_roll_TOV', 'HOME_roll_STOCKS',
     'AWAY_roll_PTS', 'AWAY_roll_FG_PCT', 'AWAY_roll_REB', 'AWAY_roll_AST', 'AWAY_roll_TOV', 'AWAY_roll_STOCKS',
@@ -19,17 +17,14 @@ TARGET = 'home_win'
 
 # load_features() loads the cleaned feature table from the database into pandas
 def load_features():
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql('SELECT * FROM features', conn)
-    conn.close()
-    return df
+    return select_rows("features")
 
-# split_data() divides the data into training and test sets by date
+# split_data() divides the data into chronological 80/20 training and test sets
 def split_data(df):
-    # use everything except the last 30 days as training
-    cutoff = cutoff = (pd.Timestamp.today() - pd.Timedelta(days=30)).strftime('%Y-%m-%d')
-    train = df[df['GAME_DATE'] < cutoff]
-    test  = df[df['GAME_DATE'] >= cutoff]
+    ordered = df.assign(_GAME_DATE=pd.to_datetime(df['GAME_DATE'])).sort_values('_GAME_DATE')
+    split_index = max(1, int(len(ordered) * 0.8))
+    train = ordered.iloc[:split_index].drop(columns='_GAME_DATE')
+    test = ordered.iloc[split_index:].drop(columns='_GAME_DATE')
     return train, test
 
 # train_model() rescales features to a unified scale and trains a logistic

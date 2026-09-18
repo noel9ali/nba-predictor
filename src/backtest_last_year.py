@@ -1,10 +1,8 @@
 import json
-import sqlite3
 
 import numpy as np
 import pandas as pd
 from model import (
-    DB_PATH,
     FEATURES,
     TARGET,
     compute_classification_metrics,
@@ -13,6 +11,7 @@ from model import (
     split_data_by_season,
     train_selected_model,
 )
+from database import select_rows
 from track import STARTING_BANKROLL, kelly_bet
 
 TEST_SEASON = "2025-26"
@@ -27,23 +26,13 @@ def implied_prob(american_odds):
 
 
 def load_logged_odds():
-    conn = sqlite3.connect(DB_PATH)
-    table_exists = pd.read_sql(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='predictions'", conn
+    odds_logs = select_rows(
+        "predictions",
+        columns="game_id,bet_placed,odds",
+        filters=[("odds", "not_is", "null"), ("bet_placed", "not_is", "null")],
     )
-    if len(table_exists) == 0:
-        conn.close()
+    if len(odds_logs) == 0:
         return pd.DataFrame(columns=["game_id", "bet_placed", "odds"])
-
-    odds_logs = pd.read_sql(
-        """
-        SELECT game_id, bet_placed, odds
-        FROM predictions
-        WHERE odds IS NOT NULL AND bet_placed IS NOT NULL
-        """,
-        conn,
-    )
-    conn.close()
     odds_logs["game_id"] = odds_logs["game_id"].astype(str)
     return odds_logs.drop_duplicates(subset=["game_id"], keep="last")
 
