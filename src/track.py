@@ -12,6 +12,7 @@ from database import (
 
 # --- Config ---
 STARTING_BANKROLL = 1000.00
+MAX_DECIMAL_ODDS = 5.0
 
 # setup_tables() verifies the migrated tables and seeds the initial bankroll row.
 def setup_tables():
@@ -77,6 +78,9 @@ def kelly_bet(prob, odds, bankroll, fraction=0.25):
         decimal_odds = (odds / 100) + 1
     else:
         decimal_odds = (100 / abs(odds)) + 1
+
+    if decimal_odds > MAX_DECIMAL_ODDS:
+        return 0
 
     edge = (prob * decimal_odds) - 1
     kelly = edge / (decimal_odds - 1)

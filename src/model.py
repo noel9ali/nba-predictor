@@ -74,6 +74,7 @@ def split_data_by_season(df, test_season):
         df["GAME_ID"] = df["GAME_ID"].astype(str)
         df = df.merge(season_lookup, on="GAME_ID", how="left")
 
+
     train = df[df["SEASON"] != test_season]
     test = df[df["SEASON"] == test_season]
     return train, test
@@ -204,6 +205,21 @@ def _fit_current_xgboost(X_train, y_train):
     return _fit_with_grid_search(estimator, [{}], X_train, y_train)
 
 
+def _fit_calibrated_xgboost(X_train, y_train):
+    estimator = CalibratedClassifierCV(
+        XGBClassifier(
+            n_estimators=100,
+            max_depth=4,
+            learning_rate=0.05,
+            eval_metric="logloss",
+            random_state=RANDOM_STATE,
+        ),
+        cv=5,
+        method="isotonic",
+    )
+    return _fit_with_grid_search(estimator, [{}], X_train, y_train)
+
+
 def _fit_tuned_gradient_boosting(X_train, y_train):
     estimator = GradientBoostingClassifier(random_state=RANDOM_STATE)
     param_grid = {
@@ -243,6 +259,7 @@ def model_registry():
     return {
         "legacy-calibrated-logistic": _fit_calibrated_logistic,
         "current-xgboost": _fit_current_xgboost,
+        "calibrated-xgboost": _fit_calibrated_xgboost,
         "gradient-boosting-gridsearch": _fit_tuned_gradient_boosting,
         "random-forest-gridsearch": _fit_tuned_random_forest,
         "lstm-gridsearch": _fit_tuned_lstm,
