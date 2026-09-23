@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Concept C: Broadcast</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&amp;family=Barlow:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0a1630;font-family:'Barlow',sans-serif;color:#ffffff}
+a{color:#ffc72c}a:hover{color:#ffe08a}
+.cond{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;font-variant-numeric:tabular-nums}
+table{border-collapse:collapse;width:100%}
+th{font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#b7c4dd;text-align:left;padding:0 20px 12px;border-bottom:2px solid #1d3461}
+td{padding:0 20px;height:52px;border-bottom:1px solid #16294f;font-size:16px;font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div style="width: 1440px; height: 2420px; box-sizing: border-box; padding: 48px; background: #0a1630; display: flex; flex-direction: column; gap: 40px;">
+
+<header style="display: flex; align-items: stretch; justify-content: space-between; gap: 32px;">
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<div class="cond" style="display: flex; align-items: center; gap: 12px; font-size: 16px; font-weight: 700; letter-spacing: .12em;"><span style="background: #ffc72c; color: #0a1630; padding: 4px 10px;">NBA Predictor</span><span style="color: #b7c4dd;">Paper trading · sample data</span></div>
+<h1 class="cond" style="margin: 0; font-size: 112px; font-weight: 800; line-height: .95; letter-spacing: -.01em;">Tonight's slate</h1>
+<div class="cond" style="font-size: 22px; font-weight: 600; color: #b7c4dd; letter-spacing: .04em;">{{slate.date}} · {{slate.count}} games · {{slate.bets}} bets · <span style="color: #ffc72c;">{{slate.risk}} on the line</span></div>
+</div>
+<div style="background: #ffc72c; color: #0a1630; padding: 24px 32px; display: flex; flex-direction: column; justify-content: center; gap: 4px; min-width: 300px;">
+<span class="cond" style="font-size: 18px; font-weight: 700; letter-spacing: .1em;">Bankroll</span>
+<span class="cond" style="font-size: 72px; font-weight: 800; line-height: 1;">{{stats.bankroll}}</span>
+<span class="cond" style="font-size: 18px; font-weight: 700;">{{stats.changePct}} since $1,000 start</span>
+</div>
+</header>
+
+<section style="display: flex; flex-direction: column; gap: 14px;">
+<h2 class="cond" style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: .1em; color: #ffc72c;">Biggest edge tonight</h2>
+<div style="display: grid; grid-template-columns: 1fr 1.3fr 1fr; background: #102244;">
+<div style="background: {{f.awayBg}}; border-top: 8px solid {{f.awayAlt}}; padding: 32px; display: flex; flex-direction: column; justify-content: space-between; gap: 16px;">
+<div style="display: flex; flex-direction: column;"><span class="cond" style="font-size: 20px; font-weight: 700; letter-spacing: .06em; opacity: .85;">Away</span><span class="cond" style="font-size: 104px; font-weight: 800; line-height: .9;">{{f.away}}</span><span class="cond" style="font-size: 26px; font-weight: 700;">{{f.awayName}}</span></div>
+<span class="cond" style="font-size: 64px; font-weight: 800; line-height: 1;">{{f.awayW}}</span>
+</div>
+<div style="padding: 32px 40px; display: flex; flex-direction: column; justify-content: center; gap: 28px;">
+<div style="display: flex; flex-direction: column; gap: 10px;">
+<span class="cond" style="font-size: 16px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Win probability · {{f.time}} ET</span>
+<div style="display: flex; height: 18px;"><div style="width: {{f.awayW}}; background: {{f.awayBg}};"></div><div style="width: {{f.homeW}}; background: {{f.homeBg}};"></div></div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; background: #1d3461;">
+<div style="background: #102244; padding: 16px 20px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 15px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;">Pick</span><span class="cond" style="font-size: 40px; font-weight: 800;">{{f.pick}}</span></div>
+<div style="background: #102244; padding: 16px 20px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 15px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;">Best odds · {{f.book}}</span><span class="cond" style="font-size: 40px; font-weight: 800;">{{f.odds}}</span></div>
+<div style="background: #102244; padding: 16px 20px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 15px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;">Edge</span><span class="cond" style="font-size: 40px; font-weight: 800; color: #3ee08f;">{{f.edgeText}}</span></div>
+<div style="background: #102244; padding: 16px 20px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 15px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;">Kelly bet</span><span class="cond" style="font-size: 40px; font-weight: 800; color: #ffc72c;">{{f.betText}}</span></div>
+</div>
+</div>
+<div style="background: {{f.homeBg}}; border-top: 8px solid {{f.homeAlt}}; padding: 32px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; gap: 16px; text-align: right;">
+<div style="display: flex; flex-direction: column;"><span class="cond" style="font-size: 20px; font-weight: 700; letter-spacing: .06em; opacity: .85;">Home</span><span class="cond" style="font-size: 104px; font-weight: 800; line-height: .9;">{{f.home}}</span><span class="cond" style="font-size: 26px; font-weight: 700;">{{f.homeName}}</span></div>
+<span class="cond" style="font-size: 64px; font-weight: 800; line-height: 1;">{{f.homeW}}</span>
+</div>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 14px;">
+<h2 class="cond" style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: .1em; color: #ffc72c;">Rest of the slate</h2>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<sc-for list="{{others}}" as="game" hint-placeholder-count="5">
+<div style="display: grid; grid-template-columns: 110px 1fr 220px 1fr 200px 150px; align-items: center; gap: 24px; background: #102244; padding: 14px 24px 14px 0; opacity: {{game.dim}};">
+<span class="cond" style="font-size: 20px; font-weight: 700; color: #b7c4dd; padding-left: 24px;">{{game.time}}</span>
+<div style="display: flex; align-items: center; gap: 16px;">
+<span class="cond" style="width: 72px; height: 64px; display: flex; align-items: center; justify-content: center; background: {{game.awayBg}}; border-top: 4px solid {{game.awayAlt}}; box-sizing: border-box; font-size: 30px; font-weight: 800;">{{game.away}}</span>
+<span class="cond" style="font-size: 24px; font-weight: 700; flex-grow: 1;">{{game.awayName}}</span>
+<span class="cond" style="font-size: 36px; font-weight: 800; color: {{game.awayInk}};">{{game.awayW}}</span>
+</div>
+<div style="display: flex; height: 12px;"><div style="width: {{game.awayW}}; background: {{game.awayBg}};"></div><div style="width: {{game.homeW}}; background: {{game.homeBg}};"></div></div>
+<div style="display: flex; align-items: center; gap: 16px;">
+<span class="cond" style="font-size: 36px; font-weight: 800; color: {{game.homeInk}};">{{game.homeW}}</span>
+<span class="cond" style="font-size: 24px; font-weight: 700; flex-grow: 1; text-align: right;">{{game.homeName}}</span>
+<span class="cond" style="width: 72px; height: 64px; display: flex; align-items: center; justify-content: center; background: {{game.homeBg}}; border-top: 4px solid {{game.homeAlt}}; box-sizing: border-box; font-size: 30px; font-weight: 800;">{{game.home}}</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span class="cond" style="font-size: 22px; font-weight: 800;">Pick {{game.pick}} {{game.odds}}</span>
+<span class="cond" style="font-size: 15px; font-weight: 600; color: #b7c4dd; letter-spacing: .04em;">{{game.book}} · Edge <span style="color: {{game.edgeInk}};">{{game.edgeText}}</span></span>
+</div>
+<sc-if value="{{game.isBet}}" hint-placeholder-val="{{ true }}"><span class="cond" style="background: #ffc72c; color: #0a1630; font-size: 26px; font-weight: 800; padding: 10px 0; text-align: center;">Bet {{game.betText}}</span></sc-if>
+<sc-if value="{{game.noBet}}" hint-placeholder-val="{{ false }}"><span class="cond" style="border: 2px solid #3a5185; color: #b7c4dd; font-size: 22px; font-weight: 700; padding: 10px 0; text-align: center;">No bet</span></sc-if>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; background: #1d3461;">
+<div style="background: #102244; padding: 24px 28px; display: flex; flex-direction: column; gap: 4px;"><span class="cond" style="font-size: 16px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Model accuracy</span><span class="cond" style="font-size: 64px; font-weight: 800; line-height: 1;">{{stats.accuracy}}</span><span style="font-size: 14px; color: #b7c4dd;">14,000+ games · 7 seasons</span></div>
+<div style="background: #102244; padding: 24px 28px; display: flex; flex-direction: column; gap: 4px;"><span class="cond" style="font-size: 16px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Bet win rate</span><span class="cond" style="font-size: 64px; font-weight: 800; line-height: 1;">{{stats.winRate}}</span><span style="font-size: 14px; color: #b7c4dd;">{{stats.record}} record</span></div>
+<div style="background: #102244; padding: 24px 28px; display: flex; flex-direction: column; gap: 4px;"><span class="cond" style="font-size: 16px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">ROI</span><span class="cond" style="font-size: 64px; font-weight: 800; line-height: 1; color: #3ee08f;">{{stats.roi}}</span><span style="font-size: 14px; color: #b7c4dd;">on {{stats.staked}} staked</span></div>
+<div style="background: #102244; padding: 24px 28px; display: flex; flex-direction: column; gap: 4px;"><span class="cond" style="font-size: 16px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Net P/L</span><span class="cond" style="font-size: 64px; font-weight: 800; line-height: 1; color: #3ee08f;">{{stats.change}}</span><span style="font-size: 14px; color: #b7c4dd;">{{stats.bets}} bets placed</span></div>
+</section>
+
+<section style="background: #102244; padding: 28px 32px; display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; align-items: baseline; justify-content: space-between;">
+<h2 class="cond" style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: .1em; color: #ffc72c;">Bankroll run</h2>
+<span class="cond" style="font-size: 18px; font-weight: 700; color: #b7c4dd;">Oct 21 – Nov 17 · $1,000 → {{stats.bankroll}}</span>
+</div>
+<svg width="{{c.w}}" height="236" viewBox="0 -8 1280 236" role="img" aria-label="Bankroll over time, from $1,000 to $1,184.62">
+<line x1="0" x2="1280" y1="{{c.baseY}}" y2="{{c.baseY}}" stroke="#3a5185" stroke-width="2" stroke-dasharray="6 6"></line>
+<path d="{{c.area}}" fill="rgba(255,199,44,.12)"></path>
+<path d="{{c.line}}" fill="none" stroke="#ffc72c" stroke-width="3" stroke-linejoin="round"></path>
+<circle cx="{{c.lastX}}" cy="{{c.lastY}}" r="6" fill="#ffc72c"></circle>
+<text x="0" y="{{c.baseLabelY}}" fill="#b7c4dd" font-size="14" font-weight="700" font-family="Barlow Condensed">$1,000 START</text>
+</svg>
+</section>
+
+<section style="background: #102244; padding: 28px 12px 8px; display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; align-items: baseline; justify-content: space-between; padding: 0 20px;">
+<h2 class="cond" style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: .1em; color: #ffc72c;">Recent results</h2>
+<a href="#" class="cond" style="font-size: 18px; font-weight: 700; letter-spacing: .06em;">Full history</a>
+</div>
+<table>
+<thead><tr><th>Date</th><th>Matchup</th><th>Pick</th><th>Win prob</th><th>Odds</th><th>Result</th><th style="text-align: right;">Bet</th><th style="text-align: right;">P/L</th></tr></thead>
+<tbody>
+<sc-for list="{{history}}" as="row" hint-placeholder-count="8">
+<tr>
+<td style="color: #b7c4dd;">{{row.date}}</td>
+<td class="cond" style="font-size: 20px; font-weight: 700;">{{row.matchup}}</td>
+<td class="cond" style="font-size: 20px; font-weight: 800;">{{row.pick}}</td>
+<td>{{row.probText}}</td>
+<td>{{row.odds}}</td>
+<td><span class="cond" style="font-size: 15px; font-weight: 800; letter-spacing: .06em; padding: 4px 10px; color: {{row.resColor}}; background: {{row.resBg}};">{{row.resultText}}</span></td>
+<td style="text-align: right; color: {{row.betColor}};">{{row.betText}}</td>
+<td style="text-align: right; font-weight: 600; color: {{row.plColor}};">{{row.plText}}</td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2420}}'>
+class Component extends DCLogic {
+  base() {
+    const games = [
+      {away:'BOS',awayName:'Celtics',home:'NYK',homeName:'Knicks',time:'7:30 PM',awayProb:42,homeProb:58,pick:'NYK',odds:'−118',book:'DraftKings',edge:3.9,bet:25.00},
+      {away:'MIA',awayName:'Heat',home:'ORL',homeName:'Magic',time:'7:00 PM',awayProb:61,homeProb:39,pick:'MIA',odds:'+105',book:'FanDuel',edge:12.2,bet:70.65},
+      {away:'DEN',awayName:'Nuggets',home:'MIN',homeName:'Timberwolves',time:'8:00 PM',awayProb:47,homeProb:53,pick:'MIN',odds:'+124',book:'BetMGM',edge:8.4,bet:44.71},
+      {away:'CLE',awayName:'Cavaliers',home:'MIL',homeName:'Bucks',time:'8:00 PM',awayProb:66,homeProb:34,pick:'CLE',odds:'−150',book:'DraftKings',edge:6.0,bet:44.42},
+      {away:'LAL',awayName:'Lakers',home:'PHX',homeName:'Suns',time:'10:00 PM',awayProb:55,homeProb:45,pick:'LAL',odds:'−140',book:'Caesars',edge:-3.3,bet:0},
+      {away:'GSW',awayName:'Warriors',home:'SAC',homeName:'Kings',time:'10:30 PM',awayProb:39,homeProb:61,pick:'SAC',odds:'−105',book:'FanDuel',edge:9.8,bet:59.38}
+    ];
+    const history = [
+      {date:'Nov 16',away:'PHI',home:'BKN',pick:'PHI',prob:64,odds:'−135',correct:true,bet:38.20,pl:28.30},
+      {date:'Nov 16',away:'DAL',home:'OKC',pick:'OKC',prob:71,odds:'−210',correct:true,bet:41.10,pl:19.57},
+      {date:'Nov 16',away:'CHI',home:'ATL',pick:'ATL',prob:56,odds:'+110',correct:false,bet:22.40,pl:-22.40},
+      {date:'Nov 15',away:'HOU',home:'SAS',pick:'HOU',prob:59,odds:'−102',correct:true,bet:33.00,pl:32.35},
+      {date:'Nov 15',away:'POR',home:'UTA',pick:'UTA',prob:57,odds:'+120',correct:false,bet:29.75,pl:-29.75},
+      {date:'Nov 15',away:'IND',home:'DET',pick:'IND',prob:62,odds:'−125',correct:true,bet:35.60,pl:28.48},
+      {date:'Nov 14',away:'NOP',home:'MEM',pick:'MEM',prob:60,odds:'+102',correct:true,bet:31.90,pl:32.54},
+      {date:'Nov 14',away:'TOR',home:'WAS',pick:'TOR',prob:58,odds:'−110',correct:true,bet:0,pl:0}
+    ];
+    const series = [1000,997.93,1013.68,1012.3,1008.85,991.12,990.04,1019.74,1033.46,1061.42,1071.07,1084.11,1092.29,1057.46,1081.19,1096.83,1112.29,1076.87,1040.23,1023.44,1016.44,1027.4,1030.21,1046.18,1035.14,1046.18,1059.2,1047.72,1091.49,1108.29,1139.96,1129.42,1116.12,1112,1113.4,1131.95,1141.59,1135.07,1116.72,1108.49,1140.73,1125.83,1135.39,1149.17,1118.43,1123.43,1157.64,1114.72,1111.13,1112.53,1097.42,1112.84,1115.27,1085.12,1108.22,1127.64,1153.48,1190.81,1203.1,1209.74,1183.44,1201.6,1191.26,1184.62];
+    const money = (v) => '$' + Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    const signed = (v) => v === 0 ? '—' : (v > 0 ? '+' : '−') + money(v);
+    const g = games.map((x) => ({
+      ...x,
+      isBet: x.bet > 0,
+      noBet: x.bet === 0,
+      awayPick: x.pick === x.away,
+      homePick: x.pick === x.home,
+      pickName: x.pick === x.away ? x.awayName : x.homeName,
+      pickProb: Math.max(x.awayProb, x.homeProb) + '%',
+      awayW: x.awayProb + '%',
+      homeW: x.homeProb + '%',
+      betText: x.bet > 0 ? money(x.bet) : '—',
+      edgeText: (x.edge >= 0 ? '+' : '−') + Math.abs(x.edge).toFixed(1) + '%'
+    }));
+    const h = history.map((x) => ({
+      ...x,
+      matchup: x.away + ' @ ' + x.home,
+      probText: x.prob + '%',
+      resultText: x.correct ? 'Correct' : 'Wrong',
+      betText: x.bet > 0 ? money(x.bet) : 'No bet',
+      plText: signed(x.pl),
+      isWin: x.pl > 0,
+      isLoss: x.pl < 0,
+      isFlat: x.pl === 0
+    }));
+    const chart = (w, ht, lo, hi) => {
+      const n = series.length;
+      const X = (i) => (i * w / (n - 1)).toFixed(1);
+      const Y = (v) => (ht - (v - lo) / (hi - lo) * ht).toFixed(1);
+      const line = series.map((v, i) => (i ? 'L' : 'M') + X(i) + ' ' + Y(v)).join(' ');
+      return { w, h: ht, viewBox: '0 0 ' + w + ' ' + ht, line, area: line + ' L' + w + ' ' + ht + ' L0 ' + ht + ' Z', baseY: Y(1000), lastX: X(n - 1), lastY: Y(series[n - 1]) };
+    };
+    const bets = g.filter((x) => x.isBet);
+    return {
+      games: g, history: h, chart,
+      featured: g[1],
+      others: g.filter((x, i) => i !== 1),
+      slate: { date: 'Tue, Nov 17', count: g.length, bets: bets.length, risk: money(bets.reduce((a, x) => a + x.bet, 0)) },
+      stats: { bankroll: '$1,184.62', change: '+$184.62', changePct: '+18.5%', roi: '+4.3%', winRate: '59.2%', record: '84–58', accuracy: '71.1%', bets: '142', staked: '$4,312.40' }
+    };
+  }
+
+  renderVals() {
+    const d = this.base();
+    const T = {BOS:['#007A33','#BA9653'],NYK:['#006BB6','#F58426'],MIA:['#98002E','#F9A01B'],ORL:['#0077C0','#C4CED4'],DEN:['#0E2240','#FEC524'],MIN:['#236192','#78BE20'],CLE:['#860038','#FDBB30'],MIL:['#00471B','#EEE1C6'],LAL:['#552583','#FDB927'],PHX:['#1D1160','#E56020'],GSW:['#1D428A','#FFC72C'],SAC:['#5A2D81','#63727A']};
+    const dress = (x) => ({
+      ...x,
+      dim: x.isBet ? '1' : '0.65',
+      awayBg: T[x.away][0], awayAlt: T[x.away][1],
+      homeBg: T[x.home][0], homeAlt: T[x.home][1],
+      awayInk: x.awayPick ? '#ffc72c' : '#b7c4dd',
+      homeInk: x.homePick ? '#ffc72c' : '#b7c4dd',
+      edgeInk: x.edge >= 0 ? '#3ee08f' : '#ff8a8a'
+    });
+    const history = d.history.map((x) => ({
+      ...x,
+      resultText: x.correct ? 'W' : 'L',
+      resColor: '#0a1630',
+      resBg: x.correct ? '#3ee08f' : '#ff8a8a',
+      betColor: x.bet > 0 ? '#ffffff' : '#b7c4dd',
+      plColor: x.isWin ? '#3ee08f' : (x.isLoss ? '#ff8a8a' : '#b7c4dd')
+    }));
+    const c = d.chart(1280, 220, 980, 1220);
+    c.baseLabelY = (Number(c.baseY) - 8).toFixed(1);
+    return { ...d, f: dress(d.featured), others: d.others.map(dress), history, c };
+  }
+}
+</script>
+</body>
+</html>

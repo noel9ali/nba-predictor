@@ -1,0 +1,67 @@
+{
+ "v": 3,
+ "attachments": {},
+ "boards": {
+  "Broadcast.dc.html": {
+   "h": 2420,
+   "title": "C \u00b7 Sports broadcast",
+   "w": 1440,
+   "x": 3040,
+   "y": 0
+  },
+  "Fintech.dc.html": {
+   "h": 2140,
+   "title": "B \u00b7 Clean light fintech",
+   "w": 1440,
+   "x": 1520,
+   "y": 0
+  },
+  "Main.dc.html": {
+   "h": 1640,
+   "title": "A \u00b7 Dark terminal",
+   "w": 1440,
+   "x": 0,
+   "y": 0
+  },
+  "Games.dc.html": {
+   "x": 0,
+   "y": 2900,
+   "w": 1440,
+   "h": 3000,
+   "title": "Round 2 \u00b7 Games page (C)"
+  }
+ },
+ "createdOnFiles": {
+  "at": "2026-09-23T00:31:39Z",
+  "v": 1
+ },
+ "designSystems": [],
+ "launch": {
+  "view": "canvas"
+ },
+ "notes": {
+  "round1": {
+   "kind": "title1",
+   "maxW": 4480,
+   "text": "Round 1: three directions, tonight's slate first",
+   "w": 240,
+   "x": 0,
+   "y": -300
+  },
+  "round2": {
+   "x": 0,
+   "y": 2600,
+   "text": "Round 2: Games page, live scores, logos, line shop",
+   "kind": "title1",
+   "maxW": 4480
+  }
+ },
+ "order": [
+  "Main.dc.html",
+  "Fintech.dc.html",
+  "Broadcast.dc.html",
+  "Games.dc.html"
+ ],
+ "pages": [],
+ "title": "NBA Predictor Dashboard"
+}
