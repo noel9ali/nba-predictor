@@ -18,10 +18,10 @@
 
     <form method="GET" action="/" class="filters">
       <div class="field">
-        <label for="year">Season</label>
-        <select id="year" name="year" onchange="this.form.submit()">
-          {% for year in years %}
-          <option value="{{ year }}" {{ "selected" if year == selected_year else "" }}>{{ year }}</option>
+        <label for="season">Season</label>
+        <select id="season" name="season" onchange="this.form.submit()">
+          {% for season in seasons %}
+          <option value="{{ season }}" {{ "selected" if season == selected_season else "" }}>{{ season }}</option>
           {% endfor %}
         </select>
       </div>
@@ -35,6 +35,7 @@
       </div>
     </form>
   </header>
+  {% if notice %}<p class="empty" role="status">{{ notice }}</p>{% endif %}
 
   <main class="thirds-layout">
     <section class="third-card left-third">

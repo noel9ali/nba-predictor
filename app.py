@@ -1,23 +1,39 @@
 import os
-import sqlite3
-from datetime import date
+import re
+import sys
+from datetime import date, datetime, timezone
 
+import pandas as pd
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, g, jsonify, render_template, request
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+
+from database import (  # noqa: E402  (needs the src/ path above)
+    DatabaseError,
+    MissingColumnError,
+    MissingTableError,
+    normalize_game_id,
+    select_rows,
+)
 
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
 
-DB_PATH = "data/nba.db"
+SEASON_PATTERN = re.compile(r"^(\d{4})-(\d{2})$")
+LEGACY_CACHE_CONTROL = "public, s-maxage=300, stale-while-revalidate=3600"
 
 
 def safe_float(value, default=None):
     try:
         if value is None:
             return default
-        return float(value)
+        value = float(value)
+        if value != value:  # NaN
+            return default
+        return value
     except (TypeError, ValueError):
         return default
 
@@ -54,46 +70,107 @@ def confidence_bucket(expected_prob):
     return "low"
 
 
-def query_rows(sql, params=()):
-    if not os.path.exists(DB_PATH):
-        return []
+# ---------------------------------------------------------------------------
+# Seasons: an NBA season runs Sept 1 - Aug 31 (04-API-CONTRACT sec0), so the
+# Aug 2020 bubble games stay in 2019-20.
+# ---------------------------------------------------------------------------
 
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+def season_for(value):
+    d = value if isinstance(value, date) else date.fromisoformat(str(value)[:10])
+    start = d.year if d.month >= 9 else d.year - 1
+    return f"{start}-{str(start + 1)[2:]}"
+
+
+def parse_season(value):
+    """Return value if it's a season label like 2025-26, else None."""
+    match = SEASON_PATTERN.match(value)
+    if not match or match.group(2) != str(int(match.group(1)) + 1)[2:]:
+        return None
+    return value
+
+
+def season_bounds(season):
+    start = int(season[:4])
+    return f"{start}-09-01", f"{start + 1}-08-31"
+
+
+def season_end_year(season):
+    """The legacy "year" of a season: the calendar year it ends in."""
+    return str(int(season[:4]) + 1)
+
+
+def season_filters(column, season):
+    start, end = season_bounds(season)
+    return [(column, "gte", start), (column, "lte", end)]
+
+
+def requested_season(args):
+    """The season asked for by ?season= or the legacy ?year=YYYY alias.
+
+    Returns "" when none is given (a non-numeric year counts as none, as it
+    always did) and None when ?season= is malformed.
+    """
+    raw = (args.get("season") or "").strip()
+    if raw:
+        return parse_season(raw)
+    year = (args.get("year") or "").strip()
+    if re.fullmatch(r"\d{4}", year):
+        return f"{int(year) - 1}-{year[2:]}"
+    return ""
+
+
+def pick_season(requested, seasons):
+    return requested if requested in seasons else seasons[0]
+
+
+def pick_date(args, dates):
+    selected = args.get("game_date", dates[0])
+    return selected if selected in dates else dates[0]
+
+
+# ---------------------------------------------------------------------------
+# Data access (Supabase through src/database.py; no SQL in the app)
+# ---------------------------------------------------------------------------
+
+def read_rows(table, **kwargs):
+    """select_rows, reading a table or column a pending migration adds as empty."""
     try:
-        return [dict(r) for r in conn.execute(sql, params).fetchall()]
-    except sqlite3.Error:
+        return select_rows(table, **kwargs)
+    except (MissingTableError, MissingColumnError):
+        g.migration_pending = True
+        return pd.DataFrame()
+
+
+def records(df):
+    """DataFrame rows as plain dicts, with NaN turned into None."""
+    if df.empty:
         return []
-    finally:
-        conn.close()
+    return df.astype(object).where(df.notna(), None).to_dict("records")
 
 
-def available_years():
-    rows = query_rows(
-        """
-        SELECT DISTINCT substr(game_date, 1, 4) AS year
-        FROM predictions
-        WHERE game_date IS NOT NULL
-        ORDER BY year DESC
-        """
+def available_seasons():
+    df = read_rows(
+        "predictions",
+        columns="game_date",
+        filters=[("game_date", "not_is", "null")],
+        order_by="game_date",
+        descending=True,
     )
-    years = [r["year"] for r in rows if r.get("year")]
-    if not years:
-        years = [str(date.today().year)]
-    return years
+    seasons = list(dict.fromkeys(season_for(r["game_date"]) for r in records(df) if r.get("game_date")))
+    if not seasons:
+        seasons = [season_for(date.today())]
+    return seasons
 
 
-def available_prediction_dates(year):
-    rows = query_rows(
-        """
-        SELECT DISTINCT game_date
-        FROM predictions
-        WHERE substr(game_date, 1, 4) = ?
-        ORDER BY game_date DESC
-        """,
-        (year,),
+def available_prediction_dates(season):
+    df = read_rows(
+        "predictions",
+        columns="game_date",
+        filters=season_filters("game_date", season),
+        order_by="game_date",
+        descending=True,
     )
-    dates = [r["game_date"] for r in rows if r.get("game_date")]
+    dates = list(dict.fromkeys(r["game_date"] for r in records(df) if r.get("game_date")))
     if not dates:
         dates = [date.today().strftime("%Y-%m-%d")]
     return dates
@@ -121,18 +198,15 @@ def longest_streaks(completed_rows):
     return {"longest_win_streak": longest_win, "longest_loss_streak": longest_loss}
 
 
-def bankroll_series_for_year(year):
-    rows = query_rows(
-        """
-        SELECT date, balance
-        FROM bankroll
-        WHERE substr(date, 1, 4) = ?
-        ORDER BY date ASC, rowid ASC
-        """,
-        (year,),
+def bankroll_series_for_season(season):
+    df = read_rows(
+        "bankroll",
+        columns="date,balance",
+        filters=season_filters("date", season),
+        order_by="date",
     )
     points = []
-    for row in rows:
+    for row in records(df):
         balance = safe_float(row.get("balance"))
         if row.get("date") and balance is not None:
             points.append({"date": row["date"], "balance": balance})
@@ -161,34 +235,37 @@ def max_drawdown(bankroll_points):
     return worst
 
 
-def ytd_summary_for_year(year):
-    rows = query_rows(
-        """
-        SELECT game_date, correct, profit_loss, bet_amount
-        FROM predictions
-        WHERE substr(game_date, 1, 4) = ?
-          AND correct IS NOT NULL
-        ORDER BY game_date ASC, game_id ASC
-        """,
-        (year,),
+def empty_ytd_summary(season):
+    return {
+        "year": season_end_year(season),
+        "season": season,
+        "games": 0,
+        "wins": 0,
+        "losses": 0,
+        "accuracy": "0.0%",
+        "bets_placed": 0,
+        "total_staked": 0.0,
+        "total_pl": 0.0,
+        "roi": "0.0%",
+        "bankroll": None,
+        "longest_win_streak": 0,
+        "longest_loss_streak": 0,
+        "max_drawdown": 0.0,
+    }
+
+
+def ytd_summary_for_season(season, bankroll_points=None):
+    rows = records(
+        read_rows(
+            "predictions",
+            columns="game_id,game_date,correct,profit_loss,bet_amount",
+            filters=[*season_filters("game_date", season), ("correct", "not_is", "null")],
+            order_by=["game_date", "game_id"],
+        )
     )
 
     if not rows:
-        return {
-            "year": year,
-            "games": 0,
-            "wins": 0,
-            "losses": 0,
-            "accuracy": "0.0%",
-            "bets_placed": 0,
-            "total_staked": 0.0,
-            "total_pl": 0.0,
-            "roi": "0.0%",
-            "bankroll": None,
-            "longest_win_streak": 0,
-            "longest_loss_streak": 0,
-            "max_drawdown": 0.0,
-        }
+        return empty_ytd_summary(season)
 
     games = len(rows)
     wins = sum(1 for r in rows if r.get("correct") == 1)
@@ -198,12 +275,14 @@ def ytd_summary_for_year(year):
     total_pl = sum(safe_float(r.get("profit_loss"), 0) or 0 for r in rows)
     roi = (total_pl / total_staked) if total_staked > 0 else 0.0
 
-    bankroll_points = bankroll_series_for_year(year)
+    if bankroll_points is None:
+        bankroll_points = bankroll_series_for_season(season)
     bankroll = bankroll_points[-1]["balance"] if bankroll_points else None
     streaks = longest_streaks(rows)
 
     return {
-        "year": year,
+        "year": season_end_year(season),
+        "season": season,
         "games": games,
         "wins": wins,
         "losses": losses,
@@ -223,70 +302,64 @@ def latest_team_elo(team_id):
     if team_id is None:
         return None
 
-    rows = query_rows(
-        """
-        SELECT elo_value
-        FROM (
-            SELECT HOME_ELO AS elo_value, GAME_DATE
-            FROM elo
-            WHERE HOME_TEAM_ID = ?
-            UNION ALL
-            SELECT AWAY_ELO AS elo_value, GAME_DATE
-            FROM elo
-            WHERE AWAY_TEAM_ID = ?
+    team_id = int(team_id)
+    latest = None
+    for side in ("HOME", "AWAY"):
+        rows = records(
+            read_rows(
+                "elo",
+                columns=f"GAME_DATE,{side}_ELO",
+                filters=[(f"{side}_TEAM_ID", "eq", team_id)],
+                order_by="GAME_DATE",
+                descending=True,
+                limit=1,
+            )
         )
-        ORDER BY GAME_DATE DESC
-        LIMIT 1
-        """,
-        (team_id, team_id),
-    )
-    return safe_float(rows[0]["elo_value"]) if rows else None
+        if rows and (latest is None or str(rows[0]["GAME_DATE"]) > str(latest["GAME_DATE"])):
+            latest = {"GAME_DATE": rows[0]["GAME_DATE"], "elo_value": rows[0][f"{side}_ELO"]}
+    return safe_float(latest["elo_value"]) if latest else None
 
 
 def latest_team_feature_by_side(team_abbr, side_prefix):
     if not team_abbr:
         return {}
 
-    col_team = f"{side_prefix}_TEAM_ABBREVIATION"
-    col_team_id = f"{side_prefix}_TEAM_ID"
-    rows = query_rows(
-        f"""
-        SELECT
-            {col_team_id} AS team_id,
-            {side_prefix}_roll_PTS AS roll_pts,
-            {side_prefix}_roll_FG_PCT AS roll_fg_pct,
-            {side_prefix}_roll_REB AS roll_reb,
-            {side_prefix}_roll_AST AS roll_ast,
-            {side_prefix}_roll_TOV AS roll_tov,
-            {side_prefix}_roll_STOCKS AS roll_stocks
-        FROM features
-        WHERE {col_team} = ?
-        ORDER BY GAME_DATE DESC
-        LIMIT 1
-        """,
-        (team_abbr,),
+    columns = {
+        "team_id": f"{side_prefix}_TEAM_ID",
+        "roll_pts": f"{side_prefix}_roll_PTS",
+        "roll_fg_pct": f"{side_prefix}_roll_FG_PCT",
+        "roll_reb": f"{side_prefix}_roll_REB",
+        "roll_ast": f"{side_prefix}_roll_AST",
+        "roll_tov": f"{side_prefix}_roll_TOV",
+        "roll_stocks": f"{side_prefix}_roll_STOCKS",
+        "rest_days": f"{side_prefix}_rest_days",
+    }
+    rows = records(
+        read_rows(
+            "features",
+            columns=",".join(columns.values()),
+            filters=[(f"{side_prefix}_TEAM_ABBREVIATION", "eq", team_abbr)],
+            order_by="GAME_DATE",
+            descending=True,
+            limit=1,
+        )
     )
-    return rows[0] if rows else {}
+    if not rows:
+        return {}
+    return {alias: rows[0].get(column) for alias, column in columns.items()}
 
 
 def build_recommendations(game_date):
-    rows = query_rows(
-        """
-        SELECT
-            game_id,
-            game_date,
-            home_team,
-            away_team,
-            home_win_prob,
-            away_win_prob,
-            predicted_winner,
-            bet_amount,
-            odds
-        FROM predictions
-        WHERE game_date = ?
-        ORDER BY home_team, away_team
-        """,
-        (game_date,),
+    rows = records(
+        read_rows(
+            "predictions",
+            columns=(
+                "game_id,game_date,home_team,away_team,home_win_prob,away_win_prob,"
+                "predicted_winner,bet_amount,odds"
+            ),
+            filters=[("game_date", "eq", game_date)],
+            order_by=["home_team", "away_team"],
+        )
     )
 
     recommendations = []
@@ -310,9 +383,10 @@ def build_recommendations(game_date):
         away_ctx = latest_team_feature_by_side(game.get("away_team"), "AWAY")
 
         bet_amount = safe_float(game.get("bet_amount"), 0) or 0
+        game_id = game.get("game_id")
         recommendations.append(
             {
-                "id": game.get("game_id") or f"game-{i}",
+                "id": normalize_game_id(game_id) if game_id is not None else f"game-{i}",
                 "matchup": f"{game.get('away_team')} @ {game.get('home_team')}",
                 "home_team": game.get("home_team"),
                 "away_team": game.get("away_team"),
@@ -327,6 +401,8 @@ def build_recommendations(game_date):
                 "details": {
                     "home_elo": latest_team_elo(home_ctx.get("team_id")),
                     "away_elo": latest_team_elo(away_ctx.get("team_id")),
+                    "home_rest_days": safe_float(home_ctx.get("rest_days")),
+                    "away_rest_days": safe_float(away_ctx.get("rest_days")),
                     "home_roll_pts": safe_float(home_ctx.get("roll_pts")),
                     "home_roll_fg_pct": safe_float(home_ctx.get("roll_fg_pct")),
                     "home_roll_reb": safe_float(home_ctx.get("roll_reb")),
@@ -370,14 +446,15 @@ def peak_and_trough(bankroll_points):
     return {"peak": peak, "trough": trough}
 
 
-def build_dashboard_state(year, game_date):
-    ytd = ytd_summary_for_year(year)
+def build_dashboard_state(season, game_date):
+    bankroll_points = bankroll_series_for_season(season)
+    ytd = ytd_summary_for_season(season, bankroll_points)
     recs = build_recommendations(game_date)
-    bankroll_points = bankroll_series_for_year(year)
     peaks = peak_and_trough(bankroll_points)
 
     return {
-        "year": year,
+        "year": season_end_year(season),
+        "season": season,
         "game_date": game_date,
         "ytd_summary": ytd,
         "recommendations": recs,
@@ -389,76 +466,129 @@ def build_dashboard_state(year, game_date):
     }
 
 
+def empty_dashboard_state(season, game_date):
+    return {
+        "year": season_end_year(season),
+        "season": season,
+        "game_date": game_date,
+        "ytd_summary": empty_ytd_summary(season),
+        "recommendations": [],
+        "confidence_distribution": confidence_distribution([]),
+        "top_edges": [],
+        "bankroll_series": [],
+        "peak_point": None,
+        "trough_point": None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Responses
+# ---------------------------------------------------------------------------
+
+def api_response(payload):
+    body = dict(payload)
+    body["generated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    body["migration_pending"] = bool(g.get("migration_pending", False))
+    response = jsonify(body)
+    response.headers["Cache-Control"] = LEGACY_CACHE_CONTROL
+    return response
+
+
+def error_response(status, error, **extra):
+    response = jsonify({"error": error, **extra})
+    response.status_code = status
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def season_from_request():
+    """The selected season, or None when ?season= is malformed."""
+    requested = requested_season(request.args)
+    if requested is None:
+        return None
+    return pick_season(requested, available_seasons())
+
+
+def bad_season_response():
+    return error_response(400, "bad_request", detail="season must look like 2025-26")
+
+
+@app.errorhandler(DatabaseError)
+def database_unavailable(exc):
+    # The exception text stays out of the response; only its type is logged.
+    app.logger.warning("Database unavailable: %s", type(exc).__name__)
+    return error_response(503, "database_unavailable")
+
+
 @app.route("/")
 def index():
-    years = available_years()
-    selected_year = request.args.get("year", years[0])
-    if selected_year not in years:
-        selected_year = years[0]
+    notice = None
+    try:
+        seasons = available_seasons()
+        selected_season = pick_season(requested_season(request.args) or "", seasons)
+        dates = available_prediction_dates(selected_season)
+        selected_date = pick_date(request.args, dates)
+        dashboard_state = build_dashboard_state(selected_season, selected_date)
+    except DatabaseError as exc:
+        app.logger.warning("Database unavailable: %s", type(exc).__name__)
+        selected_season = season_for(date.today())
+        seasons = [selected_season]
+        selected_date = date.today().strftime("%Y-%m-%d")
+        dates = [selected_date]
+        dashboard_state = empty_dashboard_state(selected_season, selected_date)
+        notice = "Game data is unavailable right now. Try again in a few minutes."
 
-    dates = available_prediction_dates(selected_year)
-    selected_date = request.args.get("game_date", dates[0])
-    if selected_date not in dates:
-        selected_date = dates[0]
-
-    dashboard_state = build_dashboard_state(selected_year, selected_date)
     return render_template(
         "index.html",
-        years=years,
-        selected_year=selected_year,
+        seasons=seasons,
+        selected_season=selected_season,
         available_dates=dates,
         selected_date=selected_date,
         dashboard_state=dashboard_state,
+        notice=notice,
     )
 
 
 @app.route("/api/dashboard-state")
 def api_dashboard_state():
-    years = available_years()
-    selected_year = request.args.get("year", years[0])
-    if selected_year not in years:
-        selected_year = years[0]
-
-    dates = available_prediction_dates(selected_year)
-    selected_date = request.args.get("game_date", dates[0])
-    if selected_date not in dates:
-        selected_date = dates[0]
-
-    return jsonify(build_dashboard_state(selected_year, selected_date))
+    season = season_from_request()
+    if season is None:
+        return bad_season_response()
+    dates = available_prediction_dates(season)
+    return api_response(build_dashboard_state(season, pick_date(request.args, dates)))
 
 
 @app.route("/api/ytd-summary")
 def api_ytd_summary():
-    years = available_years()
-    year = request.args.get("year", years[0])
-    if year not in years:
-        year = years[0]
-    return jsonify(ytd_summary_for_year(year))
+    season = season_from_request()
+    if season is None:
+        return bad_season_response()
+    return api_response(ytd_summary_for_season(season))
 
 
 @app.route("/api/recommendations")
 def api_recommendations():
-    years = available_years()
-    year = request.args.get("year", years[0])
-    if year not in years:
-        year = years[0]
-    dates = available_prediction_dates(year)
-    game_date = request.args.get("game_date", dates[0])
-    if game_date not in dates:
-        game_date = dates[0]
-    return jsonify({"game_date": game_date, "recommendations": build_recommendations(game_date)})
+    season = season_from_request()
+    if season is None:
+        return bad_season_response()
+    game_date = pick_date(request.args, available_prediction_dates(season))
+    return api_response(
+        {"season": season, "game_date": game_date, "recommendations": build_recommendations(game_date)}
+    )
 
 
 @app.route("/api/bankroll-series")
 def api_bankroll_series():
-    years = available_years()
-    year = request.args.get("year", years[0])
-    if year not in years:
-        year = years[0]
-    return jsonify({"year": year, "points": bankroll_series_for_year(year)})
+    season = season_from_request()
+    if season is None:
+        return bad_season_response()
+    return api_response(
+        {"year": season_end_year(season), "season": season, "points": bankroll_series_for_season(season)}
+    )
 
 
 if __name__ == "__main__":
+    host = os.getenv("FLASK_HOST", "127.0.0.1")
     port = int(os.getenv("FLASK_PORT", 5000))
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
-    app.run(host="0.0.0.0", port=port, debug=debug)
+    app.run(host=host, port=port, debug=debug)
