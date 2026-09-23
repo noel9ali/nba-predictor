@@ -1,10 +1,12 @@
+import argparse
 import json
 import os
 
 import joblib
 import numpy as np
 import pandas as pd
-from database import select_rows
+from database import schema_v2_enabled, select_rows, upsert_rows
+from model_metadata import build_model_run_row, load_metadata_and_leaderboard
 from model_wrappers import TorchLSTMClassifier
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
@@ -458,6 +460,20 @@ def _save_leaderboard(leaderboard, best_model_name, cutoff):
         json.dump(metadata, handle, indent=2)
 
 
+def publish_model_run():
+    """Upsert the latest saved training run to model_runs (behind NBA_SCHEMA_V2)."""
+    if not schema_v2_enabled():
+        return
+    metadata, leaderboard = load_metadata_and_leaderboard(METADATA_PATH, LEADERBOARD_PATH)
+    row = build_model_run_row(metadata, leaderboard)
+    try:
+        upsert_rows("model_runs", [row], conflict_columns=["trained_at"])
+    except Exception as exc:
+        print(f"Publishing model run failed: {exc}")
+        raise
+    print(f"Published model run trained_at={row['trained_at']} to model_runs.")
+
+
 def run():
     print("Loading features...")
     df = load_features()
@@ -511,6 +527,32 @@ def run():
     print("Saving selected production model...")
     save_model(best_model, scaler)
 
+    publish_model_run()
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Train, evaluate and select the production model.")
+    parser.add_argument(
+        "--publish-only",
+        action="store_true",
+        help=(
+            "Skip training; rebuild the model_runs row from the committed "
+            "model_metadata.json/model_leaderboard.csv and upsert it "
+            "(requires NBA_SCHEMA_V2=true)."
+        ),
+    )
+    args = parser.parse_args()
+
+    if args.publish_only:
+        if not schema_v2_enabled():
+            raise SystemExit(
+                "--publish-only requires NBA_SCHEMA_V2=true (apply supabase/migrations first)"
+            )
+        publish_model_run()
+        return
+
+    run()
+
 
 if __name__ == "__main__":
-    run()
+    main()
