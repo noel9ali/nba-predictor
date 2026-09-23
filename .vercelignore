@@ -1,0 +1,8 @@
+.env
+venv/
+.venv/
+data/
+table_init/
+node_modules/
+logs/
+*.pkl

@@ -19,7 +19,9 @@ from database import (  # noqa: E402  (needs the src/ path above)
 
 load_dotenv()
 
-app = Flask(__name__)
+# Statics live in public/ so Vercel's CDN serves them; local Flask serves the same
+# files at the same /static URL.
+app = Flask(__name__, static_folder="public/static", static_url_path="/static")
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
 
 SEASON_PATTERN = re.compile(r"^(\d{4})-(\d{2})$")

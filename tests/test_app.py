@@ -166,6 +166,12 @@ class LegacyRouteTests(AppTestCase):
         self.assertIn('<option value="2025-26" selected>', html)
         self.assertIn('<option value="2024-25" >', html)
 
+    def test_stylesheet_is_served_from_public_static(self):
+        self.assertIn('href="/static/style.css"', self.client.get("/").get_data(as_text=True))
+        response = self.client.get("/static/style.css")
+        self.assertEqual(response.status_code, 200)
+        response.close()
+
     def test_recommendations_pad_ids_and_read_text_columns(self):
         body = self.client.get("/api/recommendations?season=2025-26").get_json()
         self.assertEqual(body["game_date"], "2026-03-01")
