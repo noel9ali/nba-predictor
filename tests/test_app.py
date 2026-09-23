@@ -9,6 +9,7 @@ import pandas as pd
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import app as dashboard  # noqa: E402  (app.py adds src/ to sys.path itself)
+import daily_workflow  # noqa: E402
 from database import DatabaseError, MissingTableError  # noqa: E402
 
 
@@ -271,11 +272,58 @@ class DatabaseFailureTests(AppTestCase):
         self.assertNotIn("detail-XYZ", html)
 
 
+class RunWorkflowGatingTests(AppTestCase):
+    ALLOWED_ENV = {"ALLOW_RUN_WORKFLOW": "true"}
+
+    def post(self, env, remote_addr="127.0.0.1", running=False):
+        with patch.dict(os.environ, env), \
+                patch.object(daily_workflow, "workflow_is_running", return_value=running), \
+                patch.object(daily_workflow, "run_workflow_async",
+                             return_value=(True, "Workflow started")) as run_async:
+            if "VERCEL" not in env:
+                os.environ.pop("VERCEL", None)
+            response = self.client.post(
+                "/api/run-workflow", environ_overrides={"REMOTE_ADDR": remote_addr}
+            )
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
+        return response, run_async
+
+    def assert_forbidden(self, response, run_async):
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.get_json(), {"error": "forbidden"})
+        run_async.assert_not_called()
+
+    def test_forbidden_on_vercel(self):
+        self.assert_forbidden(*self.post({**self.ALLOWED_ENV, "VERCEL": "1"}))
+
+    def test_forbidden_when_the_flag_is_off(self):
+        self.assert_forbidden(*self.post({"ALLOW_RUN_WORKFLOW": "false"}))
+
+    def test_forbidden_from_a_non_loopback_address(self):
+        self.assert_forbidden(*self.post(self.ALLOWED_ENV, remote_addr="10.0.0.5"))
+
+    def test_starts_when_local_and_allowed(self):
+        for address in ("127.0.0.1", "::1"):
+            with self.subTest(address=address):
+                response, run_async = self.post(self.ALLOWED_ENV, remote_addr=address)
+                self.assertEqual(response.status_code, 202)
+                self.assertEqual(response.get_json(), {"started": True, "kind": "manual"})
+                run_async.assert_called_once_with()
+
+    def test_conflict_while_a_run_is_in_progress(self):
+        response, run_async = self.post(self.ALLOWED_ENV, running=True)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.get_json(), {"error": "already_running"})
+        run_async.assert_not_called()
+
+
 class SecretExposureTests(AppTestCase):
     def test_no_response_contains_the_secret_key(self):
         secret = "sb_" "secret_TESTVALUE"  # split so secret scanners skip this fake key
-        with patch.dict(os.environ, {"SUPABASE_SECRET_KEY": secret}):
+        # ALLOW_RUN_WORKFLOW is forced off so the POST can never start a real run.
+        with patch.dict(os.environ, {"SUPABASE_SECRET_KEY": secret, "ALLOW_RUN_WORKFLOW": "false"}):
             bodies = [self.client.get(route).get_data(as_text=True) for route in ["/", *LEGACY_ROUTES]]
+            bodies.append(self.client.post("/api/run-workflow").get_data(as_text=True))
             self.db.errors["predictions"] = DatabaseError(f"Reading predictions failed: {secret}")
             bodies += [self.client.get(route).get_data(as_text=True) for route in ["/", *LEGACY_ROUTES]]
         for body in bodies:

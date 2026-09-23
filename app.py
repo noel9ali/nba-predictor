@@ -587,6 +587,39 @@ def api_bankroll_series():
     )
 
 
+# ---------------------------------------------------------------------------
+# Run now (02-TARGET-ARCHITECTURE sec5): only on the laptop that runs Flask.
+# ---------------------------------------------------------------------------
+
+LOOPBACK_ADDRESSES = {"127.0.0.1", "::1"}
+
+
+def run_controls_allowed(req):
+    return (
+        not os.getenv("VERCEL")
+        and os.getenv("ALLOW_RUN_WORKFLOW", "false").strip().lower() == "true"
+        and req.remote_addr in LOOPBACK_ADDRESSES
+    )
+
+
+@app.route("/api/run-workflow", methods=["POST"])
+def api_run_workflow():
+    if not run_controls_allowed(request):
+        return error_response(403, "forbidden")
+
+    import daily_workflow  # lazy: the pipeline runner is never loaded on Vercel
+
+    if daily_workflow.workflow_is_running():
+        return error_response(409, "already_running")
+    started, _ = daily_workflow.run_workflow_async()
+    if not started:
+        return error_response(409, "already_running")
+    response = jsonify({"started": True, "kind": "manual"})
+    response.status_code = 202
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 if __name__ == "__main__":
     host = os.getenv("FLASK_HOST", "127.0.0.1")
     port = int(os.getenv("FLASK_PORT", 5000))
