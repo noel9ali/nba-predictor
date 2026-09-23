@@ -1,7 +1,7 @@
 import time
 import pandas as pd
 from nba_api.stats.endpoints import leaguegamefinder
-from database import upsert_rows
+from database import DatabaseError, normalize_game_id, upsert_rows
 
 # Config
 SEASONS = [
@@ -13,6 +13,8 @@ SEASONS = [
     '2024-25',
     '2025-26'
 ]
+GAMES_CONFLICT_COLUMNS = ["GAME_ID", "TEAM_ID"]
+GAMES_COMPOSITE_PK_MIGRATION_HINT = "supabase/migrations/20260923000200_games_composite_pk.sql"
 
 # fetch_season()
 def fetch_season(season, retries=3):
@@ -40,10 +42,12 @@ def fetch_season(season, retries=3):
 
 def save_to_db(df, db_path=None):
     del db_path
+    df = df.copy()
+    df["GAME_ID"] = df["GAME_ID"].map(normalize_game_id)
     upsert_rows(
         "games",
         df.to_dict("records"),
-        conflict_columns=["GAME_ID", "TEAM_ID"],
+        conflict_columns=GAMES_CONFLICT_COLUMNS,
     )
 
 def run():
@@ -62,7 +66,14 @@ def run():
 
     # Upsert fetched rows so scheduled runs are idempotent and preserve history.
     combined = pd.concat(all_data, ignore_index=True)
-    save_to_db(combined)
+    try:
+        save_to_db(combined)
+    except DatabaseError as exc:
+        if "conflict target" in str(exc):
+            raise DatabaseError(
+                f"{exc}: apply {GAMES_COMPOSITE_PK_MIGRATION_HINT}"
+            ) from exc
+        raise
     print(f"\nDone! Total rows saved: {len(combined)}")
 
 if __name__ == '__main__':
