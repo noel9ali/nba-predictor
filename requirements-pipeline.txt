@@ -1,0 +1,9 @@
+# Laptop pipeline: data collection, training, prediction, settlement, SMS.
+# Install with: pip install -r requirements-pipeline.txt
+-r requirements.txt
+scikit-learn==1.8.0
+scipy==1.17.1
+xgboost==3.2.0
+torch==2.8.0
+joblib==1.5.3
+twilio==9.11.0

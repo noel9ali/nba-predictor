@@ -1,0 +1,12 @@
+create index if not exists predictions_game_date_idx   on public.predictions (game_date desc);
+create index if not exists predictions_season_date_idx on public.predictions (season, game_date desc);
+create index if not exists predictions_unsettled_idx   on public.predictions (game_date) where actual_winner is null;
+create index if not exists games_season_team_date_idx  on public.games ("SEASON", "TEAM_ID", "GAME_DATE");
+create index if not exists games_date_idx              on public.games ("GAME_DATE");
+create index if not exists elo_home_team_date_idx      on public.elo ("HOME_TEAM_ID", "GAME_DATE" desc);
+create index if not exists elo_away_team_date_idx      on public.elo ("AWAY_TEAM_ID", "GAME_DATE" desc);
+create index if not exists features_home_team_date_idx on public.features ("HOME_TEAM_ID", "GAME_DATE" desc);
+create index if not exists features_away_team_date_idx on public.features ("AWAY_TEAM_ID", "GAME_DATE" desc);
+create index if not exists features_home_abbr_date_idx on public.features ("HOME_TEAM_ABBREVIATION", "GAME_DATE" desc);
+create index if not exists features_away_abbr_date_idx on public.features ("AWAY_TEAM_ABBREVIATION", "GAME_DATE" desc);
+create index if not exists workflow_log_kind_started_idx on public.workflow_log (kind, started_at desc);

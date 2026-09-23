@@ -1,15 +1,11 @@
-import sqlite3
 import pandas as pd
+from database import select_rows, upsert_rows
 
 # --- Config ---
-DB_PATH = 'data/nba.db'
 ROLLING_WINDOW = 10
 
 def load_games():
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql('SELECT * FROM games', conn)
-    conn.close()
-    return df
+    return select_rows("games", order_by=["GAME_DATE", "GAME_ID", "TEAM_ID"])
 
 def label_home_away(df):
     df['HOME'] = df['MATCHUP'].apply(lambda x: 1 if 'vs.' in x else 0)
@@ -66,9 +62,7 @@ def add_rest_days(df):
     return df
 
 def add_elo(df):
-    conn = sqlite3.connect(DB_PATH)
-    elo = pd.read_sql("SELECT * FROM elo", conn)
-    conn.close()
+    elo = select_rows("elo", order_by=["GAME_DATE", "GAME_ID"])
 
     # merge elo to features table
     df = df.merge(
@@ -104,9 +98,7 @@ def run():
                   'HOME_roll_PTS', 'AWAY_roll_PTS', 'HOME_ELO', 'AWAY_ELO', 'ELO_DIFF', 'home_win']].head(10))
 
     print("Saving features to database...")
-    conn = sqlite3.connect(DB_PATH)
-    games.to_sql('features', conn, if_exists='replace', index=False)
-    conn.close()
+    upsert_rows("features", games.to_dict("records"), conflict_columns=["GAME_ID"])
     print("Saved!")
 
 if __name__ == '__main__':

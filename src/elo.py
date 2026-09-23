@@ -1,8 +1,7 @@
-import sqlite3
 import pandas as pd
+from database import select_rows, upsert_rows
 
 # --- Config ---
-DB_PATH = 'data/nba.db'
 STARTING_ELO = 1500
 K = 20
 HOME_ADVANTAGE = 100  # home team gets a 100 point elo boost
@@ -33,16 +32,13 @@ def apply_mean_reversion(ratings):
         for team, rating in ratings.items()
     }
 
-# load_games() reads games from nba.db sorted chronologically
+# load_games() reads games from Supabase sorted chronologically
 def load_games():
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql("""
-        SELECT GAME_ID, GAME_DATE, TEAM_ID, TEAM_ABBREVIATION, WL, MATCHUP, SEASON
-        FROM games
-        ORDER BY GAME_DATE ASC
-    """, conn)
-    conn.close()
-    return df
+    return select_rows(
+        "games",
+        columns="GAME_ID,GAME_DATE,TEAM_ID,TEAM_ABBREVIATION,WL,MATCHUP,SEASON",
+        order_by=["GAME_DATE", "GAME_ID", "TEAM_ID"],
+    )
 
 # compute_elo() loops through all games updating elo ratings
 def compute_elo():
@@ -108,11 +104,9 @@ def compute_elo():
         ratings[home_team_id] = new_home_elo
         ratings[away_team_id] = new_away_elo
 
-    # save to database
+    # Save pre-game ratings without deleting historical rows.
     elo_df = pd.DataFrame(elo_records)
-    conn = sqlite3.connect(DB_PATH)
-    elo_df.to_sql('elo', conn, if_exists='replace', index=False)
-    conn.close()
+    upsert_rows("elo", elo_df.to_dict("records"), conflict_columns=["GAME_ID"])
 
     print(f"Saved {len(elo_df)} elo records to database")
     return ratings
@@ -120,24 +114,45 @@ def compute_elo():
 # get_current_ratings() returns every team's most recent elo rating
 def get_current_ratings():
     # returns the most recent elo rating for every team
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql("""
-        SELECT HOME_TEAM_ID as TEAM_ID, HOME_ELO as ELO
-        FROM elo
-        WHERE GAME_DATE = (SELECT MAX(GAME_DATE) FROM elo)
-    """, conn)
-    conn.close()
-    return dict(zip(df['TEAM_ID'], df['ELO']))
+    elo = select_rows(
+        "elo",
+        columns="GAME_ID,GAME_DATE,HOME_TEAM_ID,AWAY_TEAM_ID,HOME_ELO,AWAY_ELO",
+        order_by=["GAME_DATE", "GAME_ID"],
+        descending=True,
+    )
+    if len(elo) == 0:
+        return {}
+    games = select_rows(
+        "games",
+        columns="GAME_ID,TEAM_ID,MATCHUP,WL",
+        order_by=["GAME_ID", "TEAM_ID"],
+    )
+    home_games = games[games["MATCHUP"].str.contains("vs.", na=False)]
+    outcomes = home_games.set_index("GAME_ID")["WL"].to_dict()
+
+    ratings = {}
+    for _, game in elo.iterrows():
+        home_id = game["HOME_TEAM_ID"]
+        away_id = game["AWAY_TEAM_ID"]
+        game_id = game["GAME_ID"]
+        home_elo, away_elo = update_elo(
+            game["HOME_ELO"],
+            game["AWAY_ELO"],
+            outcomes.get(game_id) == "W",
+        )
+        ratings.setdefault(home_id, home_elo)
+        ratings.setdefault(away_id, away_elo)
+    return ratings
 
 def get_last_elo_date():
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        df = pd.read_sql("SELECT MAX(GAME_DATE) as last_date FROM elo", conn)
-        return df['last_date'].iloc[0]
-    except:
-        return None
-    finally:
-        conn.close()
+    df = select_rows(
+        "elo",
+        columns="GAME_DATE",
+        order_by=["GAME_DATE", "GAME_ID"],
+        descending=True,
+        limit=1,
+    )
+    return None if len(df) == 0 else df["GAME_DATE"].iloc[0]
 
 if __name__ == '__main__':
     final_ratings = compute_elo()

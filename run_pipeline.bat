@@ -1,27 +1,24 @@
 @echo off
-echo Activating virtual environment...
-call venv\Scripts\activate
+setlocal
+cd /d "%~dp0"
+call venv\Scripts\activate.bat
+
+rem Every step runs even if an earlier one fails; the exit code reports any failure.
+set FAILED=
+for %%S in (collect elo features model track) do (
+    echo.
+    echo Running src\%%S.py...
+    python src\%%S.py
+    if errorlevel 1 (
+        echo   src\%%S.py FAILED
+        set FAILED=1
+    )
+)
 
 echo.
-echo Running collect.py...
-python src/collect.py
-
-echo.
-echo Running features.py...
-python src/features.py
-
-echo.
-echo Running elo.py...
-python src/elo.py
-
-echo.
-echo Running model.py...
-python src/model.py
-
-echo.
-echo Running track.py...
-python src/track.py
-
-echo.
+if defined FAILED (
+    echo Pipeline finished with failures.
+    exit /b 1
+)
 echo Pipeline complete.
-pause
+exit /b 0
