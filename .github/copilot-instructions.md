@@ -29,7 +29,13 @@ The production pipeline now uses Supabase. The old local fixture script is only 
 python scripts\seed_test_games.py --reset
 ```
 
-There is no configured pytest/unittest suite or lint command. The closest targeted smoke check for NBA API connectivity is:
+The offline test suite (fakes only, no network or database) runs with:
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+The closest targeted smoke check for NBA API connectivity is:
 
 ```powershell
 python src\test.py
@@ -39,7 +45,7 @@ Individual pipeline stages can be run directly, for example `python src\elo.py`,
 
 ## Architecture
 
-- `src\collect.py` is the ingestion boundary. It downloads regular-season team-game rows from `nba_api` for the configured seasons and replaces the `games` table only after successful collection.
+- `src\collect.py` is the ingestion boundary. It downloads regular-season team-game rows from `nba_api` for the configured seasons and upserts them into the `games` table on `(GAME_ID, TEAM_ID)` after successful collection.
 - `src\elo.py` reads chronological game rows, pairs home/away records by `GAME_ID`, records pre-game Elo values, applies updates after each game, applies 25% season-boundary mean reversion toward 1500, and writes the `elo` table.
 - `src\features.py` converts the two team rows for each game into one row, computes shifted 10-game rolling team statistics and rest-day differences, joins pre-game Elo values, and writes the `features` table. The shift before rolling is required to avoid using the current game's result as an input.
 - `src\model.py` is the active training/evaluation entry point. It standardizes the fixed `FEATURES` list, splits rows chronologically 80/20, trains the registered candidate models with time-series cross-validation, evaluates probability quality, writes the leaderboard/metadata, and persists the selected model and scaler under `data\`.
@@ -61,3 +67,7 @@ Individual pipeline stages can be run directly, for example `python src\elo.py`,
 - API-facing code uses `nba_api` for games/results and The Odds API for moneylines. Odds are matched by full team names through `src\odds.py`'s abbreviation map, and bets are only recorded when model edge is positive.
 - Keep secrets in `.env`; do not commit `.env`, generated model files, or the local SQLite database fixture. The checked-in `.env.example` is the template for `ODDS_API_KEY`, `SUPABASE_URL`, and `SUPABASE_SECRET_KEY`.
 - Server-side Supabase access requires `SUPABASE_URL` and `SUPABASE_SECRET_KEY`. Never expose the secret key to browser code, API responses, logs, or source control.
+- Schema changes live in `supabase/migrations/` and are applied manually (Supabase CLI or MCP `apply_migration`); no script ever creates, alters, truncates or resets a table.
+- `NBA_SCHEMA_V2` (default `false`) gates any code path that depends on the migrated schema (new `predictions` columns, `book_odds`, `model_runs`, the `bankroll`/`workflow_log` tables). Check `database.schema_v2_enabled()` before writing to those; leave existing behavior unchanged when it's off.
+- `requirements.txt` is the Vercel/API runtime dependency set (no ML libraries). `requirements-pipeline.txt` extends it with the training/pipeline dependencies (scikit-learn, xgboost, torch, twilio) and is what the laptop installs.
+- The dashboard API (`app.py`) is frontend-owned and imports only `src\database.py`; it never imports `src\model.py`, `src\predict.py` or other pipeline modules directly.
