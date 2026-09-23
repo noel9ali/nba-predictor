@@ -4,7 +4,9 @@ from nba_api.stats.endpoints import scoreboardv3
 from database import (
     DatabaseError,
     DuplicateRecordError,
+    MissingTableError,
     insert_rows,
+    normalize_game_id,
     select_rows,
     upsert_rows,
     update_rows,
@@ -13,34 +15,52 @@ from database import (
 # --- Config ---
 STARTING_BANKROLL = 1000.00
 MAX_DECIMAL_ODDS = 5.0
+BANKROLL_MIGRATION_HINT = "supabase/migrations/20260923000400_bankroll.sql"
+
+
+def _require_bankroll_table(callback):
+    try:
+        return callback()
+    except MissingTableError:
+        raise DatabaseError(
+            f"bankroll table is missing: apply {BANKROLL_MIGRATION_HINT}"
+        ) from None
+
 
 # setup_tables() verifies the migrated tables and seeds the initial bankroll row.
 def setup_tables():
-    existing = select_rows("bankroll", columns="date,balance", limit=1)
+    existing = _require_bankroll_table(
+        lambda: select_rows("bankroll", columns="date,balance", limit=1)
+    )
     if len(existing) == 0:
-        upsert_rows(
-            "bankroll",
-            [{"date": date.today().isoformat(), "balance": STARTING_BANKROLL}],
-            conflict_columns=["date"],
+        _require_bankroll_table(
+            lambda: upsert_rows(
+                "bankroll",
+                [{"date": date.today().isoformat(), "balance": STARTING_BANKROLL}],
+                conflict_columns=["date"],
+            )
         )
 
 # get_current_bankroll() looks up most recent balance from bankroll table
 def get_current_bankroll():
-    df = select_rows(
-        "bankroll",
-        columns="balance",
-        order_by="date",
-        descending=True,
-        limit=1,
+    df = _require_bankroll_table(
+        lambda: select_rows(
+            "bankroll",
+            columns="balance",
+            order_by="date",
+            descending=True,
+            limit=1,
+        )
     )
     if len(df) == 0:
         raise DatabaseError("Reading bankroll failed: no bankroll record exists")
     return df['balance'].iloc[0]
 
 # save_prediction() stores relevant information for each game in prediction table
-def save_prediction(game_id, game_date, home_team, away_team, 
+def save_prediction(game_id, game_date, home_team, away_team,
                     home_prob, away_prob, predicted_winner,
                     bet_placed, bet_amount, odds):
+    game_id = normalize_game_id(game_id)
     existing = select_rows(
         "predictions",
         columns="game_id",
@@ -51,7 +71,7 @@ def save_prediction(game_id, game_date, home_team, away_team,
         print(f"  Prediction already logged for {game_id}, skipping.")
         return
     row = {
-        "game_id": str(game_id),
+        "game_id": game_id,
         "game_date": game_date,
         "home_team": home_team,
         "away_team": away_team,
@@ -62,7 +82,7 @@ def save_prediction(game_id, game_date, home_team, away_team,
         "correct": None,
         "bet_placed": bet_placed,
         "bet_amount": float(bet_amount),
-        "odds": odds,
+        "odds": int(odds) if odds is not None else None,
         "profit_loss": None,
     }
     try:
@@ -119,9 +139,12 @@ def update_results():
 
     print(f"Updating {len(pending)} predictions...")
 
+    normalized_scoreboard_ids = teams['gameId'].map(normalize_game_id)
+
     # process all games first, update predictions table only
     for _, pred in pending.iterrows():
-        game_teams = teams[teams['gameId'] == pred['game_id']]
+        pred_game_id = normalize_game_id(pred['game_id'])
+        game_teams = teams[normalized_scoreboard_ids == pred_game_id]
         if len(game_teams) == 0:
             continue
 
@@ -131,16 +154,17 @@ def update_results():
         correct = 1 if winner == pred['predicted_winner'] else 0
 
         # calculate profit/loss
-        if pred['bet_placed'] is None or pred['bet_amount'] == 0:
+        bet_amount = float(pred['bet_amount'])
+        if pred['bet_placed'] is None or bet_amount == 0:
             profit_loss = 0
         elif winner == pred['bet_placed']:
-            odds = pred['odds']
+            odds = int(float(pred['odds']))
             if odds > 0:
-                profit_loss = pred['bet_amount'] * (odds / 100)
+                profit_loss = bet_amount * (odds / 100)
             else:
-                profit_loss = pred['bet_amount'] * (100 / abs(odds))
+                profit_loss = bet_amount * (100 / abs(odds))
         else:
-            profit_loss = -pred['bet_amount']
+            profit_loss = -bet_amount
 
         # update prediction row
         update_rows(
@@ -150,7 +174,7 @@ def update_results():
                 "correct": correct,
                 "profit_loss": profit_loss,
             },
-            filters=[("game_id", "eq", pred["game_id"])],
+            filters=[("game_id", "eq", pred_game_id)],
         )
 
         result = "✓" if correct else "✗"
@@ -175,18 +199,20 @@ def update_results():
 
     print(f"\nBankroll updated: ${new_balance:.2f}")
 
-# print_summary() reads all completed predictions from the database and prints a summary 
+# print_summary() reads all completed predictions from the database and prints a summary
 def print_summary():
     preds = select_rows(
         "predictions",
         filters=[("correct", "not_is", "null")],
         order_by="game_id",
     )
-    bankroll = select_rows(
-        "bankroll",
-        order_by="date",
-        descending=True,
-        limit=1,
+    bankroll = _require_bankroll_table(
+        lambda: select_rows(
+            "bankroll",
+            order_by="date",
+            descending=True,
+            limit=1,
+        )
     )
 
     if len(preds) == 0:
@@ -197,7 +223,7 @@ def print_summary():
     correct = preds['correct'].sum()
     accuracy = correct / total
     total_pl = preds['profit_loss'].sum()
-    current_bankroll = bankroll['balance'].iloc[0]
+    current_bankroll = bankroll['balance'].iloc[0] if len(bankroll) else STARTING_BANKROLL
 
     print("\n=== Paper Trading Summary ===")
     print(f"Games predicted:    {total}")
