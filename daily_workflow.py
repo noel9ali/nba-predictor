@@ -12,13 +12,17 @@ Or triggered via the Flask API (POST /api/run-workflow).
 
 import os
 import sys
-import sqlite3
 import subprocess
 import threading
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pandas as pd
 from dotenv import load_dotenv
+
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(REPO_ROOT, 'src'))
+
+from database import DatabaseError, MissingTableError, insert_rows, select_rows  # noqa: E402
 
 load_dotenv()
 
@@ -26,44 +30,44 @@ load_dotenv()
 # Config
 # ---------------------------------------------------------------------------
 
-DB_PATH = 'data/nba.db'
-REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+WORKFLOW_LOG_MIGRATION = 'supabase/migrations/20260923000500_workflow_log.sql'
+LOG_TAIL_CHARS = 4000
+SECRET_ENV_VARS = ('SUPABASE_SECRET_KEY', 'ODDS_API_KEY', 'TWILIO_AUTH_TOKEN')
 
 
 # ---------------------------------------------------------------------------
-# Database helpers
+# Database helpers (Supabase through src/database.py; tables come from migrations)
 # ---------------------------------------------------------------------------
 
-def ensure_workflow_log_table():
-    """Create workflow_log table if it doesn't exist."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS workflow_log (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            run_date      TEXT,
-            started_at    TEXT,
-            finished_at   TEXT,
-            status        TEXT,
-            pipeline_ok   INTEGER,
-            predict_ok    INTEGER,
-            sms_sent      INTEGER,
-            notes         TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
+def redact_secrets(text):
+    """Replace known secret values so they never reach workflow_log."""
+    for name in SECRET_ENV_VARS:
+        value = os.getenv(name, '').strip()
+        if value:
+            text = text.replace(value, f'<{name}>')
+    return text
 
 
-def log_run(run_date, started_at, finished_at, status, pipeline_ok, predict_ok, sms_sent, notes=''):
-    ensure_workflow_log_table()
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
-        INSERT INTO workflow_log
-        (run_date, started_at, finished_at, status, pipeline_ok, predict_ok, sms_sent, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (run_date, started_at, finished_at, status, pipeline_ok, predict_ok, sms_sent, notes))
-    conn.commit()
-    conn.close()
+def log_run(run_date, started_at, finished_at, status, pipeline_ok, predict_ok, sms_sent, notes='',
+            kind='manual', trigger='schedule', log_tail=''):
+    """Insert one workflow_log row. A database failure is reported, never raised."""
+    row = {
+        'run_date': run_date,
+        'kind': kind,
+        'trigger': trigger,
+        'started_at': started_at,
+        'finished_at': finished_at,
+        'status': status,
+        'pipeline_ok': bool(pipeline_ok),
+        'predict_ok': bool(predict_ok),
+        'sms_sent': bool(sms_sent),
+        'notes': notes,
+        'log_tail': redact_secrets(log_tail)[-LOG_TAIL_CHARS:],
+    }
+    try:
+        insert_rows('workflow_log', [row])
+    except DatabaseError as e:
+        print(f"⚠ workflow_log not written ({e}); if the table is missing, apply {WORKFLOW_LOG_MIGRATION}")
 
 
 # ---------------------------------------------------------------------------
@@ -89,19 +93,26 @@ def run_bat(bat_path):
 # Data queries
 # ---------------------------------------------------------------------------
 
+def _records(df, numeric_columns=()):
+    """Rows as dicts; text numbers (pre-migration columns) become floats, NaN becomes None."""
+    for column in numeric_columns:
+        if column in df.columns:
+            df[column] = pd.to_numeric(df[column], errors='coerce')
+    return df.astype(object).where(df.notna(), None).to_dict('records')
+
+
 def get_yesterdays_results():
     """Return a list of dicts for yesterday's completed predictions."""
     yesterday = (date.today() - timedelta(days=1)).strftime('%Y-%m-%d')
     try:
-        conn = sqlite3.connect(DB_PATH)
-        df = pd.read_sql(f"""
-            SELECT home_team, away_team, predicted_winner, actual_winner,
-                   correct, bet_placed, bet_amount, odds, profit_loss
-            FROM predictions
-            WHERE game_date = '{yesterday}' AND actual_winner IS NOT NULL
-        """, conn)
-        conn.close()
-        return df.to_dict('records')
+        df = select_rows(
+            'predictions',
+            columns='home_team,away_team,predicted_winner,actual_winner,'
+                    'correct,bet_placed,bet_amount,odds,profit_loss',
+            filters=[('game_date', 'eq', yesterday), ('actual_winner', 'not_is', 'null')],
+            order_by='game_id',
+        )
+        return _records(df, ('bet_amount', 'odds', 'profit_loss'))
     except Exception:
         return []
 
@@ -110,15 +121,14 @@ def get_todays_predictions():
     """Return a list of dicts for today's pending predictions."""
     today = date.today().strftime('%Y-%m-%d')
     try:
-        conn = sqlite3.connect(DB_PATH)
-        df = pd.read_sql(f"""
-            SELECT home_team, away_team, home_win_prob, away_win_prob,
-                   predicted_winner, bet_placed, bet_amount, odds
-            FROM predictions
-            WHERE game_date = '{today}'
-        """, conn)
-        conn.close()
-        return df.to_dict('records')
+        df = select_rows(
+            'predictions',
+            columns='home_team,away_team,home_win_prob,away_win_prob,'
+                    'predicted_winner,bet_placed,bet_amount,odds',
+            filters=[('game_date', 'eq', today)],
+            order_by='game_id',
+        )
+        return _records(df, ('home_win_prob', 'away_win_prob', 'bet_amount', 'odds'))
     except Exception:
         return []
 
@@ -126,21 +136,25 @@ def get_todays_predictions():
 def get_overall_stats():
     """Return overall prediction accuracy and bankroll info."""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        preds = pd.read_sql(
-            "SELECT correct, profit_loss FROM predictions WHERE correct IS NOT NULL", conn
+        preds = select_rows(
+            'predictions',
+            columns='correct,profit_loss',
+            filters=[('correct', 'not_is', 'null')],
+            order_by='game_id',
         )
-        bankroll_row = pd.read_sql(
-            "SELECT balance FROM bankroll ORDER BY date DESC, rowid DESC LIMIT 1", conn
-        )
-        conn.close()
+        try:
+            bankroll_row = select_rows(
+                'bankroll', columns='balance', order_by='date', descending=True, limit=1
+            )
+        except MissingTableError:
+            bankroll_row = pd.DataFrame()
 
         if preds.empty:
             return {}
 
         total = len(preds)
-        correct = int(preds['correct'].sum())
-        total_pl = float(preds['profit_loss'].sum())
+        correct = int(pd.to_numeric(preds['correct']).sum())
+        total_pl = float(pd.to_numeric(preds['profit_loss'], errors='coerce').sum())
         bankroll = float(bankroll_row['balance'].iloc[0]) if not bankroll_row.empty else 1000.0
 
         return {
@@ -236,21 +250,18 @@ def send_sms(body):
 # Main workflow
 # ---------------------------------------------------------------------------
 
-def run_workflow(send_text=True):
+def run_workflow(send_text=True, trigger='schedule'):
     """
     Full daily workflow:
       1. Run pipeline.bat
       2. Run predict.bat
       3. Build + send SMS summary
       4. Log results to workflow_log
+    trigger is 'schedule' from the CLI (Task Scheduler) and 'manual' from Run now.
     Returns a dict with status info.
     """
-    from datetime import datetime
-
-    ensure_workflow_log_table()
-
     run_date = date.today().strftime('%Y-%m-%d')
-    started_at = datetime.now().isoformat(timespec='seconds')
+    started_at = datetime.now().astimezone().isoformat(timespec='seconds')
 
     print(f"\n{'='*50}")
     print(f"NBA Daily Workflow — {run_date}")
@@ -291,7 +302,7 @@ def run_workflow(send_text=True):
         sms_sent = send_sms(sms_body)
 
     # Step 4 — log
-    finished_at = datetime.now().isoformat(timespec='seconds')
+    finished_at = datetime.now().astimezone().isoformat(timespec='seconds')
     overall_status = 'success' if (pipeline_ok and predict_ok) else 'partial' if (pipeline_ok or predict_ok) else 'failed'
     notes = []
     if not pipeline_ok:
@@ -302,7 +313,8 @@ def run_workflow(send_text=True):
         notes.append('sms not sent')
 
     log_run(run_date, started_at, finished_at, overall_status,
-            int(pipeline_ok), int(predict_ok), int(sms_sent), ', '.join(notes))
+            pipeline_ok, predict_ok, sms_sent, ', '.join(notes),
+            kind='manual', trigger=trigger, log_tail=pipeline_out + predict_out)
 
     result = {
         'run_date': run_date,
@@ -330,7 +342,9 @@ def run_workflow_async():
     with _workflow_lock:
         if _workflow_thread and _workflow_thread.is_alive():
             return False, "Workflow already running"
-        _workflow_thread = threading.Thread(target=run_workflow, daemon=True)
+        _workflow_thread = threading.Thread(
+            target=run_workflow, kwargs={'trigger': 'manual'}, daemon=True
+        )
         _workflow_thread.start()
         return True, "Workflow started"
 
