@@ -146,6 +146,17 @@ def slate_tables(n_games, game_date="2026-03-01"):
     }
 
 
+def stale_slate_tables(n_games, game_date="2026-10-21", stale_days=120):
+    """Like slate_tables, but every team's only features/elo row is `stale_days` before
+    game_date: a season-opening slate, where nobody has played within the short lookback
+    window (API-F1 follow-up)."""
+    tables = slate_tables(n_games, game_date=game_date)
+    stale_date = (dashboard.date.fromisoformat(game_date) - dashboard.timedelta(days=stale_days)).isoformat()
+    for row in tables["features"] + tables["elo"]:
+        row["GAME_DATE"] = stale_date
+    return tables
+
+
 class CountingFakeDB:
     """Wraps a FakeDB and counts select_rows calls, per table, for query-budget tests."""
 
@@ -430,6 +441,35 @@ class QueryBudgetTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(one_game.total_calls, fifteen_games.total_calls)
 
+    def test_normal_slate_call_counts_are_unchanged_by_the_retry(self):
+        # The retry must be a no-op (0 extra calls) when nobody is actually missing.
+        _, one_game = self._get("/api/recommendations", 1)
+        _, fifteen_games = self._get("/api/recommendations", 15)
+        self.assertEqual(one_game.total_calls, 6)
+        self.assertEqual(fifteen_games.total_calls, 6)
+
+        _, dash_one = self._get("/api/dashboard-state", 1)
+        _, dash_fifteen = self._get("/api/dashboard-state", 15)
+        self.assertEqual(dash_one.total_calls, 8)
+        self.assertEqual(dash_fifteen.total_calls, 8)
+
+    def test_recommendations_call_count_is_bounded_on_a_season_opening_slate(self):
+        # A slate where nobody has played within the short lookback window: each batched
+        # lookup pays for at most one retry, so the total stays a small constant that does
+        # not grow with the slate size.
+        opener_one = CountingFakeDB(stale_slate_tables(1))
+        with patch.object(dashboard, "select_rows", opener_one):
+            response = self.client.get("/api/recommendations?season=2026-27&game_date=2026-10-21")
+        self.assertEqual(response.status_code, 200)
+
+        opener_fifteen = CountingFakeDB(stale_slate_tables(15))
+        with patch.object(dashboard, "select_rows", opener_fifteen):
+            response = self.client.get("/api/recommendations?season=2026-27&game_date=2026-10-21")
+        self.assertEqual(response.status_code, 200)
+
+        self.assertEqual(opener_one.total_calls, opener_fifteen.total_calls)
+        self.assertLessEqual(opener_one.total_calls, 10)  # 6 normal + at most 1 retry per lookup
+
 
 class BatchedLookupTests(AppTestCase):
     def test_batched_elo_matches_the_per_team_result_when_the_latest_game_was_away(self):
@@ -439,6 +479,41 @@ class BatchedLookupTests(AppTestCase):
         result = dashboard._latest_elo_by_team([1, 2], "2026-03-01")
         self.assertEqual(result[1], 1520.0)
         self.assertEqual(result[2], 1480.0)
+
+    def test_batched_lookups_still_find_teams_whose_last_game_was_months_ago(self):
+        # A season-opening slate: neither team has played within TEAM_LOOKBACK_DAYS, so the
+        # short-window query alone returns nothing for them (the regression the lead flagged
+        # after 8cf861f). Team 5's latest game (of two, ~130d and ~120d before game_date) was
+        # away, so this also re-checks the home/away tie-break at the wider retry window.
+        game_date = "2026-10-21"
+        older = (dashboard.date.fromisoformat(game_date) - dashboard.timedelta(days=130)).isoformat()
+        newer = (dashboard.date.fromisoformat(game_date) - dashboard.timedelta(days=120)).isoformat()
+        self.db.tables["elo"] = [
+            {"GAME_DATE": older, "HOME_TEAM_ID": 5, "AWAY_TEAM_ID": 6,
+             "HOME_ELO": 1500.0, "AWAY_ELO": 1430.0},
+            {"GAME_DATE": newer, "HOME_TEAM_ID": 6, "AWAY_TEAM_ID": 5,
+             "HOME_ELO": 1420.0, "AWAY_ELO": 1550.0},
+        ]
+        self.db.tables["features"] = [
+            {"GAME_DATE": older, "HOME_TEAM_ABBREVIATION": "OPN", "HOME_TEAM_ID": 5,
+             "HOME_roll_PTS": 100.0, "HOME_roll_FG_PCT": 0.45, "HOME_roll_REB": 40.0,
+             "HOME_roll_AST": 22.0, "HOME_roll_TOV": 14.0, "HOME_roll_STOCKS": 9.0,
+             "HOME_rest_days": "3.0",
+             "AWAY_TEAM_ABBREVIATION": "OPA", "AWAY_TEAM_ID": 6,
+             "AWAY_roll_PTS": 98.0, "AWAY_roll_FG_PCT": 0.44, "AWAY_roll_REB": 39.0,
+             "AWAY_roll_AST": 21.0, "AWAY_roll_TOV": 15.0, "AWAY_roll_STOCKS": 8.0,
+             "AWAY_rest_days": "4.0"},
+        ]
+
+        # Old, non-batched semantics: per team, the latest row on each side, later date wins.
+        elo = dashboard._latest_elo_by_team([5, 6], game_date)
+        self.assertEqual(elo[5], 1550.0)  # team 5's latest appearance was AWAY, in the newer row
+        self.assertEqual(elo[6], 1420.0)  # team 6's latest appearance was HOME, in the newer row
+
+        home_features = dashboard._latest_features_by_team(["OPN"], "HOME", game_date)
+        self.assertEqual(home_features["OPN"]["roll_pts"], 100.0)
+        away_features = dashboard._latest_features_by_team(["OPA"], "AWAY", game_date)
+        self.assertEqual(away_features["OPA"]["roll_pts"], 98.0)
 
 
 class CacheControlTests(AppTestCase):

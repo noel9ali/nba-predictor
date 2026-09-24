@@ -305,10 +305,16 @@ def ytd_summary_for_season(season, bankroll_points=None):
 
 
 # Batched per-team lookups (API-F1): one query per side for the whole slate instead of one
-# per team, so the call count stays constant no matter how many games are on the date. The
-# GAME_DATE lower bound keeps each query to a single page; teams play far more often than
-# every TEAM_LOOKBACK_DAYS, so it doesn't change which row is "latest" in practice.
+# per team, so the call count stays constant no matter how many games are on the date. Most
+# teams have played within TEAM_LOOKBACK_DAYS, so that short window keeps each query to a
+# single page; whichever teams are still missing after it (e.g. a season-opening slate, where
+# every team's last game was months into the offseason -- longer still across the 2020 bubble
+# gap) get one extra, wider retry per query so they don't silently lose Elo/features rather
+# than just being less fresh. A normal slate never triggers the retry, so its call count is
+# unaffected; the worst case (nobody within the short window) adds at most one retry call per
+# query below.
 TEAM_LOOKBACK_DAYS = 60
+TEAM_LOOKBACK_RETRY_DAYS = 400  # longer than any NBA offseason, including the 2020 bubble gap
 
 
 def _latest_elo_by_team(team_ids, before_date):
@@ -317,29 +323,36 @@ def _latest_elo_by_team(team_ids, before_date):
     if not team_ids:
         return {}
 
-    lookback = (date.fromisoformat(before_date) - timedelta(days=TEAM_LOOKBACK_DAYS)).isoformat()
     latest = {}
-    for side in ("HOME", "AWAY"):
-        id_column = f"{side}_TEAM_ID"
-        rows = records(
-            read_rows(
-                "elo",
-                columns=f"GAME_DATE,{id_column},{side}_ELO",
-                filters=[(id_column, "in", team_ids), ("GAME_DATE", "gte", lookback)],
-                order_by="GAME_DATE",
-                descending=True,
+
+    def scan(ids, lookback_days):
+        if not ids:
+            return
+        lookback = (date.fromisoformat(before_date) - timedelta(days=lookback_days)).isoformat()
+        for side in ("HOME", "AWAY"):
+            id_column = f"{side}_TEAM_ID"
+            rows = records(
+                read_rows(
+                    "elo",
+                    columns=f"GAME_DATE,{id_column},{side}_ELO",
+                    filters=[(id_column, "in", ids), ("GAME_DATE", "gte", lookback)],
+                    order_by="GAME_DATE",
+                    descending=True,
+                )
             )
-        )
-        seen = set()
-        for row in rows:
-            team_id = row.get(id_column)
-            if team_id is None or team_id in seen:
-                continue  # rows arrive latest-first per side; the first hit per team wins
-            seen.add(team_id)
-            game_date = row.get("GAME_DATE")
-            current = latest.get(team_id)
-            if current is None or str(game_date) > str(current["GAME_DATE"]):
-                latest[team_id] = {"GAME_DATE": game_date, "elo_value": row.get(f"{side}_ELO")}
+            seen = set()
+            for row in rows:
+                team_id = row.get(id_column)
+                if team_id is None or team_id in seen:
+                    continue  # rows arrive latest-first per side; the first hit per team wins
+                seen.add(team_id)
+                game_date = row.get("GAME_DATE")
+                current = latest.get(team_id)
+                if current is None or str(game_date) > str(current["GAME_DATE"]):
+                    latest[team_id] = {"GAME_DATE": game_date, "elo_value": row.get(f"{side}_ELO")}
+
+    scan(team_ids, TEAM_LOOKBACK_DAYS)
+    scan([t for t in team_ids if t not in latest], TEAM_LOOKBACK_RETRY_DAYS)
     return {team_id: safe_float(v["elo_value"]) for team_id, v in latest.items()}
 
 
@@ -360,21 +373,28 @@ def _latest_features_by_team(team_abbrs, side_prefix, before_date):
         "rest_days": f"{side_prefix}_rest_days",
     }
     abbr_column = f"{side_prefix}_TEAM_ABBREVIATION"
-    lookback = (date.fromisoformat(before_date) - timedelta(days=TEAM_LOOKBACK_DAYS)).isoformat()
-    rows = records(
-        read_rows(
-            "features",
-            columns=f"{abbr_column}," + ",".join(columns.values()),
-            filters=[(abbr_column, "in", team_abbrs), ("GAME_DATE", "gte", lookback)],
-            order_by="GAME_DATE",
-            descending=True,
-        )
-    )
     latest = {}
-    for row in rows:
-        abbr = row.get(abbr_column)
-        if abbr and abbr not in latest:  # rows arrive latest-first; keep the first per team
-            latest[abbr] = {alias: row.get(column) for alias, column in columns.items()}
+
+    def scan(abbrs, lookback_days):
+        if not abbrs:
+            return
+        lookback = (date.fromisoformat(before_date) - timedelta(days=lookback_days)).isoformat()
+        rows = records(
+            read_rows(
+                "features",
+                columns=f"{abbr_column}," + ",".join(columns.values()),
+                filters=[(abbr_column, "in", abbrs), ("GAME_DATE", "gte", lookback)],
+                order_by="GAME_DATE",
+                descending=True,
+            )
+        )
+        for row in rows:
+            abbr = row.get(abbr_column)
+            if abbr and abbr not in latest:  # rows arrive latest-first; keep the first per team
+                latest[abbr] = {alias: row.get(column) for alias, column in columns.items()}
+
+    scan(team_abbrs, TEAM_LOOKBACK_DAYS)
+    scan([t for t in team_abbrs if t not in latest], TEAM_LOOKBACK_RETRY_DAYS)
     return latest
 
 
