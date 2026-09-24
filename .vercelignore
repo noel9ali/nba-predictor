@@ -6,3 +6,15 @@ table_init/
 node_modules/
 logs/
 *.pkl
+.env*
+!.env.example
+.review/
+.claude/
+design/
+supabase/
+tests/
+.github/
+scripts/
+scheduler/
+*.bat
+daily_workflow.py

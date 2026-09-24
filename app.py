@@ -1,7 +1,9 @@
 import os
 import re
+import secrets
 import sys
 from datetime import date, datetime, timedelta, timezone
+from urllib.parse import urlsplit
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -22,7 +24,10 @@ load_dotenv()
 # Statics live in public/ so Vercel's CDN serves them; local Flask serves the same
 # files at the same /static URL.
 app = Flask(__name__, static_folder="public/static", static_url_path="/static")
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
+# SEC-F7: no hardcoded fallback. Sessions/flash are unused (confirmed: git grep -n
+# "session|flash" -- app.py templates/ -> 0 hits), so a random per-process key is fine;
+# it just needs to never be a known, publicly-visible default.
+app.secret_key = os.getenv("FLASK_SECRET_KEY") or secrets.token_urlsafe(32)
 
 SEASON_PATTERN = re.compile(r"^(\d{4})-(\d{2})$")
 LEGACY_CACHE_CONTROL = "public, s-maxage=300, stale-while-revalidate=3600"
@@ -543,6 +548,30 @@ def empty_dashboard_state(season, game_date):
 # Responses
 # ---------------------------------------------------------------------------
 
+# SEC-F2: locked-down response headers for every route (pages, API JSON, and errors).
+# HSTS is deliberately not set here: Vercel adds Strict-Transport-Security on its own
+# domains, and this app also runs locally over plain HTTP, where HSTS would be wrong.
+SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+        "connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; "
+        "form-action 'self'; object-src 'none'"
+    ),
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Frame-Options": "DENY",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+}
+
+
+@app.after_request
+def set_security_headers(response):
+    # setdefault: never overwrite a header a route already set deliberately.
+    for name, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(name, value)
+    return response
+
+
 def api_response(payload):
     body = dict(payload)
     body["generated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -665,13 +694,33 @@ def api_bankroll_series():
 # ---------------------------------------------------------------------------
 
 LOOPBACK_ADDRESSES = {"127.0.0.1", "::1"}
+LOOPBACK_HOSTNAMES = {"127.0.0.1", "localhost", "::1"}  # urlsplit(...).hostname strips [] from IPv6
+RUN_WORKFLOW_HEADER = "X-Requested-With"
+RUN_WORKFLOW_HEADER_VALUE = "run-now"
+
+
+def _same_origin_loopback_request(req):
+    """SEC-F1: reject cross-site/DNS-rebound calls. The Host header's hostname must be a
+    loopback name; a present Origin must match that Host exactly (same-origin, loopback);
+    and a non-simple header must be present so a cross-site browser request needs a CORS
+    preflight (which the app never allows, since it sends no CORS headers at all)."""
+    hostname = urlsplit(f"//{req.host}").hostname
+    if hostname not in LOOPBACK_HOSTNAMES:
+        return False
+
+    origin = req.headers.get("Origin")
+    if origin is not None and origin != f"http://{req.host}":
+        return False  # covers a hostile Origin and the CORS-special "Origin: null"
+
+    return req.headers.get(RUN_WORKFLOW_HEADER) == RUN_WORKFLOW_HEADER_VALUE
 
 
 def run_controls_allowed(req):
     return (
         not os.getenv("VERCEL")
         and os.getenv("ALLOW_RUN_WORKFLOW", "false").strip().lower() == "true"
-        and req.remote_addr in LOOPBACK_ADDRESSES
+        and req.remote_addr in LOOPBACK_ADDRESSES  # never a forwarded/proxy header; no ProxyFix
+        and _same_origin_loopback_request(req)
     )
 
 

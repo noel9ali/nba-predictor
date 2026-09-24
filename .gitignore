@@ -10,3 +10,5 @@ logs/
 node_modules/
 table_init/*.csv
 .vercel/
+.env*
+!.env.example

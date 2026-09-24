@@ -349,7 +349,11 @@ class DatabaseFailureTests(AppTestCase):
 class RunWorkflowGatingTests(AppTestCase):
     ALLOWED_ENV = {"ALLOW_RUN_WORKFLOW": "true"}
 
-    def post(self, env, remote_addr="127.0.0.1", running=False):
+    # SEC-F1: a same-origin, loopback call also needs this non-simple header (so a
+    # cross-site browser request would need a CORS preflight the app never allows).
+    LOCAL_HEADERS = {"X-Requested-With": "run-now"}
+
+    def post(self, env, remote_addr="127.0.0.1", running=False, headers=None):
         with patch.dict(os.environ, env), \
                 patch.object(daily_workflow, "workflow_is_running", return_value=running), \
                 patch.object(daily_workflow, "run_workflow_async",
@@ -357,7 +361,9 @@ class RunWorkflowGatingTests(AppTestCase):
             if "VERCEL" not in env:
                 os.environ.pop("VERCEL", None)
             response = self.client.post(
-                "/api/run-workflow", environ_overrides={"REMOTE_ADDR": remote_addr}
+                "/api/run-workflow",
+                environ_overrides={"REMOTE_ADDR": remote_addr},
+                headers=headers or {},
             )
         self.assertEqual(response.headers["Cache-Control"], "no-store")
         return response, run_async
@@ -379,13 +385,15 @@ class RunWorkflowGatingTests(AppTestCase):
     def test_starts_when_local_and_allowed(self):
         for address in ("127.0.0.1", "::1"):
             with self.subTest(address=address):
-                response, run_async = self.post(self.ALLOWED_ENV, remote_addr=address)
+                response, run_async = self.post(
+                    self.ALLOWED_ENV, remote_addr=address, headers=self.LOCAL_HEADERS
+                )
                 self.assertEqual(response.status_code, 202)
                 self.assertEqual(response.get_json(), {"started": True, "kind": "manual"})
                 run_async.assert_called_once_with()
 
     def test_conflict_while_a_run_is_in_progress(self):
-        response, run_async = self.post(self.ALLOWED_ENV, running=True)
+        response, run_async = self.post(self.ALLOWED_ENV, running=True, headers=self.LOCAL_HEADERS)
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.get_json(), {"error": "already_running"})
         run_async.assert_not_called()
