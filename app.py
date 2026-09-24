@@ -1,11 +1,13 @@
 import os
 import re
+import secrets
 import sys
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from urllib.parse import urlsplit
 
 import pandas as pd
 from dotenv import load_dotenv
-from flask import Flask, g, jsonify, render_template, request
+from flask import Flask, g, jsonify, make_response, render_template, request
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
@@ -22,7 +24,10 @@ load_dotenv()
 # Statics live in public/ so Vercel's CDN serves them; local Flask serves the same
 # files at the same /static URL.
 app = Flask(__name__, static_folder="public/static", static_url_path="/static")
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
+# SEC-F7: no hardcoded fallback. Sessions/flash are unused (confirmed: git grep -n
+# "session|flash" -- app.py templates/ -> 0 hits), so a random per-process key is fine;
+# it just needs to never be a known, publicly-visible default.
+app.secret_key = os.getenv("FLASK_SECRET_KEY") or secrets.token_urlsafe(32)
 
 SEASON_PATTERN = re.compile(r"^(\d{4})-(\d{2})$")
 LEGACY_CACHE_CONTROL = "public, s-maxage=300, stale-while-revalidate=3600"
@@ -150,29 +155,33 @@ def records(df):
     return df.astype(object).where(df.notna(), None).to_dict("records")
 
 
+def _prediction_dates():
+    """All predictions.game_date values, fetched once per request so available_seasons()
+    and available_prediction_dates() (SEC-F4/API-F1) can share the read."""
+    dates = g.get("_prediction_dates")
+    if dates is None:
+        df = read_rows(
+            "predictions",
+            columns="game_date",
+            filters=[("game_date", "not_is", "null")],
+            order_by="game_date",
+            descending=True,
+        )
+        dates = [r["game_date"] for r in records(df) if r.get("game_date")]
+        g._prediction_dates = dates
+    return dates
+
+
 def available_seasons():
-    df = read_rows(
-        "predictions",
-        columns="game_date",
-        filters=[("game_date", "not_is", "null")],
-        order_by="game_date",
-        descending=True,
-    )
-    seasons = list(dict.fromkeys(season_for(r["game_date"]) for r in records(df) if r.get("game_date")))
+    seasons = list(dict.fromkeys(season_for(d) for d in _prediction_dates()))
     if not seasons:
         seasons = [season_for(date.today())]
     return seasons
 
 
 def available_prediction_dates(season):
-    df = read_rows(
-        "predictions",
-        columns="game_date",
-        filters=season_filters("game_date", season),
-        order_by="game_date",
-        descending=True,
-    )
-    dates = list(dict.fromkeys(r["game_date"] for r in records(df) if r.get("game_date")))
+    start, end = season_bounds(season)
+    dates = list(dict.fromkeys(d for d in _prediction_dates() if start <= d <= end))
     if not dates:
         dates = [date.today().strftime("%Y-%m-%d")]
     return dates
@@ -300,30 +309,62 @@ def ytd_summary_for_season(season, bankroll_points=None):
     }
 
 
-def latest_team_elo(team_id):
-    if team_id is None:
-        return None
+# Batched per-team lookups (API-F1): one query per side for the whole slate instead of one
+# per team, so the call count stays constant no matter how many games are on the date. Most
+# teams have played within TEAM_LOOKBACK_DAYS, so that short window keeps each query to a
+# single page; whichever teams are still missing after it (e.g. a season-opening slate, where
+# every team's last game was months into the offseason -- longer still across the 2020 bubble
+# gap) get one extra, wider retry per query so they don't silently lose Elo/features rather
+# than just being less fresh. A normal slate never triggers the retry, so its call count is
+# unaffected; the worst case (nobody within the short window) adds at most one retry call per
+# query below.
+TEAM_LOOKBACK_DAYS = 60
+TEAM_LOOKBACK_RETRY_DAYS = 400  # longer than any NBA offseason, including the 2020 bubble gap
 
-    team_id = int(team_id)
-    latest = None
-    for side in ("HOME", "AWAY"):
-        rows = records(
-            read_rows(
-                "elo",
-                columns=f"GAME_DATE,{side}_ELO",
-                filters=[(f"{side}_TEAM_ID", "eq", team_id)],
-                order_by="GAME_DATE",
-                descending=True,
-                limit=1,
+
+def _latest_elo_by_team(team_ids, before_date):
+    """The latest elo rating for each team_id, across both home and away appearances."""
+    team_ids = sorted({int(t) for t in team_ids if t is not None})
+    if not team_ids:
+        return {}
+
+    latest = {}
+
+    def scan(ids, lookback_days):
+        if not ids:
+            return
+        lookback = (date.fromisoformat(before_date) - timedelta(days=lookback_days)).isoformat()
+        for side in ("HOME", "AWAY"):
+            id_column = f"{side}_TEAM_ID"
+            rows = records(
+                read_rows(
+                    "elo",
+                    columns=f"GAME_DATE,{id_column},{side}_ELO",
+                    filters=[(id_column, "in", ids), ("GAME_DATE", "gte", lookback)],
+                    order_by="GAME_DATE",
+                    descending=True,
+                )
             )
-        )
-        if rows and (latest is None or str(rows[0]["GAME_DATE"]) > str(latest["GAME_DATE"])):
-            latest = {"GAME_DATE": rows[0]["GAME_DATE"], "elo_value": rows[0][f"{side}_ELO"]}
-    return safe_float(latest["elo_value"]) if latest else None
+            seen = set()
+            for row in rows:
+                team_id = row.get(id_column)
+                if team_id is None or team_id in seen:
+                    continue  # rows arrive latest-first per side; the first hit per team wins
+                seen.add(team_id)
+                game_date = row.get("GAME_DATE")
+                current = latest.get(team_id)
+                if current is None or str(game_date) > str(current["GAME_DATE"]):
+                    latest[team_id] = {"GAME_DATE": game_date, "elo_value": row.get(f"{side}_ELO")}
+
+    scan(team_ids, TEAM_LOOKBACK_DAYS)
+    scan([t for t in team_ids if t not in latest], TEAM_LOOKBACK_RETRY_DAYS)
+    return {team_id: safe_float(v["elo_value"]) for team_id, v in latest.items()}
 
 
-def latest_team_feature_by_side(team_abbr, side_prefix):
-    if not team_abbr:
+def _latest_features_by_team(team_abbrs, side_prefix, before_date):
+    """The latest `side_prefix` features row for each team in team_abbrs, in one query."""
+    team_abbrs = sorted({t for t in team_abbrs if t})
+    if not team_abbrs:
         return {}
 
     columns = {
@@ -336,19 +377,30 @@ def latest_team_feature_by_side(team_abbr, side_prefix):
         "roll_stocks": f"{side_prefix}_roll_STOCKS",
         "rest_days": f"{side_prefix}_rest_days",
     }
-    rows = records(
-        read_rows(
-            "features",
-            columns=",".join(columns.values()),
-            filters=[(f"{side_prefix}_TEAM_ABBREVIATION", "eq", team_abbr)],
-            order_by="GAME_DATE",
-            descending=True,
-            limit=1,
+    abbr_column = f"{side_prefix}_TEAM_ABBREVIATION"
+    latest = {}
+
+    def scan(abbrs, lookback_days):
+        if not abbrs:
+            return
+        lookback = (date.fromisoformat(before_date) - timedelta(days=lookback_days)).isoformat()
+        rows = records(
+            read_rows(
+                "features",
+                columns=f"{abbr_column}," + ",".join(columns.values()),
+                filters=[(abbr_column, "in", abbrs), ("GAME_DATE", "gte", lookback)],
+                order_by="GAME_DATE",
+                descending=True,
+            )
         )
-    )
-    if not rows:
-        return {}
-    return {alias: rows[0].get(column) for alias, column in columns.items()}
+        for row in rows:
+            abbr = row.get(abbr_column)
+            if abbr and abbr not in latest:  # rows arrive latest-first; keep the first per team
+                latest[abbr] = {alias: row.get(column) for alias, column in columns.items()}
+
+    scan(team_abbrs, TEAM_LOOKBACK_DAYS)
+    scan([t for t in team_abbrs if t not in latest], TEAM_LOOKBACK_RETRY_DAYS)
+    return latest
 
 
 def build_recommendations(game_date):
@@ -363,6 +415,13 @@ def build_recommendations(game_date):
             order_by=["home_team", "away_team"],
         )
     )
+
+    home_features = _latest_features_by_team((r.get("home_team") for r in rows), "HOME", game_date)
+    away_features = _latest_features_by_team((r.get("away_team") for r in rows), "AWAY", game_date)
+    team_ids = (
+        ctx.get("team_id") for ctx in (*home_features.values(), *away_features.values())
+    )
+    elo_by_team = _latest_elo_by_team(team_ids, game_date)
 
     recommendations = []
     for i, game in enumerate(rows):
@@ -381,8 +440,10 @@ def build_recommendations(game_date):
         if expected_win_prob is not None and implied_prob is not None:
             edge = expected_win_prob - implied_prob
 
-        home_ctx = latest_team_feature_by_side(game.get("home_team"), "HOME")
-        away_ctx = latest_team_feature_by_side(game.get("away_team"), "AWAY")
+        home_ctx = home_features.get(game.get("home_team"), {})
+        away_ctx = away_features.get(game.get("away_team"), {})
+        home_team_id = home_ctx.get("team_id")
+        away_team_id = away_ctx.get("team_id")
 
         bet_amount = safe_float(game.get("bet_amount"), 0) or 0
         game_id = game.get("game_id")
@@ -401,8 +462,8 @@ def build_recommendations(game_date):
                 "odds": safe_float(game.get("odds")),
                 "recommendation_type": "bet" if bet_amount > 0 else "no_edge",
                 "details": {
-                    "home_elo": latest_team_elo(home_ctx.get("team_id")),
-                    "away_elo": latest_team_elo(away_ctx.get("team_id")),
+                    "home_elo": elo_by_team.get(int(home_team_id)) if home_team_id is not None else None,
+                    "away_elo": elo_by_team.get(int(away_team_id)) if away_team_id is not None else None,
                     "home_rest_days": safe_float(home_ctx.get("rest_days")),
                     "away_rest_days": safe_float(away_ctx.get("rest_days")),
                     "home_roll_pts": safe_float(home_ctx.get("roll_pts")),
@@ -487,6 +548,30 @@ def empty_dashboard_state(season, game_date):
 # Responses
 # ---------------------------------------------------------------------------
 
+# SEC-F2: locked-down response headers for every route (pages, API JSON, and errors).
+# HSTS is deliberately not set here: Vercel adds Strict-Transport-Security on its own
+# domains, and this app also runs locally over plain HTTP, where HSTS would be wrong.
+SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+        "connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; "
+        "form-action 'self'; object-src 'none'"
+    ),
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Frame-Options": "DENY",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+}
+
+
+@app.after_request
+def set_security_headers(response):
+    # setdefault: never overwrite a header a route already set deliberately.
+    for name, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(name, value)
+    return response
+
+
 def api_response(payload):
     body = dict(payload)
     body["generated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -522,6 +607,16 @@ def database_unavailable(exc):
     return error_response(503, "database_unavailable")
 
 
+@app.errorhandler(404)
+def not_found(exc):
+    return error_response(404, "not_found")
+
+
+@app.errorhandler(405)
+def method_not_allowed(exc):
+    return error_response(405, "method_not_allowed")
+
+
 @app.route("/")
 def index():
     notice = None
@@ -540,15 +635,20 @@ def index():
         dashboard_state = empty_dashboard_state(selected_season, selected_date)
         notice = "Game data is unavailable right now. Try again in a few minutes."
 
-    return render_template(
-        "index.html",
-        seasons=seasons,
-        selected_season=selected_season,
-        available_dates=dates,
-        selected_date=selected_date,
-        dashboard_state=dashboard_state,
-        notice=notice,
+    response = make_response(
+        render_template(
+            "index.html",
+            seasons=seasons,
+            selected_season=selected_season,
+            available_dates=dates,
+            selected_date=selected_date,
+            dashboard_state=dashboard_state,
+            notice=notice,
+            migration_pending=bool(g.get("migration_pending", False)),
+        )
     )
+    response.headers["Cache-Control"] = LEGACY_CACHE_CONTROL if notice is None else "no-store"
+    return response
 
 
 @app.route("/api/dashboard-state")
@@ -594,13 +694,33 @@ def api_bankroll_series():
 # ---------------------------------------------------------------------------
 
 LOOPBACK_ADDRESSES = {"127.0.0.1", "::1"}
+LOOPBACK_HOSTNAMES = {"127.0.0.1", "localhost", "::1"}  # urlsplit(...).hostname strips [] from IPv6
+RUN_WORKFLOW_HEADER = "X-Requested-With"
+RUN_WORKFLOW_HEADER_VALUE = "run-now"
+
+
+def _same_origin_loopback_request(req):
+    """SEC-F1: reject cross-site/DNS-rebound calls. The Host header's hostname must be a
+    loopback name; a present Origin must match that Host exactly (same-origin, loopback);
+    and a non-simple header must be present so a cross-site browser request needs a CORS
+    preflight (which the app never allows, since it sends no CORS headers at all)."""
+    hostname = urlsplit(f"//{req.host}").hostname
+    if hostname not in LOOPBACK_HOSTNAMES:
+        return False
+
+    origin = req.headers.get("Origin")
+    if origin is not None and origin != f"http://{req.host}":
+        return False  # covers a hostile Origin and the CORS-special "Origin: null"
+
+    return req.headers.get(RUN_WORKFLOW_HEADER) == RUN_WORKFLOW_HEADER_VALUE
 
 
 def run_controls_allowed(req):
     return (
         not os.getenv("VERCEL")
         and os.getenv("ALLOW_RUN_WORKFLOW", "false").strip().lower() == "true"
-        and req.remote_addr in LOOPBACK_ADDRESSES
+        and req.remote_addr in LOOPBACK_ADDRESSES  # never a forwarded/proxy header; no ProxyFix
+        and _same_origin_loopback_request(req)
     )
 
 

@@ -1,9 +1,25 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["pdx1"],
   "functions": {
     "app.py": {
       "maxDuration": 30,
-      "excludeFiles": "{venv/**,.venv/**,data/**,table_init/**,node_modules/**,design/**,scheduler/**,scripts/**,tests/**,supabase/**,logs/**,public/**,model.py,src/model.py,src/model_wrappers.py,src/backtest_last_year.py,src/predict.py,src/track.py,src/collect.py,src/elo.py,src/features.py,src/odds.py,src/test.py}"
+      "excludeFiles": "{venv/**,.venv/**,data/**,table_init/**,node_modules/**,design/**,scheduler/**,scripts/**,tests/**,supabase/**,logs/**,public/**,.github/**,*.bat,daily_workflow.py,src/summary.py,src/console.py,src/model.py,src/model_metadata.py,src/model_wrappers.py,src/backtest_last_year.py,src/predict.py,src/track.py,src/collect.py,src/elo.py,src/features.py,src/odds.py,src/test.py}"
     }
-  }
+  },
+  "headers": [
+    {
+      "source": "/static/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
+        },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
+      ]
+    }
+  ]
 }

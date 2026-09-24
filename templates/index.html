@@ -19,7 +19,7 @@
     <form method="GET" action="/" class="filters">
       <div class="field">
         <label for="season">Season</label>
-        <select id="season" name="season" onchange="this.form.submit()">
+        <select id="season" name="season">
           {% for season in seasons %}
           <option value="{{ season }}" {{ "selected" if season == selected_season else "" }}>{{ season }}</option>
           {% endfor %}
@@ -27,15 +27,17 @@
       </div>
       <div class="field">
         <label for="game_date">Game Day</label>
-        <select id="game_date" name="game_date" onchange="this.form.submit()">
+        <select id="game_date" name="game_date">
           {% for d in available_dates %}
           <option value="{{ d }}" {{ "selected" if d == selected_date else "" }}>{{ d }}</option>
           {% endfor %}
         </select>
       </div>
+      <noscript><button type="submit" class="btn-apply">Apply</button></noscript>
     </form>
   </header>
   {% if notice %}<p class="empty" role="status">{{ notice }}</p>{% endif %}
+  {% if migration_pending %}<p class="empty" role="status">Some figures are incomplete pending a data migration.</p>{% endif %}
 
   <main class="thirds-layout">
     <section class="third-card left-third">
@@ -45,6 +47,7 @@
       </div>
 
       <div class="control-stack">
+        <label for="search-games" class="sr-only">Search team or matchup</label>
         <input id="search-games" class="search" type="text" placeholder="Search team or matchup..." />
         <div class="chip-row" id="filter-chips">
           <button type="button" class="chip is-active" data-chip="all">All</button>
@@ -60,13 +63,13 @@
             data-filter-type="{{ game.recommendation_type }}"
             data-confidence="{{ game.confidence_bucket }}"
             data-search="{{ (game.matchup ~ ' ' ~ game.home_team ~ ' ' ~ game.away_team)|lower }}">
-          <button class="game-button" type="button" data-game='{{ game|tojson }}' onclick="openSummary(this)">
+          <button class="game-button" type="button" data-game='{{ game|tojson }}'>
             <div class="game-row">
               <span class="matchup">{{ game.matchup }}</span>
               <span class="confidence {{ game.confidence_bucket }}"> {{ game.confidence_bucket|upper }} </span>
             </div>
             <div class="pick">
-              Pick: <strong>{{ game.predicted_winner }}</strong>
+              Pick: <strong>{{ game.predicted_winner or "n/a" }}</strong>
               {% if game.expected_win_prob is not none %}
               ({{ "%.1f%%"|format(game.expected_win_prob * 100) }})
               {% endif %}
@@ -160,7 +163,7 @@
 
   <div id="summary-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div class="modal-card">
-      <button type="button" class="close-modal" onclick="closeSummary()" aria-label="Close summary">x</button>
+      <button type="button" class="close-modal" aria-label="Close summary">x</button>
       <h3 id="modal-title">Game Summary</h3>
       <p id="modal-matchup" class="modal-matchup"></p>
       <div class="summary-grid">
@@ -190,199 +193,7 @@
     </div>
   </div>
 
-  <script>
-    const dashboardState = {{ dashboard_state|tojson }};
-
-    function prettyNum(v, digits = 1) {
-      if (v === null || v === undefined || v === "") return "n/a";
-      return Number(v).toFixed(digits);
-    }
-
-    function prettyPct(v) {
-      if (v === null || v === undefined || v === "") return "n/a";
-      return `${(Number(v) * 100).toFixed(1)}%`;
-    }
-
-    function applyGameFilters() {
-      const q = document.getElementById("search-games").value.trim().toLowerCase();
-      const activeChip = document.querySelector(".chip.is-active")?.dataset.chip || "all";
-      const items = Array.from(document.querySelectorAll(".game-item"));
-
-      let visibleCount = 0;
-      items.forEach((item) => {
-        const searchText = item.dataset.search || "";
-        const type = item.dataset.filterType;
-        const confidence = item.dataset.confidence;
-
-        const searchMatch = !q || searchText.includes(q);
-        let chipMatch = true;
-        if (activeChip === "bet") chipMatch = type === "bet";
-        else if (activeChip === "no_edge") chipMatch = type === "no_edge";
-        else if (activeChip === "high") chipMatch = confidence === "high";
-
-        const show = searchMatch && chipMatch;
-        item.classList.toggle("hidden", !show);
-        if (show) visibleCount += 1;
-      });
-
-      document.getElementById("empty-filter-msg").classList.toggle("hidden", visibleCount > 0);
-    }
-
-    (function initFilters() {
-      const input = document.getElementById("search-games");
-      input.addEventListener("input", applyGameFilters);
-
-      document.getElementById("filter-chips").addEventListener("click", (e) => {
-        if (!e.target.classList.contains("chip")) return;
-        document.querySelectorAll(".chip").forEach((chip) => chip.classList.remove("is-active"));
-        e.target.classList.add("is-active");
-        applyGameFilters();
-      });
-    })();
-
-    function openSummary(btn) {
-      const game = JSON.parse(btn.dataset.game);
-      const d = game.details || {};
-
-      document.getElementById("modal-title").textContent = `Game Summary: ${game.matchup}`;
-      document.getElementById("modal-matchup").textContent = `Game Date: ${dashboardState.game_date}`;
-      document.getElementById("m-pick").textContent = game.predicted_winner || "n/a";
-      document.getElementById("m-exp-prob").textContent = prettyPct(game.expected_win_prob);
-      document.getElementById("m-impl-prob").textContent = prettyPct(game.implied_prob);
-      const edgeText = game.edge === null || game.edge === undefined ? "n/a" : `${(game.edge * 100).toFixed(2)}%`;
-      document.getElementById("m-edge").textContent = edgeText;
-      document.getElementById("m-home-elo").textContent = prettyNum(d.home_elo, 0);
-      document.getElementById("m-away-elo").textContent = prettyNum(d.away_elo, 0);
-
-      document.getElementById("m-home-team").textContent = game.home_team || "Home";
-      document.getElementById("m-away-team").textContent = game.away_team || "Away";
-      document.getElementById("m-home-pts").textContent = prettyNum(d.home_roll_pts);
-      document.getElementById("m-home-fg").textContent = prettyNum(d.home_roll_fg_pct, 3);
-      document.getElementById("m-home-reb").textContent = prettyNum(d.home_roll_reb);
-      document.getElementById("m-home-ast").textContent = prettyNum(d.home_roll_ast);
-      document.getElementById("m-home-tov").textContent = prettyNum(d.home_roll_tov);
-      document.getElementById("m-home-stocks").textContent = prettyNum(d.home_roll_stocks);
-      document.getElementById("m-away-pts").textContent = prettyNum(d.away_roll_pts);
-      document.getElementById("m-away-fg").textContent = prettyNum(d.away_roll_fg_pct, 3);
-      document.getElementById("m-away-reb").textContent = prettyNum(d.away_roll_reb);
-      document.getElementById("m-away-ast").textContent = prettyNum(d.away_roll_ast);
-      document.getElementById("m-away-tov").textContent = prettyNum(d.away_roll_tov);
-      document.getElementById("m-away-stocks").textContent = prettyNum(d.away_roll_stocks);
-
-      document.getElementById("summary-modal").classList.remove("hidden");
-    }
-
-    function closeSummary() {
-      document.getElementById("summary-modal").classList.add("hidden");
-    }
-
-    document.getElementById("summary-modal").addEventListener("click", (e) => {
-      if (e.target.id === "summary-modal") closeSummary();
-    });
-
-    function drawConfidenceBars() {
-      const el = document.getElementById("confidence-bars");
-      const counts = dashboardState.confidence_distribution || { high: 0, medium: 0, low: 0, unknown: 0 };
-      const keys = ["high", "medium", "low", "unknown"];
-      const max = Math.max(...keys.map((k) => counts[k] || 0), 1);
-      el.innerHTML = "";
-      keys.forEach((k) => {
-        const v = counts[k] || 0;
-        const pct = (v / max) * 100;
-        const row = document.createElement("div");
-        row.className = "confidence-row";
-        row.innerHTML = `<span>${k.toUpperCase()}</span><div class="bar-shell"><div class="bar-fill ${k}" style="width:${pct}%"></div></div><strong>${v}</strong>`;
-        el.appendChild(row);
-      });
-    }
-
-    function drawTrendChart(points, showBankroll, showCumPl) {
-      const svg = document.getElementById("bankroll-chart");
-      svg.innerHTML = "";
-
-      if (!points || points.length === 0) {
-        svg.innerHTML = '<text x="50%" y="50%" text-anchor="middle" fill="#946546" font-size="16">No season bankroll data yet</text>';
-        return;
-      }
-
-      const width = 560;
-      const height = 340;
-      const padL = 46;
-      const padR = 16;
-      const padT = 18;
-      const padB = 38;
-      const plotW = width - padL - padR;
-      const plotH = height - padT - padB;
-
-      function sx(i) {
-        if (points.length === 1) return padL + plotW / 2;
-        return padL + (i / (points.length - 1)) * plotW;
-      }
-
-      const series = [];
-      if (showBankroll) series.push({ key: "balance", color: "#d8752d", label: "Bankroll" });
-      if (showCumPl) series.push({ key: "cum_pl", color: "#7f69d8", label: "Cumulative P/L" });
-      if (series.length === 0) return;
-
-      const allValues = [];
-      series.forEach((s) => points.forEach((p) => allValues.push(Number(p[s.key]))));
-      const minY = Math.min(...allValues);
-      const maxY = Math.max(...allValues);
-      const spanY = Math.max(maxY - minY, 1);
-
-      function sy(v) {
-        return padT + ((maxY - v) / spanY) * plotH;
-      }
-
-      for (let i = 0; i < 5; i++) {
-        const y = padT + (i / 4) * plotH;
-        const val = maxY - (i / 4) * spanY;
-        svg.insertAdjacentHTML("beforeend",
-          `<line x1="${padL}" y1="${y}" x2="${width - padR}" y2="${y}" stroke="rgba(135,90,60,0.23)" stroke-width="1"/>
-           <text x="${padL - 8}" y="${y + 4}" text-anchor="end" fill="#946546" font-size="11">${val.toFixed(0)}</text>`
-        );
-      }
-
-      svg.insertAdjacentHTML("beforeend",
-        `<line x1="${padL}" y1="${height - padB}" x2="${width - padR}" y2="${height - padB}" stroke="#9a6d45" stroke-width="2"/>
-         <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${height - padB}" stroke="#9a6d45" stroke-width="2"/>`
-      );
-
-      series.forEach((s) => {
-        const d = points.map((p, i) => `${i === 0 ? "M" : "L"} ${sx(i)} ${sy(Number(p[s.key]))}`).join(" ");
-        svg.insertAdjacentHTML("beforeend",
-          `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" />`
-        );
-      });
-
-      const first = points[0];
-      const last = points[points.length - 1];
-      [first, last].forEach((pt) => {
-        const idx = points.indexOf(pt);
-        if (showBankroll) {
-          svg.insertAdjacentHTML("beforeend",
-            `<circle cx="${sx(idx)}" cy="${sy(Number(pt.balance))}" r="4" fill="#fff4e4" stroke="#a8632f" stroke-width="1.5">
-               <title>${pt.date} bankroll: ${pt.balance.toFixed(2)}</title>
-             </circle>`
-          );
-        }
-      });
-    }
-
-    function redrawChartFromToggles() {
-      drawTrendChart(
-        dashboardState.bankroll_series || [],
-        document.getElementById("show-bankroll").checked,
-        document.getElementById("show-cumpl").checked
-      );
-    }
-
-    document.getElementById("show-bankroll").addEventListener("change", redrawChartFromToggles);
-    document.getElementById("show-cumpl").addEventListener("change", redrawChartFromToggles);
-
-    drawConfidenceBars();
-    redrawChartFromToggles();
-    applyGameFilters();
-  </script>
+  <script type="application/json" id="dashboard-state">{{ dashboard_state|tojson }}</script>
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
 </body>
 </html>

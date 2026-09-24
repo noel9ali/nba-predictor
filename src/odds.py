@@ -1,6 +1,7 @@
 import requests
 from dotenv import load_dotenv
 import os
+from console import force_utf8_stdio
 
 # Config
 load_dotenv()
@@ -54,7 +55,7 @@ def get_tonights_odds():
         'oddsFormat': ODDS_FORMAT
     }
 
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, timeout=(5, 30))
 
     if response.status_code != REQUEST_SUCCESS:
         print(f"Error fetching odds: {response.status_code} - {response.text}")
@@ -117,7 +118,7 @@ def get_bookmakers():
         'markets': MARKETS,
         'oddsFormat': ODDS_FORMAT
     }
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, timeout=(5, 30))
     games = response.json()
 
     bookmakers = set()
@@ -130,11 +131,12 @@ def get_bookmakers():
         print(f"  {b}")
 
 if __name__ == '__main__':
+    force_utf8_stdio()
     odds = get_tonights_odds()
     for teams, data in odds.items():
         print(f"{teams[1]} @ {teams[0]}")
         print(f"  Home {data['home_odds']} ({data['home_book']})")
         print(f"  Away {data['away_odds']} ({data['away_book']})")
 
-if __name__ == '__main__':
+    # Manual debug helper: list every bookmaker seen in tonight's odds response.
     get_bookmakers()

@@ -14,7 +14,23 @@ alter table public.predictions
   add column if not exists away_score      integer,
   add column if not exists skip_reason     text;
 
-alter table public.predictions
-  add constraint predictions_status_chk      check (status in ('scheduled','final','postponed','void')),
-  add constraint predictions_skip_reason_chk check (skip_reason is null or skip_reason in ('no_odds','missing_data')),
-  add constraint predictions_season_fmt_chk  check (season is null or season ~ '^\d{4}-\d{2}$');
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'predictions_status_chk' and conrelid = 'public.predictions'::regclass) then
+    alter table public.predictions add constraint predictions_status_chk check (status in ('scheduled','final','postponed','void'));
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'predictions_skip_reason_chk' and conrelid = 'public.predictions'::regclass) then
+    alter table public.predictions add constraint predictions_skip_reason_chk check (skip_reason is null or skip_reason in ('no_odds','missing_data'));
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'predictions_season_fmt_chk' and conrelid = 'public.predictions'::regclass) then
+    alter table public.predictions add constraint predictions_season_fmt_chk check (season is null or season ~ '^\d{4}-\d{2}$');
+  end if;
+end $$;

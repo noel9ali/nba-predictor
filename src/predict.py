@@ -2,6 +2,7 @@ import joblib
 import pandas as pd
 from nba_api.stats.endpoints import scoreboardv3
 from datetime import date
+from console import force_utf8_stdio
 from track import setup_tables, save_prediction, kelly_bet, get_current_bankroll
 from odds import get_tonights_odds
 from elo import get_current_ratings
@@ -252,5 +253,6 @@ def run():
         )
 
 if __name__ == '__main__':
+    force_utf8_stdio()
     setup_tables()
     run()
