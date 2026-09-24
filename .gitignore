@@ -1,5 +1,12 @@
 .env
+.env.local
 venv/
+.venv/
 __pycache__/
+*.pyc
 *.pkl
 data/nba.db
+logs/
+node_modules/
+table_init/*.csv
+.vercel/

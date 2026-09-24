@@ -1,11 +1,13 @@
 @echo off
-echo Activating virtual environment...
-call venv\Scripts\activate
+setlocal
+cd /d "%~dp0"
+call venv\Scripts\activate.bat
 
-echo.
-echo Running predict.py...
-python src/predict.py
-
-echo.
+echo Running src\predict.py...
+python src\predict.py
+if errorlevel 1 (
+    echo Predictions FAILED
+    exit /b 1
+)
 echo Predictions complete.
-pause
+exit /b 0

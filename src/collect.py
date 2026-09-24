@@ -1,10 +1,9 @@
 import time
-import sqlite3
 import pandas as pd
 from nba_api.stats.endpoints import leaguegamefinder
+from database import DatabaseError, normalize_game_id, upsert_rows
 
 # Config
-DB_PATH = 'data/nba.db'
 SEASONS = [
     '2019-20',
     '2020-21',
@@ -14,6 +13,8 @@ SEASONS = [
     '2024-25',
     '2025-26'
 ]
+GAMES_CONFLICT_COLUMNS = ["GAME_ID", "TEAM_ID"]
+GAMES_COMPOSITE_PK_MIGRATION_HINT = "supabase/migrations/20260923000200_games_composite_pk.sql"
 
 # fetch_season()
 def fetch_season(season, retries=3):
@@ -39,10 +40,15 @@ def fetch_season(season, retries=3):
                 print(f"  Giving up on {season} after {retries} attempts")
                 return pd.DataFrame()
 
-def save_to_db(df, db_path):
-    conn = sqlite3.connect(db_path)
-    df.to_sql('games', conn, if_exists='append', index=False)
-    conn.close()
+def save_to_db(df, db_path=None):
+    del db_path
+    df = df.copy()
+    df["GAME_ID"] = df["GAME_ID"].map(normalize_game_id)
+    upsert_rows(
+        "games",
+        df.to_dict("records"),
+        conflict_columns=GAMES_CONFLICT_COLUMNS,
+    )
 
 def run():
     all_data = []
@@ -58,14 +64,16 @@ def run():
         print("No data fetched — database unchanged.")
         return
 
-    # only wipe and replace if data was fetched
+    # Upsert fetched rows so scheduled runs are idempotent and preserve history.
     combined = pd.concat(all_data, ignore_index=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("DROP TABLE IF EXISTS games")
-    conn.commit()
-    conn.close()
-
-    save_to_db(combined, DB_PATH)
+    try:
+        save_to_db(combined)
+    except DatabaseError as exc:
+        if "conflict target" in str(exc):
+            raise DatabaseError(
+                f"{exc}: apply {GAMES_COMPOSITE_PK_MIGRATION_HINT}"
+            ) from exc
+        raise
     print(f"\nDone! Total rows saved: {len(combined)}")
 
 if __name__ == '__main__':

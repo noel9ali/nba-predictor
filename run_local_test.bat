@@ -1,14 +1,5 @@
 @echo off
 setlocal
-
-python scripts\seed_test_games.py --reset
-if errorlevel 1 exit /b %errorlevel%
-
-python src\elo.py
-if errorlevel 1 exit /b %errorlevel%
-
-python src\features.py
-if errorlevel 1 exit /b %errorlevel%
-
-python src\model.py
+cd /d "%~dp0"
+python -m unittest discover -s tests -v
 exit /b %errorlevel%

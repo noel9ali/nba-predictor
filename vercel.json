@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "app.py": {
+      "maxDuration": 30,
+      "excludeFiles": "{venv/**,.venv/**,data/**,table_init/**,node_modules/**,design/**,scheduler/**,scripts/**,tests/**,supabase/**,logs/**,public/**,model.py,src/model.py,src/model_wrappers.py,src/backtest_last_year.py,src/predict.py,src/track.py,src/collect.py,src/elo.py,src/features.py,src/odds.py,src/test.py}"
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "best_model": "legacy-calibrated-logistic",
+  "production_model": "legacy-calibrated-logistic",
+  "available_models": [
+    "legacy-calibrated-logistic",
+    "current-xgboost",
+    "gradient-boosting-gridsearch",
+    "random-forest-gridsearch",
+    "lstm-gridsearch"
+  ],
+  "trained_at": "2026-09-18T01:11:09.204958+00:00",
+  "cutoff_date": "2025-02-25",
+  "features": [
+    "HOME_roll_PTS",
+    "HOME_roll_FG_PCT",
+    "HOME_roll_REB",
+    "HOME_roll_AST",
+    "HOME_roll_TOV",
+    "HOME_roll_STOCKS",
+    "AWAY_roll_PTS",
+    "AWAY_roll_FG_PCT",
+    "AWAY_roll_REB",
+    "AWAY_roll_AST",
+    "AWAY_roll_TOV",
+    "AWAY_roll_STOCKS",
+    "rest_diff",
+    "HOME_ELO",
+    "AWAY_ELO",
+    "ELO_DIFF"
+  ],
+  "leaderboard_path": "data/model_leaderboard.csv"
+}
