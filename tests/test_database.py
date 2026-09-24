@@ -221,7 +221,9 @@ class DatabaseTests(unittest.TestCase):
 
     def test_missing_configuration_is_explicit(self):
         database._client = None
-        with patch.dict(os.environ, {}, clear=True):
+        # Patch out load_dotenv so this test's outcome doesn't depend on
+        # whether a real .env happens to exist on disk in this checkout.
+        with patch.object(database, "load_dotenv"), patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(database.DatabaseError) as raised:
                 database.get_client()
 
