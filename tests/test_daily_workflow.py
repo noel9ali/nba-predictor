@@ -1,7 +1,9 @@
 import contextlib
 import io
 import os
+import subprocess
 import sys
+import time
 import unittest
 from unittest.mock import patch
 
@@ -108,6 +110,197 @@ class QueryAndSmsTests(unittest.TestCase):
         with patch.dict(os.environ, env), contextlib.redirect_stdout(io.StringIO()) as output:
             self.assertFalse(daily_workflow.send_sms("hello"))
         self.assertIn("SMS skipped", output.getvalue())
+
+    def test_redact_secrets_scrubs_twilio_identifiers(self):
+        # Obviously-fake values -- never read from .env.
+        fake = {
+            "TWILIO_ACCOUNT_SID": "AC" + "0" * 32,
+            "TWILIO_FROM": "+15550100000",
+            "TWILIO_TO": "+15550100001",
+        }
+        with patch.dict(os.environ, fake):
+            text = daily_workflow.redact_secrets(
+                f"sid={fake['TWILIO_ACCOUNT_SID']} from={fake['TWILIO_FROM']} to={fake['TWILIO_TO']}"
+            )
+        for value in fake.values():
+            self.assertNotIn(value, text)
+        self.assertEqual(text, "sid=<TWILIO_ACCOUNT_SID> from=<TWILIO_FROM> to=<TWILIO_TO>")
+
+
+class ExceptionLoggingTests(unittest.TestCase):
+    """DP-F5: the three bare `except Exception` fallbacks must log only the
+    exception type name (no message, no secrets), not swallow silently."""
+
+    class Boom(Exception):
+        pass
+
+    def test_get_yesterdays_results_logs_the_exception_type_name(self):
+        with patch.object(daily_workflow, "select_rows", side_effect=self.Boom("secret detail")), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            result = daily_workflow.get_yesterdays_results()
+        self.assertEqual(result, [])
+        self.assertIn("Boom", output.getvalue())
+        self.assertNotIn("secret detail", output.getvalue())
+
+    def test_get_todays_predictions_logs_the_exception_type_name(self):
+        with patch.object(daily_workflow, "select_rows", side_effect=self.Boom("secret detail")), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            result = daily_workflow.get_todays_predictions()
+        self.assertEqual(result, [])
+        self.assertIn("Boom", output.getvalue())
+        self.assertNotIn("secret detail", output.getvalue())
+
+    def test_get_overall_stats_logs_the_exception_type_name(self):
+        with patch.object(daily_workflow, "select_rows", side_effect=self.Boom("secret detail")), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            result = daily_workflow.get_overall_stats()
+        self.assertEqual(result, {})
+        self.assertIn("Boom", output.getvalue())
+        self.assertNotIn("secret detail", output.getvalue())
+
+
+class ExitCodeTests(unittest.TestCase):
+    """DP-F4: __main__ must exit nonzero when any step failed, so Task
+    Scheduler's retry policy actually fires."""
+
+    def test_exit_code_is_zero_only_on_full_success(self):
+        self.assertEqual(daily_workflow._exit_code({"status": "success"}), 0)
+        self.assertEqual(daily_workflow._exit_code({"status": "partial"}), 1)
+        self.assertEqual(daily_workflow._exit_code({"status": "failed"}), 1)
+
+
+class RunBatTimeoutTests(unittest.TestCase):
+    """DP-F6 / SEC-F6: subprocess steps must have a bounded, configurable
+    timeout. run_bat() uses Popen()+communicate() (not subprocess.run), so
+    these fakes patch Popen -- never leave a real Popen call unmocked here,
+    it would launch the real run_pipeline.bat (network + live DB)."""
+
+    def test_run_bat_treats_a_timeout_as_a_failed_step(self):
+        class FakeProc:
+            pid = 4242
+            returncode = 1
+
+            def __init__(self):
+                self.calls = 0
+
+            def communicate(self, timeout=None):
+                self.calls += 1
+                if self.calls == 1:
+                    raise subprocess.TimeoutExpired(cmd="run_pipeline.bat", timeout=timeout)
+                return "", ""
+
+        fake_proc = FakeProc()
+        with patch.object(daily_workflow.subprocess, "Popen", return_value=fake_proc), \
+                patch.object(daily_workflow, "_kill_process_tree") as fake_kill:
+            rc, output = daily_workflow.run_bat(
+                os.path.join(daily_workflow.REPO_ROOT, "run_pipeline.bat"), timeout=1
+            )
+        self.assertEqual(rc, 1)
+        self.assertIn("timed out", output.lower())
+        fake_kill.assert_called_once_with(fake_proc)
+
+    def test_run_bat_passes_a_configurable_timeout_and_a_utf8_child_env(self):
+        captured_popen_kwargs = {}
+        captured_communicate = {}
+
+        class FakeProc:
+            pid = 1234
+            returncode = 0
+
+            def communicate(self, timeout=None):
+                captured_communicate["timeout"] = timeout
+                return "", ""
+
+        def fake_popen(cmd, **kwargs):
+            captured_popen_kwargs.update(kwargs)
+            return FakeProc()
+
+        with patch.dict(os.environ, {"WORKFLOW_STEP_TIMEOUT_SECONDS": "45"}), \
+                patch.object(daily_workflow.subprocess, "Popen", side_effect=fake_popen):
+            daily_workflow.run_bat(os.path.join(daily_workflow.REPO_ROOT, "run_pipeline.bat"))
+
+        self.assertEqual(captured_communicate.get("timeout"), 45)
+        self.assertEqual(captured_popen_kwargs.get("env", {}).get("PYTHONIOENCODING"), "utf-8")
+        self.assertEqual(captured_popen_kwargs.get("encoding"), "utf-8")
+        self.assertEqual(captured_popen_kwargs.get("errors"), "replace")
+
+
+class RunBatProcessTreeTimeoutTests(unittest.TestCase):
+    """DP-F6 / SEC-F6 follow-up: a timed-out step must kill the WHOLE process
+    tree (cmd.exe and any grandchild it spawned, e.g. python.exe), not just
+    cmd.exe -- otherwise a held stdout/stderr pipe handle blocks run_bat's
+    own cleanup past the timeout and the workflow lock is never released.
+    Uses the real behaviour (a real cmd.exe -> python.exe child tree), not a
+    fake -- the child is a plain `time.sleep`, never a pipeline script."""
+
+    SCRATCH_DIR = r"C:\Users\noel9\.claude\jobs\0a8d2dcb\tmp\data-pipeline"
+
+    def test_a_timed_out_step_kills_the_grandchild_process_too(self):
+        pidfile = os.path.join(self.SCRATCH_DIR, "rb_sleeper.pid")
+        batfile = os.path.join(self.SCRATCH_DIR, "rb_sleeper.bat")
+        if os.path.exists(pidfile):
+            os.remove(pidfile)
+
+        # The grandchild just sleeps -- never a real pipeline script -- and
+        # writes its own PID so the test can confirm it was actually killed.
+        child_script = (
+            "import os,sys,time;"
+            f"open(r'{pidfile}','w').write(str(os.getpid()));"
+            "sys.stdout.flush();"
+            "time.sleep(20)"
+        )
+        with open(batfile, "w") as f:
+            f.write("@echo off\r\n")
+            f.write(f'"{sys.executable}" -c "{child_script}"\r\n')
+
+        def cleanup():
+            for path in (pidfile, batfile):
+                if os.path.exists(path):
+                    os.remove(path)
+
+        self.addCleanup(cleanup)
+
+        start = time.monotonic()
+        rc, output = daily_workflow.run_bat(batfile, timeout=2)
+        elapsed = time.monotonic() - start
+
+        self.assertEqual(rc, 1)
+        self.assertIn("timed out", output.lower())
+        self.assertLess(elapsed, 15, f"run_bat took {elapsed:.1f}s -- the grandchild likely blocked cleanup")
+
+        pid = None
+        for _ in range(20):
+            if os.path.exists(pidfile):
+                with open(pidfile) as f:
+                    pid = f.read().strip()
+                break
+            time.sleep(0.1)
+        self.assertIsNotNone(pid, "the sleeper never started -- test setup problem, not a real result")
+
+        result = subprocess.run(["tasklist", "/FI", f"PID eq {pid}"], capture_output=True, text=True)
+        self.assertNotIn(pid, result.stdout, f"sleeper PID {pid} is still alive after the timeout")
+
+
+class ConsoleEncodingTests(unittest.TestCase):
+    """DP-F2: stdout/stderr must survive a non-UTF-8 console/log-redirect
+    encoding instead of crashing with UnicodeEncodeError."""
+
+    def test_force_utf8_stdio_survives_a_cp1252_console_encoding(self):
+        src_dir = os.path.join(daily_workflow.REPO_ROOT, "src")
+        script = (
+            "import sys; sys.path.insert(0, r'%s'); "
+            "from console import force_utf8_stdio; force_utf8_stdio(); "
+            "print(u'✓')" % src_dir
+        )
+        child_env = os.environ.copy()
+        child_env["PYTHONIOENCODING"] = "cp1252"
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            env=child_env,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":

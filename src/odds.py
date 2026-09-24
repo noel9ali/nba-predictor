@@ -54,7 +54,7 @@ def get_tonights_odds():
         'oddsFormat': ODDS_FORMAT
     }
 
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, timeout=(5, 30))
 
     if response.status_code != REQUEST_SUCCESS:
         print(f"Error fetching odds: {response.status_code} - {response.text}")
@@ -117,7 +117,7 @@ def get_bookmakers():
         'markets': MARKETS,
         'oddsFormat': ODDS_FORMAT
     }
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, timeout=(5, 30))
     games = response.json()
 
     bookmakers = set()
@@ -136,5 +136,5 @@ if __name__ == '__main__':
         print(f"  Home {data['home_odds']} ({data['home_book']})")
         print(f"  Away {data['away_odds']} ({data['away_book']})")
 
-if __name__ == '__main__':
+    # Manual debug helper: list every bookmaker seen in tonight's odds response.
     get_bookmakers()

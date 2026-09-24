@@ -22,7 +22,12 @@ from dotenv import load_dotenv
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(REPO_ROOT, 'src'))
 
+from console import force_utf8_stdio  # noqa: E402
 from database import DatabaseError, MissingTableError, insert_rows, select_rows  # noqa: E402
+
+# Must run before any print(): stdout/stderr aren't always a real UTF-8
+# console (redirected to logs\workflow.log, or piped by subprocess.run).
+force_utf8_stdio()
 
 load_dotenv()
 
@@ -32,7 +37,9 @@ load_dotenv()
 
 WORKFLOW_LOG_MIGRATION = 'supabase/migrations/20260923000500_workflow_log.sql'
 LOG_TAIL_CHARS = 4000
-SECRET_ENV_VARS = ('SUPABASE_SECRET_KEY', 'ODDS_API_KEY', 'TWILIO_AUTH_TOKEN')
+SECRET_ENV_VARS = ('SUPABASE_SECRET_KEY', 'ODDS_API_KEY', 'TWILIO_AUTH_TOKEN',
+                    'TWILIO_ACCOUNT_SID', 'TWILIO_FROM', 'TWILIO_TO')
+DEFAULT_STEP_TIMEOUT_SECONDS = 7200  # 2 hours; overridable via WORKFLOW_STEP_TIMEOUT_SECONDS
 
 
 # ---------------------------------------------------------------------------
@@ -74,19 +81,64 @@ def log_run(run_date, started_at, finished_at, status, pipeline_ok, predict_ok, 
 # Subprocess helpers
 # ---------------------------------------------------------------------------
 
-def run_bat(bat_path):
+def _step_timeout_seconds():
+    try:
+        return int(os.getenv('WORKFLOW_STEP_TIMEOUT_SECONDS', str(DEFAULT_STEP_TIMEOUT_SECONDS)))
+    except ValueError:
+        return DEFAULT_STEP_TIMEOUT_SECONDS
+
+
+def _kill_process_tree(proc):
+    """Kill a subprocess and everything it spawned -- e.g. the python.exe a
+    .bat's `python src\\foo.py` line launches as a child of cmd.exe. Killing
+    only the immediate child (as subprocess.run's own timeout handling does)
+    leaves that grandchild holding the stdout/stderr pipe handles open, so a
+    second communicate() call blocks until it exits on its own -- the lock
+    then never releases."""
+    if sys.platform == 'win32':
+        subprocess.run(
+            ['taskkill', '/F', '/T', '/PID', str(proc.pid)],
+            capture_output=True,
+        )
+    else:
+        proc.kill()
+
+
+def run_bat(bat_path, timeout=None):
     """
     Run a .bat file via cmd.exe, streaming output.
     Returns (returncode, combined_stdout_stderr).
+    A step that hangs past the timeout counts as failed rather than blocking
+    forever: the whole process tree is killed so a held pipe handle can never
+    block the caller past the timeout.
     """
-    result = subprocess.run(
+    if timeout is None:
+        timeout = _step_timeout_seconds()
+
+    child_env = os.environ.copy()
+    child_env['PYTHONIOENCODING'] = 'utf-8'  # child scripts must not crash on non-ASCII output either
+
+    proc = subprocess.Popen(
         ['cmd.exe', '/c', bat_path],
         cwd=REPO_ROOT,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
+        encoding='utf-8',
+        errors='replace',
+        env=child_env,
     )
-    output = result.stdout + result.stderr
-    return result.returncode, output
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+        return proc.returncode, (stdout or '') + (stderr or '')
+    except subprocess.TimeoutExpired:
+        _kill_process_tree(proc)
+        try:
+            stdout, stderr = proc.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            stdout, stderr = '', ''
+        output = (stdout or '') + (stderr or '')
+        return 1, output + f"\n[step timed out after {timeout}s]"
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +165,8 @@ def get_yesterdays_results():
             order_by='game_id',
         )
         return _records(df, ('bet_amount', 'odds', 'profit_loss'))
-    except Exception:
+    except Exception as exc:
+        print(f"⚠ get_yesterdays_results failed: {type(exc).__name__}")
         return []
 
 
@@ -129,7 +182,8 @@ def get_todays_predictions():
             order_by='game_id',
         )
         return _records(df, ('home_win_prob', 'away_win_prob', 'bet_amount', 'odds'))
-    except Exception:
+    except Exception as exc:
+        print(f"⚠ get_todays_predictions failed: {type(exc).__name__}")
         return []
 
 
@@ -164,7 +218,8 @@ def get_overall_stats():
             'total_pl': total_pl,
             'bankroll': bankroll,
         }
-    except Exception:
+    except Exception as exc:
+        print(f"⚠ get_overall_stats failed: {type(exc).__name__}")
         return {}
 
 
@@ -353,5 +408,11 @@ def workflow_is_running():
     return _workflow_thread is not None and _workflow_thread.is_alive()
 
 
+def _exit_code(result):
+    """Process exit code for __main__: nonzero when any step failed, so
+    Task Scheduler's -RestartCount retry policy actually fires."""
+    return 0 if result['status'] == 'success' else 1
+
+
 if __name__ == '__main__':
-    run_workflow()
+    sys.exit(_exit_code(run_workflow()))

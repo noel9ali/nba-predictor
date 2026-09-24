@@ -50,14 +50,38 @@ def add_rolling_stats(df):
     return df
 
 def add_rest_days(df):
+    original_len = len(df)
     df['GAME_DATE'] = pd.to_datetime(df['GAME_DATE'])
-    
+
+    # A team's rest depends on its true immediately-preceding game, regardless
+    # of whether that game (or this one) was played at home or away. Build one
+    # row per team per game (long format), diff within each team across BOTH
+    # roles, then map the per-team rest value back onto the wide HOME/AWAY
+    # columns via a merge on (GAME_ID, TEAM_ID).
+    team_games = pd.concat(
+        [
+            df[['GAME_ID', 'GAME_DATE', 'HOME_TEAM_ID']].rename(columns={'HOME_TEAM_ID': 'TEAM_ID'}),
+            df[['GAME_ID', 'GAME_DATE', 'AWAY_TEAM_ID']].rename(columns={'AWAY_TEAM_ID': 'TEAM_ID'}),
+        ],
+        ignore_index=True,
+    )
+    # A duplicated game row (e.g. an upstream dedup bug) must never multiply
+    # rows through the merge below -- collapse to one entry per (game, team)
+    # before diffing/merging.
+    team_games = team_games.drop_duplicates(subset=['GAME_ID', 'TEAM_ID']).sort_values(['TEAM_ID', 'GAME_DATE'])
+    team_games['rest_days'] = team_games.groupby('TEAM_ID')['GAME_DATE'].transform(lambda x: x.diff().dt.days)
+
     for prefix in ['HOME', 'AWAY']:
-        df[f'{prefix}_rest_days'] = (
-            df.groupby(f'{prefix}_TEAM_ID')['GAME_DATE']
-            .transform(lambda x: x.diff().dt.days)
+        df = df.merge(
+            team_games[['GAME_ID', 'TEAM_ID', 'rest_days']].rename(
+                columns={'TEAM_ID': f'{prefix}_TEAM_ID', 'rest_days': f'{prefix}_rest_days'}
+            ),
+            on=['GAME_ID', f'{prefix}_TEAM_ID'],
+            how='left',
         )
-    
+
+    assert len(df) == original_len, "add_rest_days must not change the number of game rows"
+
     df['rest_diff'] = df['HOME_rest_days'] - df['AWAY_rest_days']
     return df
 

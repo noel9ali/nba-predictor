@@ -16,6 +16,10 @@ from database import (
 STARTING_BANKROLL = 1000.00
 MAX_DECIMAL_ODDS = 5.0
 BANKROLL_MIGRATION_HINT = "supabase/migrations/20260923000400_bankroll.sql"
+# Bound how many stale pending predictions a single run will settle; a backlog
+# larger than this is cleared over successive runs (update_results() is
+# idempotent, so re-running is always safe).
+MAX_PENDING_PER_RUN = 500
 
 
 def _require_bankroll_table(callback):
@@ -115,89 +119,114 @@ def kelly_bet(prob, odds, bankroll, fraction=0.25):
     # cap bet at 5% of bankroll
     return min(bet, bankroll * 0.05)
 
-# update_results() fetches yesterday's game results, updates the 
-#   corresponding prediction rows, and updates bankroll table.
+# update_results() fetches results for every prediction still pending from
+#   before today (not just yesterday), updates the corresponding prediction
+#   rows, and recomputes the bankroll for every date that got settled.
 def update_results():
-    yesterday = (date.today() - timedelta(days=1)).strftime('%Y-%m-%d')
-    
+    today = date.today().strftime('%Y-%m-%d')
+
+    # game_date < today (not "== yesterday"): a row missed on one run must
+    # stay eligible on every later run until it's settled. actual_winner is
+    # null makes this idempotent -- a settled row is never selected again.
     pending = select_rows(
         "predictions",
         filters=[
-            ("game_date", "eq", yesterday),
+            ("game_date", "lt", today),
             ("actual_winner", "is", "null"),
         ],
-        order_by="game_id",
+        order_by="game_date",
+        limit=MAX_PENDING_PER_RUN,
     )
 
     if len(pending) == 0:
         print("No pending predictions to update.")
         return
 
-    # fetch yesterday's results
-    board = scoreboardv3.ScoreboardV3(game_date=yesterday)
-    teams = board.get_data_frames()[2]
-
     print(f"Updating {len(pending)} predictions...")
 
-    normalized_scoreboard_ids = teams['gameId'].map(normalize_game_id)
+    settled_dates = set()
 
-    # process all games first, update predictions table only
-    for _, pred in pending.iterrows():
-        pred_game_id = normalize_game_id(pred['game_id'])
-        game_teams = teams[normalized_scoreboard_ids == pred_game_id]
-        if len(game_teams) == 0:
-            continue
+    # one scoreboard fetch per distinct outstanding date, oldest first
+    for game_date, group in pending.groupby("game_date", sort=True):
+        board = scoreboardv3.ScoreboardV3(game_date=game_date)
+        teams = board.get_data_frames()[2]
+        normalized_scoreboard_ids = teams['gameId'].map(normalize_game_id)
 
-        # figure out who won
-        game_teams = game_teams.copy()
-        winner = game_teams.loc[game_teams['score'].astype(float).idxmax(), 'teamTricode']
-        correct = 1 if winner == pred['predicted_winner'] else 0
+        for _, pred in group.iterrows():
+            pred_game_id = normalize_game_id(pred['game_id'])
+            game_teams = teams[normalized_scoreboard_ids == pred_game_id]
+            if len(game_teams) == 0:
+                # postponed or not yet final -- leave pending, retried next run
+                continue
 
-        # calculate profit/loss
-        bet_amount = float(pred['bet_amount'])
-        if pred['bet_placed'] is None or bet_amount == 0:
-            profit_loss = 0
-        elif winner == pred['bet_placed']:
-            odds = int(float(pred['odds']))
-            if odds > 0:
-                profit_loss = bet_amount * (odds / 100)
+            # figure out who won
+            game_teams = game_teams.copy()
+            winner = game_teams.loc[game_teams['score'].astype(float).idxmax(), 'teamTricode']
+            correct = 1 if winner == pred['predicted_winner'] else 0
+
+            # calculate profit/loss
+            bet_amount = float(pred['bet_amount'])
+            if pred['bet_placed'] is None or bet_amount == 0:
+                profit_loss = 0
+            elif winner == pred['bet_placed']:
+                odds = int(float(pred['odds']))
+                if odds > 0:
+                    profit_loss = bet_amount * (odds / 100)
+                else:
+                    profit_loss = bet_amount * (100 / abs(odds))
             else:
-                profit_loss = bet_amount * (100 / abs(odds))
-        else:
-            profit_loss = -bet_amount
+                profit_loss = -bet_amount
 
-        # update prediction row
-        update_rows(
-            "predictions",
-            {
-                "actual_winner": winner,
-                "correct": correct,
-                "profit_loss": profit_loss,
-            },
-            filters=[("game_id", "eq", pred_game_id)],
-        )
+            # update prediction row
+            update_rows(
+                "predictions",
+                {
+                    "actual_winner": winner,
+                    "correct": correct,
+                    "profit_loss": profit_loss,
+                },
+                filters=[("game_id", "eq", pred_game_id)],
+            )
+            settled_dates.add(game_date)
 
-        result = "✓" if correct else "✗"
-        print(f"  {result} {pred['away_team']} @ {pred['home_team']} — predicted {pred['predicted_winner']}, actual {winner}, P/L: ${profit_loss:.2f}")
+            result = "✓" if correct else "✗"
+            print(f"  {result} {pred['away_team']} @ {pred['home_team']} — predicted {pred['predicted_winner']}, actual {winner}, P/L: ${profit_loss:.2f}")
 
-    # recalculate bankroll from scratch based on all completed predictions
+    if not settled_dates:
+        print("No predictions were settled (all pending games are postponed or not yet final).")
+        return
+
+    _recompute_bankroll(settled_dates)
+
+
+# _recompute_bankroll() rewrites the bankroll row for every date from the
+#   earliest affected date onward, in chronological order, matching the
+#   cumulative-sum formula in migration 20260923001100_backfill.sql (starting
+#   bankroll + running total of settled profit_loss, ordered by game_date).
+#   Settling an EARLIER date shifts the cumulative balance of every LATER
+#   date too, so rewriting only the dates settled in this run would leave
+#   every later bankroll row (including the latest one the dashboard/SMS
+#   read) stale.
+def _recompute_bankroll(affected_dates):
     completed = select_rows(
         "predictions",
-        columns="profit_loss",
+        columns="game_date,profit_loss",
         filters=[("profit_loss", "not_is", "null")],
-        order_by="game_id",
+        order_by="game_date",
     )
-    total_pl = completed["profit_loss"].sum() if len(completed) else 0
-    new_balance = STARTING_BANKROLL + total_pl
+    completed = completed.copy()
+    completed["profit_loss"] = pd.to_numeric(completed["profit_loss"], errors="coerce").fillna(0)
+    daily_totals = completed.groupby("game_date")["profit_loss"].sum()
+    running_balance = STARTING_BANKROLL + daily_totals.cumsum()
 
-    # insert new bankroll entry for yesterday
-    upsert_rows(
-        "bankroll",
-        [{"date": yesterday, "balance": float(new_balance)}],
-        conflict_columns=["date"],
-    )
+    earliest_affected = min(affected_dates)
+    stale_dates = sorted(d for d in running_balance.index if d >= earliest_affected)
+    if not stale_dates:
+        return
 
-    print(f"\nBankroll updated: ${new_balance:.2f}")
+    rows = [{"date": d, "balance": float(running_balance.loc[d])} for d in stale_dates]
+    upsert_rows("bankroll", rows, conflict_columns=["date"])
+    print(f"Bankroll updated for {len(rows)} date(s) from {stale_dates[0]}: ${rows[-1]['balance']:.2f}")
 
 # print_summary() reads all completed predictions from the database and prints a summary
 def print_summary():
