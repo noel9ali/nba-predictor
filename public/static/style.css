@@ -164,6 +164,10 @@ body {
 }
 
 .chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
   border: 2px solid #e2b98f;
   border-radius: 999px;
   background: #fff2dd;
@@ -423,6 +427,29 @@ body {
   display: none !important;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.btn-apply {
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  padding: 0.48rem 0.9rem;
+  min-height: 44px;
+  cursor: pointer;
+  align-self: flex-end;
+}
+
 .modal {
   position: fixed;
   inset: 0;
@@ -447,8 +474,8 @@ body {
   position: absolute;
   right: 0.4rem;
   top: 0.35rem;
-  width: 28px;
-  height: 28px;
+  width: 44px;
+  height: 44px;
   border: 2px solid #d5a273;
   border-radius: 8px;
   background: #ffe8cb;
@@ -540,5 +567,16 @@ th {
 
   .game-list {
     max-height: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .third-card {
+    animation: none;
+  }
+
+  .chip,
+  .game-button {
+    transition: none;
   }
 }
