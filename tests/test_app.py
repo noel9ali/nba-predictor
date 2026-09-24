@@ -19,6 +19,8 @@ def _matches(value, operator, expected):
     if operator in ("is", "not_is"):
         is_null = value is None
         return is_null if operator == "is" else not is_null
+    if operator == "in":
+        return value in expected
     if value is None:
         return False
     if operator == "gte":
@@ -112,6 +114,52 @@ def sample_tables():
              "AWAY_rest_days": "1.0"},
         ],
     }
+
+
+def slate_tables(n_games, game_date="2026-03-01"):
+    """predictions/features/elo tables for a synthetic n_games slate, with resolvable
+    team_ids so the batched features/Elo lookups actually fire (API-F1)."""
+    predictions, features, elo = [], [], []
+    for i in range(n_games):
+        home, away = f"H{i:02d}", f"A{i:02d}"
+        home_id, away_id = 100 + i, 200 + i
+        predictions.append(
+            prediction(30000000 + i, game_date, home, away, None, bet_amount=10.0, odds="120")
+        )
+        features.append({
+            "GAME_DATE": "2026-02-15", "HOME_TEAM_ABBREVIATION": home, "HOME_TEAM_ID": home_id,
+            "HOME_roll_PTS": 110.0, "HOME_roll_FG_PCT": 0.47, "HOME_roll_REB": 42.0,
+            "HOME_roll_AST": 24.0, "HOME_roll_TOV": 12.0, "HOME_roll_STOCKS": 11.0, "HOME_rest_days": "1.0",
+            "AWAY_TEAM_ABBREVIATION": away, "AWAY_TEAM_ID": away_id,
+            "AWAY_roll_PTS": 108.0, "AWAY_roll_FG_PCT": 0.46, "AWAY_roll_REB": 41.0,
+            "AWAY_roll_AST": 23.0, "AWAY_roll_TOV": 13.0, "AWAY_roll_STOCKS": 10.0, "AWAY_rest_days": "2.0",
+        })
+        elo.append({
+            "GAME_DATE": "2026-02-20", "HOME_TEAM_ID": home_id, "AWAY_TEAM_ID": away_id,
+            "HOME_ELO": 1500.0 + i, "AWAY_ELO": 1490.0 + i,
+        })
+    return {
+        "predictions": predictions,
+        "bankroll": [{"date": game_date, "balance": 1000.0}],
+        "features": features,
+        "elo": elo,
+    }
+
+
+class CountingFakeDB:
+    """Wraps a FakeDB and counts select_rows calls, per table, for query-budget tests."""
+
+    def __init__(self, tables):
+        self.db = FakeDB(tables)
+        self.calls = []
+
+    def __call__(self, table, **kwargs):
+        self.calls.append(table)
+        return self.db(table, **kwargs)
+
+    @property
+    def total_calls(self):
+        return len(self.calls)
 
 
 LEGACY_ROUTES = [
@@ -237,6 +285,15 @@ class SeasonTests(AppTestCase):
                 self.assertEqual(response.get_json()["error"], "bad_request")
                 self.assertEqual(response.headers["Cache-Control"], "no-store")
 
+    def test_game_date_not_in_the_sample_falls_back_to_the_latest_date(self):
+        # TH-F8: pick_date()'s fallback-to-latest branch (game_date not in the known dates).
+        # 2025-11-01 and 2026-03-01 are the 2025-26 dates; 2026-03-01 is the latest.
+        body = self.client.get("/api/dashboard-state?season=2025-26&game_date=1999-01-01").get_json()
+        self.assertEqual(body["game_date"], "2026-03-01")
+
+        body = self.client.get("/api/recommendations?season=2025-26&game_date=1999-01-01").get_json()
+        self.assertEqual(body["game_date"], "2026-03-01")
+
 
 class DatabaseFailureTests(AppTestCase):
     def test_missing_bankroll_table_is_migration_pending(self):
@@ -334,6 +391,94 @@ class SecretExposureTests(AppTestCase):
             bodies += [self.client.get(route).get_data(as_text=True) for route in ["/", *LEGACY_ROUTES]]
         for body in bodies:
             self.assertNotIn("TESTVALUE", body)
+
+
+class QueryBudgetTests(unittest.TestCase):
+    """API-F1: select_rows call counts must stay constant as the slate grows."""
+
+    def setUp(self):
+        self.client = dashboard.app.test_client()
+
+    def _get(self, route, n_games):
+        counting = CountingFakeDB(slate_tables(n_games))
+        with patch.object(dashboard, "select_rows", counting):
+            response = self.client.get(f"{route}?season=2025-26&game_date=2026-03-01")
+        self.assertEqual(response.status_code, 200)
+        return response, counting
+
+    def test_recommendations_call_count_is_constant_regardless_of_slate_size(self):
+        _, one_game = self._get("/api/recommendations", 1)
+        _, fifteen_games = self._get("/api/recommendations", 15)
+        self.assertEqual(one_game.total_calls, fifteen_games.total_calls)
+        self.assertLessEqual(fifteen_games.total_calls, 6)
+
+    def test_dashboard_state_call_count_is_constant_regardless_of_slate_size(self):
+        _, one_game = self._get("/api/dashboard-state", 1)
+        _, fifteen_games = self._get("/api/dashboard-state", 15)
+        self.assertEqual(one_game.total_calls, fifteen_games.total_calls)
+        self.assertLessEqual(fifteen_games.total_calls, 10)
+
+    def test_index_call_count_is_constant_regardless_of_slate_size(self):
+        one_game = CountingFakeDB(slate_tables(1))
+        with patch.object(dashboard, "select_rows", one_game):
+            response = self.client.get("/?season=2025-26&game_date=2026-03-01")
+        self.assertEqual(response.status_code, 200)
+
+        fifteen_games = CountingFakeDB(slate_tables(15))
+        with patch.object(dashboard, "select_rows", fifteen_games):
+            response = self.client.get("/?season=2025-26&game_date=2026-03-01")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(one_game.total_calls, fifteen_games.total_calls)
+
+
+class BatchedLookupTests(AppTestCase):
+    def test_batched_elo_matches_the_per_team_result_when_the_latest_game_was_away(self):
+        # LAL (team_id 1) played at home on 2026-02-01 (elo 1500) and away on 2026-02-20
+        # (elo 1520); the away appearance is later, so the batched lookup must still pick it,
+        # exactly like the old per-team latest_team_elo() did.
+        result = dashboard._latest_elo_by_team([1, 2], "2026-03-01")
+        self.assertEqual(result[1], 1520.0)
+        self.assertEqual(result[2], 1480.0)
+
+
+class CacheControlTests(AppTestCase):
+    def test_index_success_sends_the_legacy_cache_control(self):
+        response = self.client.get("/")
+        self.assertIn("s-maxage=300", response.headers["Cache-Control"])
+
+    def test_index_degraded_sends_no_store(self):
+        self.db.errors["predictions"] = DatabaseError("Reading predictions failed: detail-XYZ")
+        response = self.client.get("/")
+        self.assertEqual(response.headers.get("Cache-Control"), "no-store")
+
+
+class MigrationNoticeTests(AppTestCase):
+    def test_index_shows_a_status_notice_when_migration_pending_but_not_fully_down(self):
+        self.db.errors["bankroll"] = MissingTableError("Reading bankroll failed: table is missing")
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        self.assertIn('role="status"', html)
+        self.assertIn("migration", html.lower())
+
+    def test_index_has_no_migration_notice_when_data_is_complete(self):
+        response = self.client.get("/")
+        html = response.get_data(as_text=True)
+        self.assertNotIn("migration", html.lower())
+
+
+class ErrorHandlerTests(AppTestCase):
+    def test_unknown_route_is_a_json_404(self):
+        response = self.client.get("/nope")
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.get_json(), {"error": "not_found"})
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
+
+    def test_wrong_method_is_a_json_405(self):
+        response = self.client.get("/api/run-workflow")
+        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.get_json(), {"error": "method_not_allowed"})
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
 
 
 if __name__ == "__main__":

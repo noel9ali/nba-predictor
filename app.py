@@ -1,11 +1,11 @@
 import os
 import re
 import sys
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
 from dotenv import load_dotenv
-from flask import Flask, g, jsonify, render_template, request
+from flask import Flask, g, jsonify, make_response, render_template, request
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
@@ -150,29 +150,33 @@ def records(df):
     return df.astype(object).where(df.notna(), None).to_dict("records")
 
 
+def _prediction_dates():
+    """All predictions.game_date values, fetched once per request so available_seasons()
+    and available_prediction_dates() (SEC-F4/API-F1) can share the read."""
+    dates = g.get("_prediction_dates")
+    if dates is None:
+        df = read_rows(
+            "predictions",
+            columns="game_date",
+            filters=[("game_date", "not_is", "null")],
+            order_by="game_date",
+            descending=True,
+        )
+        dates = [r["game_date"] for r in records(df) if r.get("game_date")]
+        g._prediction_dates = dates
+    return dates
+
+
 def available_seasons():
-    df = read_rows(
-        "predictions",
-        columns="game_date",
-        filters=[("game_date", "not_is", "null")],
-        order_by="game_date",
-        descending=True,
-    )
-    seasons = list(dict.fromkeys(season_for(r["game_date"]) for r in records(df) if r.get("game_date")))
+    seasons = list(dict.fromkeys(season_for(d) for d in _prediction_dates()))
     if not seasons:
         seasons = [season_for(date.today())]
     return seasons
 
 
 def available_prediction_dates(season):
-    df = read_rows(
-        "predictions",
-        columns="game_date",
-        filters=season_filters("game_date", season),
-        order_by="game_date",
-        descending=True,
-    )
-    dates = list(dict.fromkeys(r["game_date"] for r in records(df) if r.get("game_date")))
+    start, end = season_bounds(season)
+    dates = list(dict.fromkeys(d for d in _prediction_dates() if start <= d <= end))
     if not dates:
         dates = [date.today().strftime("%Y-%m-%d")]
     return dates
@@ -300,30 +304,49 @@ def ytd_summary_for_season(season, bankroll_points=None):
     }
 
 
-def latest_team_elo(team_id):
-    if team_id is None:
-        return None
+# Batched per-team lookups (API-F1): one query per side for the whole slate instead of one
+# per team, so the call count stays constant no matter how many games are on the date. The
+# GAME_DATE lower bound keeps each query to a single page; teams play far more often than
+# every TEAM_LOOKBACK_DAYS, so it doesn't change which row is "latest" in practice.
+TEAM_LOOKBACK_DAYS = 60
 
-    team_id = int(team_id)
-    latest = None
+
+def _latest_elo_by_team(team_ids, before_date):
+    """The latest elo rating for each team_id, across both home and away appearances."""
+    team_ids = sorted({int(t) for t in team_ids if t is not None})
+    if not team_ids:
+        return {}
+
+    lookback = (date.fromisoformat(before_date) - timedelta(days=TEAM_LOOKBACK_DAYS)).isoformat()
+    latest = {}
     for side in ("HOME", "AWAY"):
+        id_column = f"{side}_TEAM_ID"
         rows = records(
             read_rows(
                 "elo",
-                columns=f"GAME_DATE,{side}_ELO",
-                filters=[(f"{side}_TEAM_ID", "eq", team_id)],
+                columns=f"GAME_DATE,{id_column},{side}_ELO",
+                filters=[(id_column, "in", team_ids), ("GAME_DATE", "gte", lookback)],
                 order_by="GAME_DATE",
                 descending=True,
-                limit=1,
             )
         )
-        if rows and (latest is None or str(rows[0]["GAME_DATE"]) > str(latest["GAME_DATE"])):
-            latest = {"GAME_DATE": rows[0]["GAME_DATE"], "elo_value": rows[0][f"{side}_ELO"]}
-    return safe_float(latest["elo_value"]) if latest else None
+        seen = set()
+        for row in rows:
+            team_id = row.get(id_column)
+            if team_id is None or team_id in seen:
+                continue  # rows arrive latest-first per side; the first hit per team wins
+            seen.add(team_id)
+            game_date = row.get("GAME_DATE")
+            current = latest.get(team_id)
+            if current is None or str(game_date) > str(current["GAME_DATE"]):
+                latest[team_id] = {"GAME_DATE": game_date, "elo_value": row.get(f"{side}_ELO")}
+    return {team_id: safe_float(v["elo_value"]) for team_id, v in latest.items()}
 
 
-def latest_team_feature_by_side(team_abbr, side_prefix):
-    if not team_abbr:
+def _latest_features_by_team(team_abbrs, side_prefix, before_date):
+    """The latest `side_prefix` features row for each team in team_abbrs, in one query."""
+    team_abbrs = sorted({t for t in team_abbrs if t})
+    if not team_abbrs:
         return {}
 
     columns = {
@@ -336,19 +359,23 @@ def latest_team_feature_by_side(team_abbr, side_prefix):
         "roll_stocks": f"{side_prefix}_roll_STOCKS",
         "rest_days": f"{side_prefix}_rest_days",
     }
+    abbr_column = f"{side_prefix}_TEAM_ABBREVIATION"
+    lookback = (date.fromisoformat(before_date) - timedelta(days=TEAM_LOOKBACK_DAYS)).isoformat()
     rows = records(
         read_rows(
             "features",
-            columns=",".join(columns.values()),
-            filters=[(f"{side_prefix}_TEAM_ABBREVIATION", "eq", team_abbr)],
+            columns=f"{abbr_column}," + ",".join(columns.values()),
+            filters=[(abbr_column, "in", team_abbrs), ("GAME_DATE", "gte", lookback)],
             order_by="GAME_DATE",
             descending=True,
-            limit=1,
         )
     )
-    if not rows:
-        return {}
-    return {alias: rows[0].get(column) for alias, column in columns.items()}
+    latest = {}
+    for row in rows:
+        abbr = row.get(abbr_column)
+        if abbr and abbr not in latest:  # rows arrive latest-first; keep the first per team
+            latest[abbr] = {alias: row.get(column) for alias, column in columns.items()}
+    return latest
 
 
 def build_recommendations(game_date):
@@ -363,6 +390,13 @@ def build_recommendations(game_date):
             order_by=["home_team", "away_team"],
         )
     )
+
+    home_features = _latest_features_by_team((r.get("home_team") for r in rows), "HOME", game_date)
+    away_features = _latest_features_by_team((r.get("away_team") for r in rows), "AWAY", game_date)
+    team_ids = (
+        ctx.get("team_id") for ctx in (*home_features.values(), *away_features.values())
+    )
+    elo_by_team = _latest_elo_by_team(team_ids, game_date)
 
     recommendations = []
     for i, game in enumerate(rows):
@@ -381,8 +415,10 @@ def build_recommendations(game_date):
         if expected_win_prob is not None and implied_prob is not None:
             edge = expected_win_prob - implied_prob
 
-        home_ctx = latest_team_feature_by_side(game.get("home_team"), "HOME")
-        away_ctx = latest_team_feature_by_side(game.get("away_team"), "AWAY")
+        home_ctx = home_features.get(game.get("home_team"), {})
+        away_ctx = away_features.get(game.get("away_team"), {})
+        home_team_id = home_ctx.get("team_id")
+        away_team_id = away_ctx.get("team_id")
 
         bet_amount = safe_float(game.get("bet_amount"), 0) or 0
         game_id = game.get("game_id")
@@ -401,8 +437,8 @@ def build_recommendations(game_date):
                 "odds": safe_float(game.get("odds")),
                 "recommendation_type": "bet" if bet_amount > 0 else "no_edge",
                 "details": {
-                    "home_elo": latest_team_elo(home_ctx.get("team_id")),
-                    "away_elo": latest_team_elo(away_ctx.get("team_id")),
+                    "home_elo": elo_by_team.get(int(home_team_id)) if home_team_id is not None else None,
+                    "away_elo": elo_by_team.get(int(away_team_id)) if away_team_id is not None else None,
                     "home_rest_days": safe_float(home_ctx.get("rest_days")),
                     "away_rest_days": safe_float(away_ctx.get("rest_days")),
                     "home_roll_pts": safe_float(home_ctx.get("roll_pts")),
@@ -522,6 +558,16 @@ def database_unavailable(exc):
     return error_response(503, "database_unavailable")
 
 
+@app.errorhandler(404)
+def not_found(exc):
+    return error_response(404, "not_found")
+
+
+@app.errorhandler(405)
+def method_not_allowed(exc):
+    return error_response(405, "method_not_allowed")
+
+
 @app.route("/")
 def index():
     notice = None
@@ -540,15 +586,20 @@ def index():
         dashboard_state = empty_dashboard_state(selected_season, selected_date)
         notice = "Game data is unavailable right now. Try again in a few minutes."
 
-    return render_template(
-        "index.html",
-        seasons=seasons,
-        selected_season=selected_season,
-        available_dates=dates,
-        selected_date=selected_date,
-        dashboard_state=dashboard_state,
-        notice=notice,
+    response = make_response(
+        render_template(
+            "index.html",
+            seasons=seasons,
+            selected_season=selected_season,
+            available_dates=dates,
+            selected_date=selected_date,
+            dashboard_state=dashboard_state,
+            notice=notice,
+            migration_pending=bool(g.get("migration_pending", False)),
+        )
     )
+    response.headers["Cache-Control"] = LEGACY_CACHE_CONTROL if notice is None else "no-store"
+    return response
 
 
 @app.route("/api/dashboard-state")

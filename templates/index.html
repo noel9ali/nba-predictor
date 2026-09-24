@@ -36,6 +36,7 @@
     </form>
   </header>
   {% if notice %}<p class="empty" role="status">{{ notice }}</p>{% endif %}
+  {% if migration_pending %}<p class="empty" role="status">Some figures are incomplete pending a data migration.</p>{% endif %}
 
   <main class="thirds-layout">
     <section class="third-card left-third">
