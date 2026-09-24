@@ -209,6 +209,42 @@ class AppJsStaticSinkTests(unittest.TestCase):
         self.assertEqual(re.findall(r"\.innerHTML\s*=", content), [])
 
 
+class ModalKeydownListenerTests(unittest.TestCase):
+    """(FE-F20) the Esc/Tab-trap keydown handler must be bound to `document`, not to
+    `#summary-modal`, so it keeps working once focus leaves the modal's DOM subtree while
+    the modal is still open (e.g. a click on non-focusable modal-card content moves
+    `document.activeElement` to `<body>` in real browsers -- DOM `keydown` events bound to
+    `modal` only reach it via bubbling from a descendant, so they never fire once focus, and
+    therefore the event target, is outside that subtree). Coarse static check on app.js
+    text: no keydown listener is registered on the `modal` element, exactly one keydown
+    listener is registered (on `document`), so it is added once at init and not re-added
+    per modal-open call (no listener leak)."""
+
+    def setUp(self):
+        with open(APP_JS_PATH, "r", encoding="utf-8") as fh:
+            self.js = fh.read()
+
+    def test_keydown_listener_bound_to_document_not_modal(self):
+        self.assertNotRegex(
+            self.js, r'modal\.addEventListener\(\s*"keydown"',
+            "keydown listener must not be bound to #summary-modal (it stops firing once "
+            "focus, and hence the event target, moves outside the modal subtree)",
+        )
+        self.assertRegex(
+            self.js, r'document\.addEventListener\(\s*"keydown"',
+            "expected a keydown listener bound to `document` so Esc/Tab handling works "
+            "regardless of where focus currently is while the modal is open",
+        )
+
+    def test_keydown_listener_added_exactly_once(self):
+        matches = re.findall(r'addEventListener\(\s*"keydown"', self.js)
+        self.assertEqual(
+            len(matches), 1,
+            f"expected exactly one keydown listener registration (added once at init, not "
+            f"per modal-open call), found {len(matches)}",
+        )
+
+
 class AccessibilityMarkupTests(FrontendTestCase):
     """(d) search input has an associated label; modal has role=dialog + aria-modal."""
 
@@ -275,6 +311,42 @@ class TouchTargetAndMotionCssTests(unittest.TestCase):
 
     def test_prefers_reduced_motion_media_query_exists(self):
         self.assertIn("prefers-reduced-motion: reduce", self.css)
+
+
+class OverflowWrapCssTests(unittest.TestCase):
+    """(FE-F21) a long unbroken string (e.g. corrupted data, or a team-name field with no
+    spaces) must be able to wrap instead of overflowing/clipping. `.matchup` is the game-row
+    span that renders `home_team @ away_team` directly; `.game-button` is its ancestor and
+    also wraps the `.pick` (predicted_winner) text, so putting the rule there too covers both
+    via inheritance (overflow-wrap is an inherited CSS property)."""
+
+    def setUp(self):
+        css_path = os.path.join(
+            os.path.dirname(__file__), "..", "public", "static", "style.css"
+        )
+        with open(css_path, "r", encoding="utf-8") as fh:
+            self.css = fh.read()
+
+    def _block(self, selector):
+        pattern = re.escape(selector) + r"\s*\{([^}]*)\}"
+        match = re.search(pattern, self.css)
+        self.assertIsNotNone(match, f"expected a {selector} rule block in style.css")
+        return match.group(1)
+
+    def test_matchup_has_overflow_wrap(self):
+        block = self._block(".matchup")
+        self.assertRegex(block, r"overflow-wrap:\s*anywhere\s*;")
+
+    def test_game_button_has_overflow_wrap(self):
+        block = self._block(".game-button")
+        self.assertRegex(block, r"overflow-wrap:\s*anywhere\s*;")
+
+    def test_modal_card_has_overflow_wrap(self):
+        # Covers the modal's own team-name/free-text descendants (the modal-title heading
+        # built as `Game Summary: ${game.matchup}`, the predicted-winner and team-name
+        # cells) via CSS inheritance.
+        block = self._block(".modal-card")
+        self.assertRegex(block, r"overflow-wrap:\s*anywhere\s*;")
 
 
 if __name__ == "__main__":

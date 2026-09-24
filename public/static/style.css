@@ -214,6 +214,7 @@ body {
   gap: 0.24rem;
   cursor: pointer;
   transition: 180ms ease;
+  overflow-wrap: anywhere;
 }
 
 .game-button:hover {
@@ -231,6 +232,7 @@ body {
 .matchup {
   font-weight: 700;
   font-size: 0.95rem;
+  overflow-wrap: anywhere;
 }
 
 .confidence {
@@ -468,6 +470,7 @@ body {
   background: #fff9ef;
   padding: 0.9rem;
   position: relative;
+  overflow-wrap: anywhere;
 }
 
 .close-modal {

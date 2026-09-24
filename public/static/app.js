@@ -68,6 +68,11 @@
 
   const modal = document.getElementById("summary-modal");
   const closeModalBtn = modal.querySelector(".close-modal");
+  const modalCard = modal.querySelector(".modal-card");
+  // FE-F20: fallback focus target (programmatically focusable, but not tab-reachable itself
+  // since getFocusableElements() excludes tabindex="-1") for when the modal has no other
+  // focusable descendant to pull focus back into.
+  modalCard.tabIndex = -1;
   let lastFocusedElement = null;
 
   function getFocusableElements(container) {
@@ -138,7 +143,12 @@
     });
 
     // FE-F4: Esc closes the modal; Tab/Shift+Tab stay trapped inside it while it's open.
-    modal.addEventListener("keydown", (e) => {
+    // FE-F20: bound to `document` (once, here at init -- not re-added per open) instead of
+    // `modal`, so it keeps firing even once focus (and therefore the keydown event's target)
+    // has moved outside the modal's DOM subtree, e.g. to <body> after a click on
+    // non-focusable modal-card content. The `hidden` check below guards it to only act while
+    // the modal is actually open.
+    document.addEventListener("keydown", (e) => {
       if (modal.classList.contains("hidden")) return;
 
       if (e.key === "Escape") {
@@ -148,9 +158,24 @@
 
       if (e.key === "Tab") {
         const focusable = getFocusableElements(modal);
-        if (focusable.length === 0) return;
+        if (focusable.length === 0) {
+          // No focusable descendant to trap into -- fall back to the modal card itself.
+          e.preventDefault();
+          modalCard.focus();
+          return;
+        }
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
+
+        if (!modal.contains(document.activeElement)) {
+          // Focus escaped the modal subtree entirely (e.g. a click on non-focusable modal
+          // content blurred to <body>): pull it back in instead of letting native Tab order
+          // continue into the page behind the overlay.
+          e.preventDefault();
+          (e.shiftKey ? last : first).focus();
+          return;
+        }
+
         if (e.shiftKey && document.activeElement === first) {
           e.preventDefault();
           last.focus();
