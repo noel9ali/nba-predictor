@@ -10,6 +10,7 @@ from typing import Any
 
 import pandas as pd
 from dotenv import load_dotenv
+from postgrest.exceptions import APIError
 from supabase import Client, create_client
 
 
@@ -66,10 +67,7 @@ def _error_details(error: Any) -> tuple[str, str]:
     return str(code), str(message)
 
 
-def _raise_response_error(operation: str, response: Any) -> None:
-    error = getattr(response, "error", None)
-    if not error:
-        return
+def _raise_for_error(operation: str, error: Any) -> None:
     code, message = _error_details(error)
     safe_message = f"{operation} failed"
     if code == "23505":
@@ -90,11 +88,20 @@ def _raise_response_error(operation: str, response: Any) -> None:
     raise DatabaseError(f"{safe_message} ({code})" if code else safe_message) from None
 
 
+def _raise_response_error(operation: str, response: Any) -> None:
+    error = getattr(response, "error", None)
+    if not error:
+        return
+    _raise_for_error(operation, error)
+
+
 def _run(operation: str, callback):
     try:
         response = callback()
-    except (DatabaseError, DuplicateRecordError):
+    except DatabaseError:
         raise
+    except APIError as exc:
+        _raise_for_error(operation, exc)
     except Exception as exc:
         raise DatabaseError(f"{operation} failed") from exc
     _raise_response_error(operation, response)

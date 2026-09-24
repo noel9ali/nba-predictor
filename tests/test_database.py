@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
+from postgrest.exceptions import APIError
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -101,6 +102,29 @@ class FakeQuery:
 class FakeClient:
     def __init__(self, response=None):
         self.query = FakeQuery(response or Response())
+
+    def table(self, table):
+        self.query.calls.append(("table", table))
+        return self.query
+
+    def rpc(self, function, params):
+        return self.query.rpc(function, params)
+
+
+class RaisingQuery(FakeQuery):
+    """Models the real postgrest client: execute() raises instead of returning an error response."""
+
+    def __init__(self, exc):
+        super().__init__(Response())
+        self.exc = exc
+
+    def execute(self):
+        raise self.exc
+
+
+class RaisingClient:
+    def __init__(self, exc):
+        self.query = RaisingQuery(exc)
 
     def table(self, table):
         self.query.calls.append(("table", table))
@@ -325,6 +349,52 @@ class DatabaseTests(unittest.TestCase):
         )
         with self.assertRaises(database.MissingColumnError):
             database.select_rows("predictions", order_by="game_id")
+
+    def test_raised_api_error_is_translated_to_missing_table_error(self):
+        for code in ("PGRST205", "42P01"):
+            error = APIError({"code": code, "message": "missing", "details": None, "hint": None})
+            database._client = RaisingClient(error)
+            with self.assertRaises(database.MissingTableError):
+                database.select_rows("bankroll", order_by="date")
+
+    def test_raised_api_error_is_translated_to_missing_column_error(self):
+        for code in ("PGRST204", "42703"):
+            error = APIError({"code": code, "message": "missing", "details": None, "hint": None})
+            database._client = RaisingClient(error)
+            with self.assertRaises(database.MissingColumnError):
+                database.select_rows("predictions", order_by="game_id")
+
+    def test_raised_api_error_is_translated_to_duplicate_record_error(self):
+        error = APIError({"code": "23505", "message": "duplicate", "details": None, "hint": None})
+        database._client = RaisingClient(error)
+        with self.assertRaises(database.DuplicateRecordError):
+            database.insert_rows("predictions", [{"game_id": "g1"}])
+
+    def test_raised_api_error_with_unknown_code_is_plain_database_error(self):
+        error = APIError({"code": "99999", "message": "boom", "details": None, "hint": None})
+        database._client = RaisingClient(error)
+        with self.assertRaises(database.DatabaseError) as raised:
+            database.select_rows("predictions", order_by="game_id")
+
+        self.assertIn("99999", str(raised.exception))
+
+    def test_raised_api_error_message_text_is_not_leaked(self):
+        error = APIError(
+            {"code": "PGRST205", "message": "super-secret-diagnostic-text", "details": None, "hint": None}
+        )
+        database._client = RaisingClient(error)
+        with self.assertRaises(database.MissingTableError) as raised:
+            database.select_rows("bankroll", order_by="date")
+
+        self.assertNotIn("super-secret-diagnostic-text", str(raised.exception))
+
+    def test_non_api_error_exception_still_becomes_plain_database_error(self):
+        database._client = RaisingClient(RuntimeError("connection reset"))
+        with self.assertRaises(database.DatabaseError) as raised:
+            database.select_rows("predictions", order_by="game_id")
+
+        self.assertNotIsInstance(raised.exception, database.MissingTableError)
+        self.assertNotIn("connection reset", str(raised.exception))
 
     def test_normalize_game_id(self):
         self.assertEqual(database.normalize_game_id(22501186), "0022501186")
