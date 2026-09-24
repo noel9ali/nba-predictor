@@ -26,3 +26,11 @@ end $$;
 alter default privileges for role postgres in schema public revoke all on tables from anon, authenticated;
 alter default privileges for role postgres in schema public revoke all on functions from anon, authenticated;
 alter default privileges for role postgres in schema public revoke all on sequences from anon, authenticated;
+
+-- Per the Postgres docs (ALTER DEFAULT PRIVILEGES), per-schema default privileges are ADDED to,
+-- not substituted for, the global default; a per-schema REVOKE only reverses a per-schema GRANT
+-- and cannot claw back Postgres's built-in global default of EXECUTE to PUBLIC on functions. Once
+-- the per-schema functions row above is emptied of anon/authenticated, a future function with no
+-- explicit revoke of its own falls straight back to that global PUBLIC-execute default, which
+-- anon/authenticated inherit as members of PUBLIC. Close the global default directly.
+alter default privileges for role postgres revoke execute on functions from public;
