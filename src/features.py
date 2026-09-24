@@ -1,4 +1,5 @@
 import pandas as pd
+from console import force_utf8_stdio
 from database import select_rows, upsert_rows
 
 # --- Config ---
@@ -80,7 +81,12 @@ def add_rest_days(df):
             how='left',
         )
 
-    assert len(df) == original_len, "add_rest_days must not change the number of game rows"
+    if len(df) != original_len:
+        raise RuntimeError(
+            "add_rest_days must not change the number of game rows "
+            f"(started with {original_len}, ended with {len(df)}) -- "
+            "check for duplicate (GAME_ID, TEAM_ID) rows upstream"
+        )
 
     df['rest_diff'] = df['HOME_rest_days'] - df['AWAY_rest_days']
     return df
@@ -126,4 +132,5 @@ def run():
     print("Saved!")
 
 if __name__ == '__main__':
+    force_utf8_stdio()
     run()

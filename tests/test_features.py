@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 import pandas as pd
 
@@ -49,6 +50,26 @@ class RestDaysTests(unittest.TestCase):
         result = features.add_rest_days(df)
 
         self.assertEqual(len(result), len(df))
+
+    def test_invariant_violation_raises_a_clear_runtime_error(self):
+        # DP-F23: the row-count invariant must be enforced with an explicit
+        # check, not a bare `assert` (stripped by python -O). Force the
+        # internal duplicate-collapse step to be a no-op so a duplicated
+        # (GAME_ID, TEAM_ID) row genuinely multiplies rows through the merge.
+        df = pd.DataFrame(
+            [
+                {"GAME_ID": "G1", "GAME_DATE": "2026-01-01", "HOME_TEAM_ID": 2, "AWAY_TEAM_ID": 1},
+                {"GAME_ID": "G2", "GAME_DATE": "2026-01-04", "HOME_TEAM_ID": 1, "AWAY_TEAM_ID": 3},
+            ]
+        )
+
+        def broken_drop_duplicates(self, *args, **kwargs):
+            return pd.concat([self, self.iloc[[0]]], ignore_index=True)
+
+        with patch.object(pd.DataFrame, "drop_duplicates", broken_drop_duplicates):
+            with self.assertRaises(RuntimeError) as raised:
+                features.add_rest_days(df)
+        self.assertIn("add_rest_days", str(raised.exception))
 
 
 if __name__ == "__main__":

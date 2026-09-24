@@ -1,6 +1,7 @@
 import time
 import pandas as pd
 from nba_api.stats.endpoints import leaguegamefinder
+from console import force_utf8_stdio
 from database import DatabaseError, normalize_game_id, upsert_rows
 
 # Config
@@ -77,4 +78,5 @@ def run():
     print(f"\nDone! Total rows saved: {len(combined)}")
 
 if __name__ == '__main__':
+    force_utf8_stdio()
     run()

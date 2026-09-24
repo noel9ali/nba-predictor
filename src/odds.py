@@ -1,6 +1,7 @@
 import requests
 from dotenv import load_dotenv
 import os
+from console import force_utf8_stdio
 
 # Config
 load_dotenv()
@@ -130,6 +131,7 @@ def get_bookmakers():
         print(f"  {b}")
 
 if __name__ == '__main__':
+    force_utf8_stdio()
     odds = get_tonights_odds()
     for teams, data in odds.items():
         print(f"{teams[1]} @ {teams[0]}")

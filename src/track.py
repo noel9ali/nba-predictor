@@ -1,6 +1,7 @@
 import pandas as pd
 from datetime import date, timedelta
 from nba_api.stats.endpoints import scoreboardv3
+from console import force_utf8_stdio
 from database import (
     DatabaseError,
     DuplicateRecordError,
@@ -20,6 +21,8 @@ BANKROLL_MIGRATION_HINT = "supabase/migrations/20260923000400_bankroll.sql"
 # larger than this is cleared over successive runs (update_results() is
 # idempotent, so re-running is always safe).
 MAX_PENDING_PER_RUN = 500
+# ScoreboardV3's GameHeader.gameStatus: 1=scheduled, 2=live, 3=final.
+FINAL_GAME_STATUS = 3
 
 
 def _require_bankroll_table(callback):
@@ -128,6 +131,10 @@ def update_results():
     # game_date < today (not "== yesterday"): a row missed on one run must
     # stay eligible on every later run until it's settled. actual_winner is
     # null makes this idempotent -- a settled row is never selected again.
+    # Select the MOST RECENT pending rows first (descending), then process
+    # them oldest-first below: a permanently-stuck old row (e.g. a cancelled
+    # game that never appears in any future scoreboard) can then never
+    # occupy every cap slot and starve genuinely newer, settleable rows.
     pending = select_rows(
         "predictions",
         filters=[
@@ -135,6 +142,7 @@ def update_results():
             ("actual_winner", "is", "null"),
         ],
         order_by="game_date",
+        descending=True,
         limit=MAX_PENDING_PER_RUN,
     )
 
@@ -149,19 +157,38 @@ def update_results():
     # one scoreboard fetch per distinct outstanding date, oldest first
     for game_date, group in pending.groupby("game_date", sort=True):
         board = scoreboardv3.ScoreboardV3(game_date=game_date)
-        teams = board.get_data_frames()[2]
+        frames = board.get_data_frames()
+        headers = frames[1]
+        teams = frames[2]
         normalized_scoreboard_ids = teams['gameId'].map(normalize_game_id)
+        # LineScore lists every game scheduled for the date regardless of
+        # status, so presence there alone can't tell a finished game from a
+        # scheduled/live/postponed one -- only GameHeader carries gameStatus.
+        final_game_ids = set(
+            headers.loc[headers['gameStatus'] == FINAL_GAME_STATUS, 'gameId'].map(normalize_game_id)
+        )
 
         for _, pred in group.iterrows():
             pred_game_id = normalize_game_id(pred['game_id'])
+            if pred_game_id not in final_game_ids:
+                # scheduled, live, postponed, or missing from GameHeader
+                # entirely -- leave pending, retried next run
+                continue
+
             game_teams = teams[normalized_scoreboard_ids == pred_game_id]
             if len(game_teams) == 0:
-                # postponed or not yet final -- leave pending, retried next run
                 continue
 
             # figure out who won
             game_teams = game_teams.copy()
-            winner = game_teams.loc[game_teams['score'].astype(float).idxmax(), 'teamTricode']
+            scores = pd.to_numeric(game_teams['score'], errors='coerce')
+            if scores.isna().any() or scores.max() == scores.min():
+                # defensive: a "final" game with equal or missing scores
+                # would fabricate a winner via idxmax's arbitrary tie-break
+                # -- leave pending and retry rather than guess.
+                print(f"  Warning: game {pred_game_id} is final but its scores are equal or missing; leaving pending.")
+                continue
+            winner = game_teams.loc[scores.idxmax(), 'teamTricode']
             correct = 1 if winner == pred['predicted_winner'] else 0
 
             # calculate profit/loss
@@ -264,6 +291,7 @@ def print_summary():
     print(f"ROI:                {((current_bankroll - STARTING_BANKROLL) / STARTING_BANKROLL):.1%}")
 
 if __name__ == '__main__':
+    force_utf8_stdio()
     setup_tables()
     update_results()
     print("Tracking tables ready.")

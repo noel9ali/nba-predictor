@@ -5,6 +5,7 @@ import os
 import joblib
 import numpy as np
 import pandas as pd
+from console import force_utf8_stdio
 from database import schema_v2_enabled, select_rows, upsert_rows
 from model_metadata import build_model_run_row, load_metadata_and_leaderboard
 from model_wrappers import TorchLSTMClassifier
@@ -555,4 +556,5 @@ def main():
 
 
 if __name__ == "__main__":
+    force_utf8_stdio()
     main()

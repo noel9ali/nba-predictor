@@ -1,8 +1,11 @@
 import contextlib
 import io
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import patch
@@ -233,13 +236,13 @@ class RunBatProcessTreeTimeoutTests(unittest.TestCase):
     Uses the real behaviour (a real cmd.exe -> python.exe child tree), not a
     fake -- the child is a plain `time.sleep`, never a pipeline script."""
 
-    SCRATCH_DIR = r"C:\Users\noel9\.claude\jobs\0a8d2dcb\tmp\data-pipeline"
+    def setUp(self):
+        self.SCRATCH_DIR = tempfile.mkdtemp(prefix="nba_predictor_test_")
+        self.addCleanup(shutil.rmtree, self.SCRATCH_DIR, ignore_errors=True)
 
     def test_a_timed_out_step_kills_the_grandchild_process_too(self):
         pidfile = os.path.join(self.SCRATCH_DIR, "rb_sleeper.pid")
         batfile = os.path.join(self.SCRATCH_DIR, "rb_sleeper.bat")
-        if os.path.exists(pidfile):
-            os.remove(pidfile)
 
         # The grandchild just sleeps -- never a real pipeline script -- and
         # writes its own PID so the test can confirm it was actually killed.
@@ -252,13 +255,6 @@ class RunBatProcessTreeTimeoutTests(unittest.TestCase):
         with open(batfile, "w") as f:
             f.write("@echo off\r\n")
             f.write(f'"{sys.executable}" -c "{child_script}"\r\n')
-
-        def cleanup():
-            for path in (pidfile, batfile):
-                if os.path.exists(path):
-                    os.remove(path)
-
-        self.addCleanup(cleanup)
 
         start = time.monotonic()
         rc, output = daily_workflow.run_bat(batfile, timeout=2)
@@ -301,6 +297,39 @@ class ConsoleEncodingTests(unittest.TestCase):
             env=child_env,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
+
+
+class WorkflowLockTests(unittest.TestCase):
+    """TH-F22: run_workflow_async()/workflow_is_running()'s real threading
+    lock -- the actual double-start guard behind /api/run-workflow's 409 --
+    was never exercised by any test; every other test mocks both functions
+    away entirely. Patch only run_workflow itself (not run_workflow_async or
+    workflow_is_running) to a slow stub gated on a threading.Event."""
+
+    def test_a_concurrent_start_is_rejected_while_the_first_run_is_in_progress(self):
+        started = threading.Event()
+        release = threading.Event()
+
+        def slow_run_workflow(*args, **kwargs):
+            started.set()
+            release.wait(timeout=5)
+            return {"status": "success"}
+
+        with patch.object(daily_workflow, "run_workflow", side_effect=slow_run_workflow):
+            ok1, msg1 = daily_workflow.run_workflow_async()
+            self.assertTrue(started.wait(timeout=5), "background thread never started run_workflow")
+            self.assertTrue(ok1)
+            self.assertEqual(msg1, "Workflow started")
+            self.assertTrue(daily_workflow.workflow_is_running())
+
+            ok2, msg2 = daily_workflow.run_workflow_async()
+            self.assertFalse(ok2)
+            self.assertEqual(msg2, "Workflow already running")
+
+            release.set()
+            daily_workflow._workflow_thread.join(timeout=5)
+
+        self.assertFalse(daily_workflow.workflow_is_running())
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@ import json
 
 import numpy as np
 import pandas as pd
+from console import force_utf8_stdio
 from model import (
     FEATURES,
     TARGET,
@@ -178,4 +179,5 @@ def run():
 
 
 if __name__ == "__main__":
+    force_utf8_stdio()
     run()

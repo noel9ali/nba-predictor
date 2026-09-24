@@ -1,4 +1,5 @@
 import pandas as pd
+from console import force_utf8_stdio
 from database import select_rows, upsert_rows
 
 # --- Config ---
@@ -155,6 +156,7 @@ def get_last_elo_date():
     return None if len(df) == 0 else df["GAME_DATE"].iloc[0]
 
 if __name__ == '__main__':
+    force_utf8_stdio()
     final_ratings = compute_elo()
     print("\nCurrent team ratings:")
     sorted_ratings = sorted(final_ratings.items(), key=lambda x: x[1], reverse=True)
