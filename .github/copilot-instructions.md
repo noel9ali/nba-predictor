@@ -7,7 +7,7 @@ This is a Python project. Use the repository virtual environment on Windows:
 ```powershell
 python -m venv venv
 venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements-pipeline.txt
 ```
 
 The normal daily workflows are implemented as batch files:
@@ -68,6 +68,6 @@ Individual pipeline stages can be run directly, for example `python src\elo.py`,
 - Keep secrets in `.env`; do not commit `.env`, generated model files, or the local SQLite database fixture. The checked-in `.env.example` is the template for `ODDS_API_KEY`, `SUPABASE_URL`, and `SUPABASE_SECRET_KEY`.
 - Server-side Supabase access requires `SUPABASE_URL` and `SUPABASE_SECRET_KEY`. Never expose the secret key to browser code, API responses, logs, or source control.
 - Schema changes live in `supabase/migrations/` and are applied manually (Supabase CLI or MCP `apply_migration`); no script ever creates, alters, truncates or resets a table.
-- `NBA_SCHEMA_V2` (default `false`) gates any code path that depends on the migrated schema (new `predictions` columns, `book_odds`, `model_runs`, the `bankroll`/`workflow_log` tables). Check `database.schema_v2_enabled()` before writing to those; leave existing behavior unchanged when it's off.
+- `NBA_SCHEMA_V2` (default `false`) gates *new* columns and tables used by new code paths (new `predictions` columns, `book_odds`, `model_runs`). Check `database.schema_v2_enabled()` before writing to those. The `bankroll`/`workflow_log` tables are not gated by this flag — code accesses them unconditionally and instead catches `MissingTableError` (see `track._require_bankroll_table`, `daily_workflow.get_overall_stats`) to handle the pre-migration state.
 - `requirements.txt` is the Vercel/API runtime dependency set (no ML libraries). `requirements-pipeline.txt` extends it with the training/pipeline dependencies (scikit-learn, xgboost, torch, twilio) and is what the laptop installs.
 - The dashboard API (`app.py`) is frontend-owned and imports only `src\database.py`; it never imports `src\model.py`, `src\predict.py` or other pipeline modules directly.
