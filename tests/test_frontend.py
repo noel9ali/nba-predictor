@@ -1,6 +1,7 @@
 """Regression tests for the frontend round-1 fixes (FE-F1/F2/F3/F4/F5/F6/F7/F9, FE-04 CSP refactor).
 
-These render templates/index.html through the Flask test client (fake select_rows, no
+These render templates/index.html (served at /legacy since the new dashboard took over /)
+through the Flask test client (fake select_rows, no
 network/DB) and check static properties of the HTML and of public/static/app.js. Behaviour
 that only a real browser can exercise (focus trap, Esc-to-close, SVG rendering of the
 bankroll-chart tooltip) is NOT covered here -- see the fixer's handback message for the
@@ -144,7 +145,7 @@ class FrontendTestCase(unittest.TestCase):
         patcher = patch.object(dashboard, "select_rows", db)
         patcher.start()
         self.addCleanup(patcher.stop)
-        response = self.client.get("/")
+        response = self.client.get("/legacy")
         self.assertEqual(response.status_code, 200)
         return response.get_data(as_text=True)
 

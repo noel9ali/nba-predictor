@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Chosen date navigation: rail on past nights only</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&amp;family=Barlow:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0a1630;font-family:'Barlow',sans-serif;color:#ffffff}
+a{color:#ffc72c}a:hover{color:#ffe08a}
+.cond{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div style="width: 1440px; height: 2260px; box-sizing: border-box; padding: 40px 48px 48px; background: #0a1630; display: flex; flex-direction: column; gap: 28px;">
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span class="cond" style="font-size: 20px; font-weight: 700; letter-spacing: .12em; color: #ffc72c;">Date navigation · Chosen</span>
+<h1 class="cond" style="margin: 0; font-size: 64px; font-weight: 800; line-height: .92;">Rail on past nights only</h1>
+<p style="margin: 0; font-size: 19px; line-height: 1.4; color: #b7c4dd; max-width: 980px;">Tonight stays clean. “Past nights” and the “All past nights” link open the rail on last night; the rail's last cell and the yellow button bring you back. On a past night the hero becomes a night recap.</p>
+</div><div style="display: flex; align-items: center; gap: 16px;"><span class="cond" style="font-size: 20px; font-weight: 700; letter-spacing: .1em; color: #ffc72c; white-space: nowrap;">Tonight</span><span style="flex-grow: 1; height: 2px; background: #1d3461;"></span></div><div style="background: #0a1630; border: 2px solid #1d3461; padding: 24px; display: flex; flex-direction: column; gap: 28px;"><div style="display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-bottom: 18px; border-bottom: 2px solid #1d3461;">
+<div style="display: flex; align-items: center; gap: 24px;">
+<div style="display: flex; align-items: center; gap: 10px;"><span class="cond" style="background: #ffc72c; color: #0a1630; padding: 6px 12px; font-size: 20px; font-weight: 800; letter-spacing: .1em;">NBA Predictor</span><span class="cond" style="border: 1px solid #3a5185; color: #b7c4dd; padding: 3px 8px; font-size: 14px; font-weight: 700; letter-spacing: .1em;">Paper trading</span></div>
+<nav class="cond" style="display: flex; gap: 28px; font-size: 20px; font-weight: 700; letter-spacing: .08em;"><a href="#" style="color: #ffffff; text-decoration: none; padding-bottom: 6px; border-bottom: 3px solid #ffc72c;">Games</a><a href="#" style="color: #b7c4dd; text-decoration: none; padding-bottom: 6px; border-bottom: 3px solid transparent;">Performance</a></nav>
+
+</div>
+<div class="cond" style="display: flex; align-items: center; gap: 16px; font-size: 16px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;">
+<span style="display: flex; align-items: center; gap: 8px;"><span style="width: 10px; height: 10px; border-radius: 50%; background: #ff4d5e;"></span>Updated 9:05 PM · every 30s</span>
+<button class="cond" style="display: flex; align-items: center; gap: 8px; background: transparent; border: 1px solid #3ee08f; color: #3ee08f; font-size: 16px; font-weight: 700; letter-spacing: .08em; padding: 0 12px; min-height: 36px; cursor: pointer;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #3ee08f;"></span>Pipeline · 6:02 AM<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+<span style="border: 1px solid #3a5185; padding: 3px 8px;">Sample data</span>
+</div>
+</div><div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;">
+<div style="display: flex; flex-direction: column; gap: 12px;"><h2 class="cond" style="margin: 0; font-size: 104px; font-weight: 800; line-height: .92;">Tonight's slate</h2><div style="display: flex; align-items: center; gap: 18px;"><span class="cond" style="font-size: 22px; font-weight: 600; color: #ffffff;">Tue, Nov 17</span><span class="cond" style="font-size: 22px; font-weight: 600; letter-spacing: .04em; color: #b7c4dd;">6 games · 1 final · <span style="color: #ff8a95;">3 live</span> · 2 upcoming</span><button class="cond" style="display: flex; align-items: center; gap: 8px; background: #0d1d3b; color: #ffffff; border: 1px solid #3a5185; font-size: 18px; font-weight: 700; letter-spacing: .06em; padding: 0 14px; min-height: 44px; cursor: pointer;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="4" y="5" width="16" height="16" rx="1"></rect><path d="M4 10h16M9 3v4M15 3v4"></path></svg>Past nights</button></div></div>
+<div style="display: flex; gap: 2px; background: #1d3461;"><div style="background: #102244; padding: 14px 24px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Bets placed</span><span class="cond" style="font-size: 36px; font-weight: 800; color: #ffffff;">5</span></div><div style="background: #102244; padding: 14px 24px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Total staked</span><span class="cond" style="font-size: 36px; font-weight: 800; color: #ffc72c;">$244.16</span></div><div style="background: #102244; padding: 14px 24px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Settled P/L</span><span class="cond" style="font-size: 36px; font-weight: 800; color: #3ee08f;">+$74.18</span></div><div style="background: #102244; padding: 14px 24px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Live picks ahead</span><span class="cond" style="font-size: 36px; font-weight: 800; color: #ffffff;">1 of 3</span></div></div></div><div class="cond" style="height: 90px; flex-shrink: 0; border: 2px dashed #1d3461; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; letter-spacing: .1em; color: #6f83aa;">Hero and game cards, as in Round 2</div><div style="display: flex; align-items: baseline; justify-content: space-between;">
+<div style="display: flex; align-items: baseline; gap: 20px;"><h3 class="cond" style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: .1em; color: #ffc72c;">Last night · Mon, Nov 16</h3><a href="#" class="cond" style="font-size: 18px; font-weight: 700; letter-spacing: .06em;">All past nights ›</a></div>
+<span class="cond" style="font-size: 20px; font-weight: 700; letter-spacing: .06em; color: #b7c4dd;">Picks <span style="color: #ffffff;">3–1</span> · Bets <span style="color: #ffffff;">2–1</span> · <span style="color: #3ee08f;">+$25.47</span></span>
+</div><div class="cond" style="height: 70px; flex-shrink: 0; border: 2px dashed #1d3461; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; letter-spacing: .1em; color: #6f83aa;">Last night rows, as in Round 2</div></div><div style="display: flex; align-items: center; gap: 16px;"><span class="cond" style="font-size: 20px; font-weight: 700; letter-spacing: .1em; color: #ffc72c; white-space: nowrap;">A past night, opened from “Past nights” or “All past nights”</span><span style="flex-grow: 1; height: 2px; background: #1d3461;"></span></div><div style="background: #0a1630; border: 2px solid #1d3461; padding: 24px; display: flex; flex-direction: column; gap: 28px;"><div style="display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-bottom: 18px; border-bottom: 2px solid #1d3461;">
+<div style="display: flex; align-items: center; gap: 24px;">
+<div style="display: flex; align-items: center; gap: 10px;"><span class="cond" style="background: #ffc72c; color: #0a1630; padding: 6px 12px; font-size: 20px; font-weight: 800; letter-spacing: .1em;">NBA Predictor</span><span class="cond" style="border: 1px solid #3a5185; color: #b7c4dd; padding: 3px 8px; font-size: 14px; font-weight: 700; letter-spacing: .1em;">Paper trading</span></div>
+<nav class="cond" style="display: flex; gap: 28px; font-size: 20px; font-weight: 700; letter-spacing: .08em;"><a href="#" style="color: #ffffff; text-decoration: none; padding-bottom: 6px; border-bottom: 3px solid #ffc72c;">Games</a><a href="#" style="color: #b7c4dd; text-decoration: none; padding-bottom: 6px; border-bottom: 3px solid transparent;">Performance</a></nav>
+
+</div>
+<div class="cond" style="display: flex; align-items: center; gap: 16px; font-size: 16px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;">
+<span>All games final</span>
+<button class="cond" style="display: flex; align-items: center; gap: 8px; background: transparent; border: 1px solid #3ee08f; color: #3ee08f; font-size: 16px; font-weight: 700; letter-spacing: .08em; padding: 0 12px; min-height: 36px; cursor: pointer;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #3ee08f;"></span>Pipeline · 6:02 AM<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+<span style="border: 1px solid #3a5185; padding: 3px 8px;">Sample data</span>
+</div>
+</div><div style="display: flex; gap: 2px; background: #1d3461;">
+<button aria-label="Earlier days" class="cond" style="display: flex; align-items: center; gap: 8px; background: #0d1d3b; color: #ffffff; border: 0; font-size: 18px; font-weight: 700; letter-spacing: .06em; padding: 0 14px; min-height: 44px; cursor: pointer;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></button>
+<button class="cond" style="flex: 1 1 0; min-width: 0; background: #0d1d3b; border: 0; border-top: 4px solid transparent; color: #ffffff; padding: 10px 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; cursor: pointer;">
+<span style="font-size: 20px; font-weight: 800; letter-spacing: .06em;">Tue <span style="color: #b7c4dd; font-weight: 700;">Nov 10</span></span>
+<span style="font-size: 15px; font-weight: 700; letter-spacing: .02em; color: #b7c4dd; white-space: nowrap;">Picks 4–2 <span style="color: #3ee08f;">+$12.10</span></span>
+</button><button class="cond" style="flex: 1 1 0; min-width: 0; background: #0d1d3b; border: 0; border-top: 4px solid transparent; color: #ffffff; padding: 10px 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; cursor: pointer;">
+<span style="font-size: 20px; font-weight: 800; letter-spacing: .06em;">Wed <span style="color: #b7c4dd; font-weight: 700;">Nov 11</span></span>
+<span style="font-size: 15px; font-weight: 700; letter-spacing: .02em; color: #b7c4dd; white-space: nowrap;">Picks 6–5 <span style="color: #ff8a95;">−$15.60</span></span>
+</button><button class="cond" style="flex: 1 1 0; min-width: 0; background: #0d1d3b; border: 0; border-top: 4px solid transparent; color: #ffffff; padding: 10px 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; cursor: pointer;">
+<span style="font-size: 20px; font-weight: 800; letter-spacing: .06em;">Thu <span style="color: #b7c4dd; font-weight: 700;">Nov 12</span></span>
+<span style="font-size: 15px; font-weight: 700; letter-spacing: .02em; color: #b7c4dd; white-space: nowrap;">Picks 2–1 <span style="color: #3ee08f;">+$8.95</span></span>
+</button><button class="cond" style="flex: 1 1 0; min-width: 0; background: #0d1d3b; border: 0; border-top: 4px solid transparent; color: #ffffff; padding: 10px 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; cursor: pointer;">
+<span style="font-size: 20px; font-weight: 800; letter-spacing: .06em;">Fri <span style="color: #b7c4dd; font-weight: 700;">Nov 13</span></span>
+<span style="font-size: 15px; font-weight: 700; letter-spacing: .02em; color: #b7c4dd; white-space: nowrap;">Picks 5–3 <span style="color: #3ee08f;">+$18.40</span></span>
+</button><button class="cond" style="flex: 1 1 0; min-width: 0; background: #0d1d3b; border: 0; border-top: 4px solid transparent; color: #ffffff; padding: 10px 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; cursor: pointer;">
+<span style="font-size: 20px; font-weight: 800; letter-spacing: .06em;">Sat <span style="color: #b7c4dd; font-weight: 700;">Nov 14</span></span>
+<span style="font-size: 15px; font-weight: 700; letter-spacing: .02em; color: #b7c4dd; white-space: nowrap;">Picks 7–4 <span style="color: #ff8a95;">−$22.15</span></span>
+</button><button class="cond" style="flex: 1 1 0; min-width: 0; background: #0d1d3b; border: 0; border-top: 4px solid transparent; color: #ffffff; padding: 10px 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; cursor: pointer;">
+<span style="font-size: 20px; font-weight: 800; letter-spacing: .06em;">Sun <span style="color: #b7c4dd; font-weight: 700;">Nov 15</span></span>
+<span style="font-size: 15px; font-weight: 700; letter-spacing: .02em; color: #b7c4dd; white-space: nowrap;">Picks 3–3 <span style="color: #ff8a95;">−$9.80</span></span>
+</button><button class="cond" style="flex: 1 1 0; min-width: 0; background: #102244; border: 0; border-top: 4px solid #ffc72c; color: #ffffff; padding: 10px 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; cursor: pointer;">
+<span style="font-size: 20px; font-weight: 800; letter-spacing: .06em;">Mon <span style="color: #b7c4dd; font-weight: 700;">Nov 16</span></span>
+<span style="font-size: 15px; font-weight: 700; letter-spacing: .02em; color: #b7c4dd; white-space: nowrap;">Picks 3–1 <span style="color: #3ee08f;">+$25.47</span></span>
+</button>
+<button class="cond" style="flex: 1 1 0; min-width: 0; background: #0d1d3b; border: 0; border-top: 4px solid #d62839; color: #ffffff; padding: 10px 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; cursor: pointer;">
+<span style="font-size: 20px; font-weight: 800; letter-spacing: .06em;">Tonight <span style="color: #b7c4dd; font-weight: 700;">Nov 17</span></span>
+<span style="font-size: 15px; font-weight: 700; letter-spacing: .02em; color: #b7c4dd; white-space: nowrap;">6 games <span style="color: #ff8a95;">3 live</span></span>
+</button>
+<button aria-label="Pick a date" class="cond" style="display: flex; align-items: center; gap: 8px; background: #0d1d3b; color: #ffffff; border: 0; font-size: 18px; font-weight: 700; letter-spacing: .06em; padding: 0 14px; min-height: 44px; cursor: pointer;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="4" y="5" width="16" height="16" rx="1"></rect><path d="M4 10h16M9 3v4M15 3v4"></path></svg></button>
+</div><div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;">
+<div style="display: flex; flex-direction: column; gap: 12px;"><h2 class="cond" style="margin: 0; font-size: 104px; font-weight: 800; line-height: .92;">Mon, Nov 16</h2><div style="display: flex; align-items: center; gap: 18px;"><span class="cond" style="font-size: 22px; font-weight: 600; letter-spacing: .04em; color: #b7c4dd;">4 games · all final</span></div></div>
+<button class="cond" style="background: #ffc72c; color: #0a1630; border: 0; font-size: 18px; font-weight: 800; letter-spacing: .08em; padding: 0 16px; min-height: 44px; cursor: pointer;">Back to tonight</button></div><section style="display: flex; flex-direction: column; gap: 14px;">
+<h3 class="cond" style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: .1em; color: #ffc72c;">Night recap</h3>
+<div style="display: grid; grid-template-columns: 1.1fr 1fr 1.2fr; gap: 2px; background: #1d3461; border-top: 8px solid #3ee08f;">
+<div style="background: #102244; padding: 28px 32px; display: flex; flex-direction: column; justify-content: space-between; gap: 16px;">
+<span class="cond" style="font-size: 18px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Net P/L</span>
+<span class="cond" style="font-size: 132px; font-weight: 800; line-height: .85; color: #3ee08f;">+$25.47</span>
+<span class="cond" style="font-size: 20px; font-weight: 700; letter-spacing: .04em; color: #b7c4dd;">Bankroll <span style="color: #ffffff;">$1,086.20 → $1,111.67</span></span>
+</div>
+<div style="background: #102244; padding: 16px 32px; display: flex; flex-direction: column;">
+<div style="display: flex; justify-content: space-between; align-items: baseline; padding: 12px 0; border-bottom: 1px solid #1d3461;"><span class="cond" style="font-size: 18px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;">Picks</span><span class="cond" style="font-size: 40px; font-weight: 800; color: #ffffff;">3–1</span></div>
+<div style="display: flex; justify-content: space-between; align-items: baseline; padding: 12px 0; border-bottom: 1px solid #1d3461;"><span class="cond" style="font-size: 18px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;">Bets</span><span class="cond" style="font-size: 40px; font-weight: 800; color: #ffffff;">2–1</span></div>
+<div style="display: flex; justify-content: space-between; align-items: baseline; padding: 12px 0; border-bottom: 1px solid #1d3461;"><span class="cond" style="font-size: 18px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;">Staked</span><span class="cond" style="font-size: 40px; font-weight: 800; color: #ffc72c;">$101.70</span></div>
+<div style="display: flex; justify-content: space-between; align-items: baseline; padding: 12px 0; border-bottom: 1px solid #1d3461;"><span class="cond" style="font-size: 18px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;">ROI</span><span class="cond" style="font-size: 40px; font-weight: 800; color: #3ee08f;">+25.0%</span></div>
+</div>
+<div style="background: #102244; padding: 12px 32px; display: flex; flex-direction: column;">
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 14px 0; border-bottom: 1px solid #1d3461;">
+<span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Best bet</span>
+<div style="display: flex; align-items: center; gap: 14px;"><div style="width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; background: #006BB6; border: 2px dashed #ED174C; box-sizing: border-box; display: flex; align-items: center; justify-content: center;"><span class="cond" style="font-size: 10px; font-weight: 700;">PHI logo</span></div>
+<span class="cond" style="font-size: 28px; font-weight: 800;">PHI −135</span>
+<span class="cond" style="font-size: 16px; font-weight: 700; letter-spacing: .06em; color: #b7c4dd;">DraftKings</span>
+<span class="cond" style="margin-left: auto; background: #3ee08f; color: #0a1630; font-size: 20px; font-weight: 800; padding: 4px 12px;">Hit +$28.30</span></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 14px 0; border-bottom: 1px solid #1d3461;">
+<span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Worst bet</span>
+<div style="display: flex; align-items: center; gap: 14px;"><div style="width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; background: #E03A3E; border: 2px dashed #C1D32F; box-sizing: border-box; display: flex; align-items: center; justify-content: center;"><span class="cond" style="font-size: 10px; font-weight: 700;">ATL logo</span></div>
+<span class="cond" style="font-size: 28px; font-weight: 800;">ATL +110</span>
+<span class="cond" style="font-size: 16px; font-weight: 700; letter-spacing: .06em; color: #b7c4dd;">BetMGM</span>
+<span class="cond" style="margin-left: auto; background: #ff8a95; color: #0a1630; font-size: 20px; font-weight: 800; padding: 4px 12px;">Miss −$22.40</span></div>
+</div>
+</div>
+</div>
+</section><div class="cond" style="height: 90px; flex-shrink: 0; border: 2px dashed #1d3461; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; letter-spacing: .1em; color: #6f83aa;">Final game cards, two per row, tip-off order · no “last night” section</div></div><div style="display: flex; align-items: center; gap: 16px;"><span class="cond" style="font-size: 20px; font-weight: 700; letter-spacing: .1em; color: #ffc72c; white-space: nowrap;">Performance: season picker in the page header</span><span style="flex-grow: 1; height: 2px; background: #1d3461;"></span></div><div style="background: #0a1630; border: 2px solid #1d3461; padding: 24px; display: flex; flex-direction: column; gap: 28px;"><div style="display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-bottom: 18px; border-bottom: 2px solid #1d3461;">
+<div style="display: flex; align-items: center; gap: 24px;">
+<div style="display: flex; align-items: center; gap: 10px;"><span class="cond" style="background: #ffc72c; color: #0a1630; padding: 6px 12px; font-size: 20px; font-weight: 800; letter-spacing: .1em;">NBA Predictor</span><span class="cond" style="border: 1px solid #3a5185; color: #b7c4dd; padding: 3px 8px; font-size: 14px; font-weight: 700; letter-spacing: .1em;">Paper trading</span></div>
+<nav class="cond" style="display: flex; gap: 28px; font-size: 20px; font-weight: 700; letter-spacing: .08em;"><a href="#" style="color: #b7c4dd; text-decoration: none; padding-bottom: 6px; border-bottom: 3px solid transparent;">Games</a><a href="#" style="color: #ffffff; text-decoration: none; padding-bottom: 6px; border-bottom: 3px solid #ffc72c;">Performance</a></nav>
+
+</div>
+<div class="cond" style="display: flex; align-items: center; gap: 16px; font-size: 16px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;">
+
+<button class="cond" style="display: flex; align-items: center; gap: 8px; background: transparent; border: 1px solid #3ee08f; color: #3ee08f; font-size: 16px; font-weight: 700; letter-spacing: .08em; padding: 0 12px; min-height: 36px; cursor: pointer;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #3ee08f;"></span>Pipeline · 6:02 AM<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+<span style="border: 1px solid #3a5185; padding: 3px 8px;">Sample data</span>
+</div>
+</div><div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;">
+<h2 class="cond" style="margin: 0; font-size: 104px; font-weight: 800; line-height: .92;">Performance</h2>
+<div style="display: flex; gap: 2px; background: #1d3461;">
+<button class="cond" style="background: #ffc72c; color: #0a1630; border: 0; font-size: 18px; font-weight: 800; letter-spacing: .06em; padding: 0 16px; min-height: 44px; cursor: pointer;">2025–26</button>
+<button class="cond" style="background: #0d1d3b; color: #ffffff; border: 0; font-size: 18px; font-weight: 700; letter-spacing: .06em; padding: 0 16px; min-height: 44px; cursor: pointer;">2024–25</button>
+<button class="cond" style="background: #0d1d3b; color: #ffffff; border: 0; font-size: 18px; font-weight: 700; letter-spacing: .06em; padding: 0 16px; min-height: 44px; cursor: pointer;">All seasons</button>
+</div>
+</div><div class="cond" style="height: 70px; flex-shrink: 0; border: 2px dashed #1d3461; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; letter-spacing: .1em; color: #6f83aa;">Performance page · Round 7</div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2260}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

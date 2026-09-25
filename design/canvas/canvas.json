@@ -1,0 +1,292 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "Broadcast.dc.html": {
+      "h": 2420,
+      "title": "C · Sports broadcast",
+      "w": 1440,
+      "x": 3040,
+      "y": 0
+    },
+    "Fintech.dc.html": {
+      "h": 2140,
+      "title": "B · Clean light fintech",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "Games.dc.html": {
+      "h": 3000,
+      "title": "Round 2 · Games page (C)",
+      "w": 1440,
+      "x": 0,
+      "y": 2900
+    },
+    "Main.dc.html": {
+      "h": 1640,
+      "title": "A · Dark terminal",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "Nav-1.dc.html": {
+      "h": 1440,
+      "title": "Round 4 · Date nav 1 · Arrows beside the title",
+      "w": 1440,
+      "x": 0,
+      "y": 8840
+    },
+    "Nav-2.dc.html": {
+      "h": 1600,
+      "title": "Round 4 · Date nav 2 · Scoreboard rail",
+      "w": 1440,
+      "x": 1520,
+      "y": 8840
+    },
+    "Nav-3.dc.html": {
+      "h": 1680,
+      "title": "Round 4 · Date nav 3 · In the top bar",
+      "w": 1440,
+      "x": 3040,
+      "y": 8840
+    },
+    "Nav-Pipeline.dc.html": {
+      "h": 1400,
+      "title": "Round 4 · Pipeline pill + popover",
+      "w": 1440,
+      "x": 4560,
+      "y": 8840
+    },
+    "SiteMap-A.dc.html": {
+      "h": 1820,
+      "title": "Round 3 · Site map A · Two tabs",
+      "w": 1440,
+      "x": 0,
+      "y": 6460
+    },
+    "SiteMap-B.dc.html": {
+      "h": 1820,
+      "title": "Round 3 · Site map B · Four tabs",
+      "w": 1440,
+      "x": 1520,
+      "y": 6460
+    },
+    "SiteMap-C.dc.html": {
+      "h": 1820,
+      "title": "Round 3 · Site map C · Six sections",
+      "w": 1440,
+      "x": 3040,
+      "y": 6460
+    },
+    "Nav-Final.dc.html": {
+      "x": 6080,
+      "y": 8840,
+      "w": 1440,
+      "h": 2260,
+      "title": "Round 4 · Chosen · Rail on past nights only"
+    },
+    "Detail-A.dc.html": {
+      "x": 0,
+      "y": 11660,
+      "w": 1440,
+      "h": 1500,
+      "title": "Round 5 · Detail drawer A · Tale of the tape"
+    },
+    "Detail-B.dc.html": {
+      "x": 1520,
+      "y": 11660,
+      "w": 1440,
+      "h": 1620,
+      "title": "Round 5 · Detail drawer B · Why the pick"
+    },
+    "Games-Controls.dc.html": {
+      "x": 3040,
+      "y": 11660,
+      "w": 1440,
+      "h": 2560,
+      "title": "Round 5 · Filters, explainers, refresh"
+    },
+    "Games-Transitions.dc.html": {
+      "x": 4560,
+      "y": 11660,
+      "w": 1440,
+      "h": 2560,
+      "title": "Round 5 · Tip-off and final buzzer"
+    },
+    "Edge-Hero.dc.html": {
+      "x": 0,
+      "y": 14780,
+      "w": 1440,
+      "h": 2560,
+      "title": "Round 6 · Hero fallbacks"
+    },
+    "Edge-Cards.dc.html": {
+      "x": 1520,
+      "y": 14780,
+      "w": 1440,
+      "h": 2080,
+      "title": "Round 6 · Card edge cases"
+    },
+    "Edge-Page.dc.html": {
+      "x": 3040,
+      "y": 14780,
+      "w": 1440,
+      "h": 2500,
+      "title": "Round 6 · Page empty and error states"
+    },
+    "Perf-A.dc.html": {
+      "x": 0,
+      "y": 17900,
+      "w": 1440,
+      "h": 2860,
+      "title": "Round 7 · Performance A · Bankroll first"
+    },
+    "Perf-B.dc.html": {
+      "x": 1520,
+      "y": 17900,
+      "w": 1440,
+      "h": 2560,
+      "title": "Round 7 · Performance B · Log first, stats rail"
+    },
+    "Perf-C.dc.html": {
+      "x": 3040,
+      "y": 17900,
+      "w": 1440,
+      "h": 3100,
+      "title": "Round 7 · Performance C · Season timeline + box score"
+    },
+    "Perf-Final.dc.html": {
+      "x": 4560,
+      "y": 17900,
+      "w": 1440,
+      "h": 3780,
+      "title": "Round 7 · Chosen · Performance refined"
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-09-23T00:31:39Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "round1": {
+      "kind": "title1",
+      "maxW": 4480,
+      "text": "Round 1: three directions, tonight's slate first",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "round2": {
+      "kind": "title1",
+      "maxW": 4480,
+      "text": "Round 2: Games page, live scores, logos, line shop",
+      "w": 240,
+      "x": 0,
+      "y": 2600
+    },
+    "round3": {
+      "kind": "title1",
+      "maxW": 4480,
+      "text": "Round 3: Site map, which pages exist",
+      "w": 240,
+      "x": 0,
+      "y": 6180
+    },
+    "round3decision": {
+      "fill": "green",
+      "size": 24,
+      "text": "Decided in Round 3\n\n• Site map A: two tabs, Games and Performance\n• Game detail opens as a drawer\n• Past days: date control on Games\n• Model: a strip in Performance showing whatever production_model is (68.2% today); leaderboard deferred\n• System: header pill + popover; Run now only on the Flask computer\n• Audience: public viewers too, read-only",
+      "w": 460,
+      "x": 4560,
+      "y": 6460
+    },
+    "round4": {
+      "kind": "title1",
+      "maxW": 7520,
+      "text": "Round 4: Navigation and global layout",
+      "w": 240,
+      "x": 0,
+      "y": 8580
+    },
+    "round4decision": {
+      "x": 7600,
+      "y": 8840,
+      "w": 460,
+      "fill": "green",
+      "size": 24,
+      "text": "Decided in Round 4\n\n• Date rail (option 2), but only on past nights\n• Tonight: 'Past nights' button + 'All past nights ›' link open last night\n• Past night: rail with a Tonight cell, date as title, night recap hero, final cards\n• Performance filters by NBA season\n• Keep the 'Paper trading' tag"
+    },
+    "round5": {
+      "kind": "title1",
+      "maxW": 5920,
+      "text": "Round 5: Games page interactions",
+      "w": 240,
+      "x": 0,
+      "y": 11400
+    },
+    "round5decision": {
+      "x": 6080,
+      "y": 11660,
+      "w": 460,
+      "fill": "green",
+      "size": 24,
+      "text": "Decided in Round 5\n\n• Detail drawer A (tale of the tape) now; B (why the pick) later, once factor contributions are stored\n• Toolbar option 1: filter tabs with counts + sort tabs\n• Finals show Hit/Miss from live scores, tagged unofficial; the DB still settles at 6 AM\n• Toasts + 10s outline flashes; reduced motion drops the flash\n• Sample fix: SAC bet is $55.58 (¼-Kelly, 5% cap)"
+    },
+    "round6": {
+      "kind": "title1",
+      "maxW": 4400,
+      "text": "Round 6: Edge cases and empty states",
+      "w": 240,
+      "x": 0,
+      "y": 14520
+    },
+    "round6decision": {
+      "x": 4560,
+      "y": 14780,
+      "w": 460,
+      "fill": "green",
+      "size": 24,
+      "text": "Decided in Round 6\n\n• Hero once every bet has tipped: B, 'Tonight so far'\n• Move predictions to ~1 hour before first tip (settle + retrain stay at 6 AM)\n• Skipped games (no odds / missing data) get logged and shown as no-bet cards\n• Postponed games: void, return the paper stake"
+    },
+    "round7": {
+      "kind": "title1",
+      "maxW": 5920,
+      "text": "Round 7: Performance page",
+      "w": 240,
+      "x": 0,
+      "y": 17640
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Fintech.dc.html",
+    "Broadcast.dc.html",
+    "Games.dc.html",
+    "SiteMap-A.dc.html",
+    "SiteMap-B.dc.html",
+    "SiteMap-C.dc.html",
+    "Nav-1.dc.html",
+    "Nav-2.dc.html",
+    "Nav-3.dc.html",
+    "Nav-Pipeline.dc.html",
+    "Nav-Final.dc.html",
+    "Detail-A.dc.html",
+    "Detail-B.dc.html",
+    "Games-Controls.dc.html",
+    "Games-Transitions.dc.html",
+    "Edge-Hero.dc.html",
+    "Edge-Cards.dc.html",
+    "Edge-Page.dc.html",
+    "Perf-A.dc.html",
+    "Perf-B.dc.html",
+    "Perf-C.dc.html",
+    "Perf-Final.dc.html"
+  ],
+  "pages": [],
+  "title": "NBA Predictor Dashboard"
+}

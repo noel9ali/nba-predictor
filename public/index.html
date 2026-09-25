@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NBA Predictor</title>
+<meta name="description" content="NBA game predictions and paper-trading results: tonight's slate, model picks and bets, and season performance.">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="/static/fonts/barlow-condensed-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fonts/barlow-condensed-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/dashboard.css">
+<script type="module" src="/static/js/main.js"></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="page" id="page">
+  <header class="topbar cond" id="topbar">
+    <div class="topbar-left">
+      <div class="brand-block">
+        <a class="brand" href="#games">NBA Predictor</a>
+        <span class="tag">Paper trading</span>
+      </div>
+      <nav class="tabs" aria-label="Sections">
+        <a href="#games" id="tab-games">Games</a>
+        <a href="#performance" id="tab-performance">Performance</a>
+      </nav>
+    </div>
+    <div class="topbar-right">
+      <div class="refresh" id="refresh-status" hidden></div>
+      <div class="pill-wrap" id="pipeline"></div>
+      <span class="tag" id="sample-tag" hidden>Sample data</span>
+    </div>
+  </header>
+  <main id="main" tabindex="-1">
+    <p class="loading">Loading…</p>
+  </main>
+</div>
+<div class="drawer-layer" id="drawer-layer" hidden>
+  <div class="drawer-backdrop" id="drawer-backdrop"></div>
+  <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="Game detail" tabindex="-1"></aside>
+</div>
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+<noscript><p class="noscript">This dashboard needs JavaScript. The <a href="/legacy">classic view</a> works without it.</p></noscript>
+</body>
+</html>

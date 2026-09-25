@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Games page: tonight and last night</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&amp;family=Barlow:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0a1630;font-family:'Barlow',sans-serif;color:#ffffff}
+a{color:#ffc72c}a:hover{color:#ffe08a}
+.cond{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div style="width: 1440px; height: 3000px; box-sizing: border-box; padding: 40px 48px 48px; background: #0a1630; display: flex; flex-direction: column; gap: 40px;">
+
+<header style="display: flex; flex-direction: column; gap: 28px;">
+<div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 20px; border-bottom: 2px solid #1d3461;">
+<div style="display: flex; align-items: center; gap: 40px;">
+<span class="cond" style="background: #ffc72c; color: #0a1630; padding: 6px 12px; font-size: 20px; font-weight: 800; letter-spacing: .1em;">NBA Predictor</span>
+<nav class="cond" style="display: flex; gap: 32px; font-size: 20px; font-weight: 700; letter-spacing: .08em;">
+<a href="#" style="color: #ffffff; text-decoration: none; padding-bottom: 6px; border-bottom: 3px solid #ffc72c;">Games</a>
+<a href="#" style="color: #b7c4dd; text-decoration: none; padding-bottom: 6px; border-bottom: 3px solid transparent;">Performance</a>
+</nav>
+</div>
+<div class="cond" style="display: flex; align-items: center; gap: 20px; font-size: 16px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;">
+<span style="display: flex; align-items: center; gap: 8px;"><span style="width: 10px; height: 10px; border-radius: 50%; background: #ff4d5e;"></span>Scores refresh every 30s · updated 9:05 PM ET</span>
+<span style="border: 1px solid #3a5185; padding: 3px 8px;">Sample data</span>
+</div>
+</div>
+<div style="display: flex; align-items: flex-end; justify-content: space-between;">
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<h1 class="cond" style="margin: 0; font-size: 104px; font-weight: 800; line-height: .92;">Tonight's slate</h1>
+<div class="cond" style="font-size: 22px; font-weight: 600; letter-spacing: .04em; color: #b7c4dd;">{{slate.date}} · {{slate.count}} games · {{slate.final}} final · <span style="color: #ff8a95;">{{slate.live}} live</span> · {{slate.pre}} upcoming</div>
+</div>
+<div style="display: flex; gap: 2px; background: #1d3461;">
+<div style="background: #102244; padding: 14px 24px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Bets placed</span><span class="cond" style="font-size: 36px; font-weight: 800;">{{slate.bets}}</span></div>
+<div style="background: #102244; padding: 14px 24px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Total staked</span><span class="cond" style="font-size: 36px; font-weight: 800; color: #ffc72c;">{{slate.risk}}</span></div>
+<div style="background: #102244; padding: 14px 24px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Settled P/L</span><span class="cond" style="font-size: 36px; font-weight: 800; color: #3ee08f;">{{slate.settled}}</span></div>
+<div style="background: #102244; padding: 14px 24px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Live picks ahead</span><span class="cond" style="font-size: 36px; font-weight: 800;">{{slate.winning}}</span></div>
+</div>
+</div>
+</header>
+
+<section style="display: flex; flex-direction: column; gap: 14px;">
+<h2 class="cond" style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: .1em; color: #ffc72c;">Next up · biggest edge</h2>
+<div style="display: grid; grid-template-columns: 1fr 1.3fr 1fr; background: #102244;">
+<div style="background: {{f.a.bg}}; border-top: 8px solid {{f.a.alt}}; padding: 32px; display: flex; flex-direction: column; justify-content: space-between; gap: 24px;">
+<div style="display: flex; align-items: center; gap: 20px;">
+<div style="width: 112px; height: 112px; border-radius: 50%; background: rgba(0,0,0,.2); border: 3px dashed {{f.a.alt}}; box-sizing: border-box; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><span class="cond" style="font-size: 16px; font-weight: 700; letter-spacing: .08em; opacity: .8;">{{f.a.abbr}} logo</span></div>
+<div style="display: flex; flex-direction: column;"><span class="cond" style="font-size: 18px; font-weight: 700; letter-spacing: .08em; opacity: .85;">Away · {{f.a.record}}</span><span class="cond" style="font-size: 80px; font-weight: 800; line-height: .9;">{{f.a.abbr}}</span><span class="cond" style="font-size: 24px; font-weight: 700;">{{f.a.name}}</span></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span class="cond" style="font-size: 16px; font-weight: 700; letter-spacing: .08em; opacity: .85;">Last 10 · {{f.a.l10Text}}</span>
+<div style="display: flex; gap: 4px;"><sc-for list="{{f.a.dots}}" as="d" hint-placeholder-count="10"><span style="width: 14px; height: 22px; background: {{d.c}};"></span></sc-for></div>
+</div>
+<div style="display: flex; align-items: flex-end; justify-content: space-between;">
+<span class="cond" style="font-size: 120px; font-weight: 800; line-height: .85;">{{f.a.bigText}}</span>
+<span class="cond" style="display: flex; flex-direction: column; font-size: 22px; font-weight: 700; text-align: right;"><span>{{f.a.smallTop}}</span><span>{{f.a.smallBottom}}</span></span>
+</div>
+</div>
+<div style="padding: 28px 32px; display: flex; flex-direction: column; gap: 22px;">
+<div style="display: flex; align-items: center; justify-content: space-between;">
+<sc-if value="{{f.isPre}}" hint-placeholder-val="{{ true }}"><span class="cond" style="border: 2px solid #3a5185; padding: 5px 12px; font-size: 18px; font-weight: 800; letter-spacing: .08em; color: #ffffff;">Tip-off {{f.time}} ET</span></sc-if>
+<sc-if value="{{f.isLive}}" hint-placeholder-val="{{ false }}"><span class="cond" style="display: flex; align-items: center; gap: 8px; background: #d62839; padding: 6px 12px; font-size: 18px; font-weight: 800; letter-spacing: .08em;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #ffffff;"></span>Live · {{f.clock}}</span></sc-if>
+<span class="cond" style="display: flex; align-items: center; gap: 8px; font-size: 22px; font-weight: 800; color: {{f.headInk}};"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="1"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>{{f.headline}}</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<div class="cond" style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;"><span>Pregame win probability</span><span>{{f.a.probW}} – {{f.h.probW}}</span></div>
+<div style="display: flex; height: 14px;"><div style="width: {{f.a.probW}}; background: {{f.a.bg}};"></div><div style="width: {{f.h.probW}}; background: {{f.h.bg}};"></div></div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; background: #1d3461;">
+<div style="background: #102244; padding: 12px 14px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;">Pick</span><span class="cond" style="font-size: 34px; font-weight: 800;">{{f.pick}}</span></div>
+<div style="background: #102244; padding: 12px 14px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;">Odds taken</span><span class="cond" style="font-size: 34px; font-weight: 800;">{{f.odds}}</span></div>
+<div style="background: #102244; padding: 12px 14px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;">Edge</span><span class="cond" style="font-size: 34px; font-weight: 800; color: #3ee08f;">{{f.edgeText}}</span></div>
+<div style="background: #102244; padding: 12px 14px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;">Bet placed</span><span class="cond" style="font-size: 34px; font-weight: 800; color: #ffc72c;">{{f.betText}}</span></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span class="cond" style="font-size: 15px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;">Odds at time of bet · {{f.book}} price taken</span>
+<div style="display: grid; grid-template-columns: 64px repeat(5, minmax(0, 1fr)); gap: 2px;">
+<span></span>
+<sc-for list="{{books}}" as="b" hint-placeholder-count="5"><span class="cond" style="font-size: 13px; font-weight: 700; letter-spacing: .04em; color: #b7c4dd; text-align: center; padding-bottom: 4px;">{{b}}</span></sc-for>
+<sc-for list="{{f.teams}}" as="t" hint-placeholder-count="2">
+<span class="cond" style="font-size: 18px; font-weight: 800; display: flex; align-items: center;">{{t.abbr}}</span>
+<sc-for list="{{t.shop}}" as="c" hint-placeholder-count="5"><span class="cond" style="font-size: 18px; font-weight: 700; text-align: center; padding: 7px 0; background: {{c.bg}}; color: {{c.ink}};">{{c.v}}</span></sc-for>
+</sc-for>
+</div>
+</div>
+</div>
+<div style="background: {{f.h.bg}}; border-top: 8px solid {{f.h.alt}}; padding: 32px; display: flex; flex-direction: column; justify-content: space-between; gap: 24px; text-align: right;">
+<div style="display: flex; align-items: center; justify-content: flex-end; gap: 20px;">
+<div style="display: flex; flex-direction: column;"><span class="cond" style="font-size: 18px; font-weight: 700; letter-spacing: .08em; opacity: .85;">Home · {{f.h.record}}</span><span class="cond" style="font-size: 80px; font-weight: 800; line-height: .9;">{{f.h.abbr}}</span><span class="cond" style="font-size: 24px; font-weight: 700;">{{f.h.name}}</span></div>
+<div style="width: 112px; height: 112px; border-radius: 50%; background: rgba(0,0,0,.2); border: 3px dashed {{f.h.alt}}; box-sizing: border-box; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><span class="cond" style="font-size: 16px; font-weight: 700; letter-spacing: .08em; opacity: .8;">{{f.h.abbr}} logo</span></div>
+</div>
+<div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+<span class="cond" style="font-size: 16px; font-weight: 700; letter-spacing: .08em; opacity: .85;">Last 10 · {{f.h.l10Text}}</span>
+<div style="display: flex; gap: 4px;"><sc-for list="{{f.h.dots}}" as="d" hint-placeholder-count="10"><span style="width: 14px; height: 22px; background: {{d.c}};"></span></sc-for></div>
+</div>
+<div style="display: flex; align-items: flex-end; justify-content: space-between;">
+<span class="cond" style="display: flex; flex-direction: column; font-size: 22px; font-weight: 700; text-align: left;"><span>{{f.h.smallTop}}</span><span>{{f.h.smallBottom}}</span></span>
+<span class="cond" style="font-size: 120px; font-weight: 800; line-height: .85;">{{f.h.bigText}}</span>
+</div>
+</div>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 14px;">
+<h2 class="cond" style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: .1em; color: #ffc72c;">All games</h2>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px;">
+<sc-for list="{{others}}" as="game" hint-placeholder-count="5">
+<article style="background: #102244; border-top: 4px solid {{game.bar}}; display: flex; flex-direction: column;">
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid #1d3461;">
+<sc-if value="{{game.isLive}}" hint-placeholder-val="{{ true }}"><span class="cond" style="display: flex; align-items: center; gap: 8px; background: #d62839; padding: 4px 10px; font-size: 17px; font-weight: 800; letter-spacing: .08em;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #ffffff;"></span>Live · {{game.clock}}</span></sc-if>
+<sc-if value="{{game.isPre}}" hint-placeholder-val="{{ false }}"><span class="cond" style="border: 1px solid #3a5185; padding: 4px 10px; font-size: 17px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;">Tip-off {{game.time}} ET</span></sc-if>
+<sc-if value="{{game.isFinal}}" hint-placeholder-val="{{ false }}"><span class="cond" style="background: #3a5185; padding: 4px 10px; font-size: 17px; font-weight: 800; letter-spacing: .08em;">Final</span></sc-if>
+<span class="cond" style="font-size: 17px; font-weight: 700; letter-spacing: .06em; color: #b7c4dd;">Pregame edge <span style="color: {{game.edgeInk}};">{{game.edgeText}}</span></span>
+</div>
+<div style="padding: 16px 24px 20px; display: flex; flex-direction: column; gap: 12px;">
+<div class="cond" style="display: grid; grid-template-columns: 56px minmax(0, 1fr) 124px 64px 64px; gap: 16px; font-size: 13px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;"><span></span><span></span><span>Last 10</span><span style="text-align: right;">Pregame</span><span style="text-align: right;">{{game.scoreLabel}}</span></div>
+<sc-for list="{{game.teams}}" as="t" hint-placeholder-count="2">
+<div style="display: grid; grid-template-columns: 56px minmax(0, 1fr) 124px 64px 64px; gap: 16px; align-items: center;">
+<div style="width: 56px; height: 56px; border-radius: 50%; background: {{t.bg}}; border: 2px dashed {{t.alt}}; box-sizing: border-box; display: flex; align-items: center; justify-content: center;"><span class="cond" style="font-size: 11px; font-weight: 700; letter-spacing: .06em;">Logo</span></div>
+<div style="display: flex; flex-direction: column; min-width: 0;"><span class="cond" style="font-size: 28px; font-weight: 800; line-height: 1; color: {{t.nameInk}};">{{t.abbr}} <span style="font-size: 20px; font-weight: 700; color: #b7c4dd;">{{t.name}}</span></span><span style="font-size: 14px; color: #b7c4dd;">{{t.record}} · L10 {{t.l10Text}}</span></div>
+<div style="display: flex; gap: 3px;"><sc-for list="{{t.dots}}" as="d" hint-placeholder-count="10"><span style="width: 9px; height: 16px; background: {{d.c}};"></span></sc-for></div>
+<span class="cond" style="font-size: 26px; font-weight: 800; text-align: right; color: {{t.probInk}};">{{t.probW}}</span>
+<span class="cond" style="font-size: 40px; font-weight: 800; text-align: right; color: {{t.scoreInk}};">{{t.scoreText}}</span>
+</div>
+</sc-for>
+</div>
+<div style="padding: 0 24px 20px; display: flex; flex-direction: column; gap: 8px;">
+<span class="cond" style="font-size: 13px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;">Odds at time of bet</span>
+<div style="display: grid; grid-template-columns: 56px repeat(5, minmax(0, 1fr)); gap: 2px;">
+<span></span>
+<sc-for list="{{books}}" as="b" hint-placeholder-count="5"><span class="cond" style="font-size: 12px; font-weight: 700; letter-spacing: .04em; color: #b7c4dd; text-align: center; padding-bottom: 4px;">{{b}}</span></sc-for>
+<sc-for list="{{game.teams}}" as="t" hint-placeholder-count="2">
+<span class="cond" style="font-size: 16px; font-weight: 800; display: flex; align-items: center;">{{t.abbr}}</span>
+<sc-for list="{{t.shop}}" as="c" hint-placeholder-count="5"><span class="cond" style="font-size: 17px; font-weight: 700; text-align: center; padding: 6px 0; background: {{c.bg}}; color: {{c.ink}};">{{c.v}}</span></sc-for>
+</sc-for>
+</div>
+</div>
+<div style="margin-top: auto; display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; background: #0d1d3b;">
+<div style="display: flex; align-items: baseline; gap: 14px;">
+<span class="cond" style="font-size: 24px; font-weight: 800;">Pick {{game.pick}} {{game.odds}}</span>
+<span class="cond" style="font-size: 15px; font-weight: 700; letter-spacing: .06em; color: #b7c4dd;">{{game.book}}</span>
+<span class="cond" style="font-size: 20px; font-weight: 800; color: {{game.trackInk}};">{{game.trackText}}</span>
+</div>
+<sc-if value="{{game.isOpenBet}}" hint-placeholder-val="{{ true }}"><span class="cond" style="display: flex; align-items: center; gap: 8px; background: #ffc72c; color: #0a1630; font-size: 22px; font-weight: 800; padding: 6px 16px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="1"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>Placed {{game.betText}}</span></sc-if>
+<sc-if value="{{game.isSettled}}" hint-placeholder-val="{{ false }}"><span class="cond" style="display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 800;"><span style="color: #b7c4dd; font-size: 17px; font-weight: 700;">{{game.betText}} bet</span><span style="background: {{game.resBg}}; color: #0a1630; padding: 6px 14px;">{{game.resultText}} {{game.plText}}</span></span></sc-if>
+<sc-if value="{{game.noBet}}" hint-placeholder-val="{{ false }}"><span class="cond" style="border: 2px solid #3a5185; color: #b7c4dd; font-size: 20px; font-weight: 700; padding: 4px 14px;">No bet placed</span></sc-if>
+</div>
+</article>
+</sc-for>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; align-items: baseline; justify-content: space-between;">
+<h2 class="cond" style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: .1em; color: #ffc72c;">Last night · Mon, Nov 16</h2>
+<span class="cond" style="font-size: 20px; font-weight: 700; letter-spacing: .06em; color: #b7c4dd;">Picks <span style="color: #ffffff;">3–1</span> · Bets <span style="color: #ffffff;">2–1</span> · <span style="color: #3ee08f;">+$25.47</span></span>
+</div>
+<div class="cond" style="display: grid; grid-template-columns: minmax(0, 1fr) 190px 190px 110px 110px 120px; gap: 24px; padding: 0 24px; font-size: 13px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;"><span>Final</span><span>Pick</span><span>Odds</span><span>Result</span><span style="text-align: right;">Bet</span><span style="text-align: right;">P/L</span></div>
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<sc-for list="{{lastNight}}" as="r" hint-placeholder-count="4">
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 190px 190px 110px 110px 120px; gap: 24px; align-items: center; background: #102244; padding: 14px 24px;">
+<div style="display: flex; align-items: center; gap: 14px;">
+<div style="width: 44px; height: 44px; border-radius: 50%; background: {{r.a.bg}}; border: 2px dashed {{r.a.alt}}; box-sizing: border-box; display: flex; align-items: center; justify-content: center;"><span class="cond" style="font-size: 10px; font-weight: 700;">Logo</span></div>
+<span class="cond" style="font-size: 24px; font-weight: 800; width: 48px;">{{r.a.abbr}}</span>
+<span class="cond" style="font-size: 34px; font-weight: 800; width: 56px; color: {{r.a.scoreInk}};">{{r.a.score}}</span>
+<span class="cond" style="font-size: 18px; font-weight: 700; color: #b7c4dd;">@</span>
+<span class="cond" style="font-size: 34px; font-weight: 800; width: 56px; text-align: right; color: {{r.h.scoreInk}};">{{r.h.score}}</span>
+<span class="cond" style="font-size: 24px; font-weight: 800; width: 48px; text-align: right;">{{r.h.abbr}}</span>
+<div style="width: 44px; height: 44px; border-radius: 50%; background: {{r.h.bg}}; border: 2px dashed {{r.h.alt}}; box-sizing: border-box; display: flex; align-items: center; justify-content: center;"><span class="cond" style="font-size: 10px; font-weight: 700;">Logo</span></div>
+</div>
+<span class="cond" style="font-size: 22px; font-weight: 800;">{{r.pick}} <span style="font-size: 17px; font-weight: 700; color: #b7c4dd;">{{r.probText}}</span></span>
+<span class="cond" style="font-size: 20px; font-weight: 700;">{{r.odds}} <span style="font-size: 15px; color: #b7c4dd;">{{r.book}}</span></span>
+<span class="cond" style="justify-self: start; font-size: 18px; font-weight: 800; letter-spacing: .08em; padding: 4px 12px; color: #0a1630; background: {{r.resBg}};">{{r.resultText}}</span>
+<span class="cond" style="font-size: 20px; font-weight: 700; text-align: right; color: {{r.betInk}};">{{r.betText}}</span>
+<span class="cond" style="font-size: 22px; font-weight: 800; text-align: right; color: {{r.plInk}};">{{r.plText}}</span>
+</div>
+</sc-for>
+</div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":3000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const T = {
+      BOS:['Celtics','#007A33','#BA9653','9–6','WWWWWWLLLL'], NYK:['Knicks','#006BB6','#F58426','11–4','WLWWWWWWWL'],
+      MIA:['Heat','#98002E','#F9A01B','10–5','WWWWWWLLWL'], ORL:['Magic','#0077C0','#C4CED4','6–9','WLLWWLLWLL'],
+      DEN:['Nuggets','#0E2240','#FEC524','10–5','WWWLWWWWLL'], MIN:['Timberwolves','#236192','#78BE20','10–5','LWWWWLWWLW'],
+      CLE:['Cavaliers','#860038','#FDBB30','12–3','WLWWWWLWWL'], MIL:['Bucks','#00471B','#EEE1C6','6–9','WWLLWLLLWL'],
+      LAL:['Lakers','#552583','#FDB927','11–4','WWWWLWWWLW'], PHX:['Suns','#1D1160','#E56020','7–8','LLLWLWWWWL'],
+      GSW:['Warriors','#1D428A','#FFC72C','8–7','WWLWLLLWLW'], SAC:['Kings','#5A2D81','#8A9AA3','8–7','WWWLLLLWWW'],
+      PHI:['76ers','#006BB6','#ED174C'], BKN:['Nets','#1b1b1b','#FFFFFF'], DAL:['Mavericks','#00538C','#B8C4CA'], OKC:['Thunder','#007AC1','#EF3B24'],
+      CHI:['Bulls','#CE1141','#1b1b1b'], ATL:['Hawks','#E03A3E','#C1D32F'], TOR:['Raptors','#CE1141','#A1A1A4'], WAS:['Wizards','#002B5C','#E31837']
+    };
+    const books = ['DraftKings', 'FanDuel', 'BetMGM', 'BetRivers', 'BetUS'];
+    // Tip-off order. Cards keep this order all night; finished games stay in place.
+    const games = [
+      {away:'MIA',home:'ORL',time:'7:00 PM',status:'final',as:112,hs:104,ap:61,hp:39,pick:'MIA',odds:'+105',book:'FanDuel',edge:12.2,bet:70.65,pl:74.18,
+       shopA:['+103','+105','+102','−103','−103'],shopH:['−119','−124','−125','−119','−112'],bestA:1,bestH:4},
+      {away:'BOS',home:'NYK',time:'7:30 PM',status:'live',clock:'Q3 4:40',as:71,hs:76,ap:42,hp:58,pick:'NYK',odds:'−118',book:'DraftKings',edge:3.9,bet:25.00,
+       shopA:['+100','+104','+103','+105','+102'],shopH:['−118','−126','−124','−121','−126'],bestA:3,bestH:0},
+      {away:'DEN',home:'MIN',time:'8:00 PM',status:'live',clock:'Q2 1:05',as:48,hs:44,ap:47,hp:53,pick:'MIN',odds:'+124',book:'BetMGM',edge:8.4,bet:44.71,
+       shopA:['−142','−142','−152','−150','−145'],shopH:['+118','+116','+124','+122','+121'],bestA:0,bestH:2},
+      {away:'CLE',home:'MIL',time:'8:00 PM',status:'live',clock:'Q2 3:30',as:45,hs:47,ap:66,hp:34,pick:'CLE',odds:'−150',book:'DraftKings',edge:6.0,bet:44.42,
+       shopA:['−150','−156','−156','−158','−155'],shopH:['+122','+132','+130','+131','+133'],bestA:0,bestH:4},
+      {away:'LAL',home:'PHX',time:'10:00 PM',status:'pre',ap:55,hp:45,pick:'LAL',odds:'−140',book:'BetRivers',edge:-3.3,bet:0,
+       shopA:['−142','−146','−146','−140','−145'],shopH:['+115','+123','+118','+119','+121'],bestA:3,bestH:1},
+      {away:'GSW',home:'SAC',time:'10:30 PM',status:'pre',ap:39,hp:61,pick:'SAC',odds:'−105',book:'FanDuel',edge:9.8,bet:59.38,
+       shopA:['−104','−117','−115','−111','−105'],shopH:['−113','−105','−107','−111','−110'],bestA:0,bestH:1}
+    ];
+    const money = (v) => '$' + Math.abs(v).toFixed(2);
+    const W = '#3ee08f', L = '#ff6b7a';
+    const team = (abbr, prob, score, isPick, started, shop, best, isBetSide) => {
+      const t = T[abbr];
+      const rec = t[4] || '';
+      const w = rec.split('').filter((c) => c === 'W').length;
+      return {
+        abbr, name: t[0], bg: t[1], alt: t[2], record: t[3] || '', l10Text: w + '–' + (10 - w),
+        dots: rec.split('').map((c) => ({ c: c === 'W' ? W : L })),
+        probW: prob + '%', probInk: isPick ? '#ffc72c' : '#b7c4dd', nameInk: isPick ? '#ffc72c' : '#ffffff',
+        scoreText: started ? String(score) : '', scoreInk: '#ffffff',
+        bigText: started ? String(score) : prob + '%',
+        smallTop: started ? prob + '%' : 'Pregame',
+        smallBottom: started ? 'pregame' : 'win prob',
+        shop: shop.map((v, i) => ({ v, bg: i === best ? (isBetSide ? '#ffc72c' : '#1d3461') : '#0d1d3b', ink: i === best ? (isBetSide ? '#0a1630' : '#ffc72c') : '#ffffff' }))
+      };
+    };
+    const dress = (g) => {
+      const live = g.status === 'live', fin = g.status === 'final', started = live || fin;
+      const aPick = g.pick === g.away;
+      const a = team(g.away, g.ap, g.as, aPick, started, g.shopA, g.bestA, aPick && g.bet > 0);
+      const h = team(g.home, g.hp, g.hs, !aPick, started, g.shopH, g.bestH, !aPick && g.bet > 0);
+      if (started) { a.scoreInk = g.as >= g.hs ? '#ffffff' : '#7f8fb0'; h.scoreInk = g.hs >= g.as ? '#ffffff' : '#7f8fb0'; }
+      const margin = started ? (aPick ? g.as - g.hs : g.hs - g.as) : 0;
+      const hit = fin && margin > 0;
+      let trackText = '';
+      if (live) trackText = margin > 0 ? 'up ' + margin : (margin < 0 ? 'down ' + (-margin) : 'tied');
+      if (fin) trackText = margin > 0 ? 'won by ' + margin : 'lost by ' + (-margin);
+      return {
+        ...g, a, h, teams: [a, h],
+        isLive: live, isPre: g.status === 'pre', isFinal: fin,
+        isBet: g.bet > 0, noBet: g.bet === 0,
+        isOpenBet: g.bet > 0 && !fin, isSettled: g.bet > 0 && fin,
+        scoreLabel: live ? 'Score' : (fin ? 'Final' : ''),
+        bar: live ? '#d62839' : (fin ? (hit ? '#3ee08f' : '#ff8a95') : '#3a5185'),
+        edgeText: (g.edge >= 0 ? '+' : '−') + Math.abs(g.edge).toFixed(1) + '%',
+        edgeInk: g.edge >= 0 ? '#3ee08f' : '#ff8a95',
+        betText: g.bet > 0 ? money(g.bet) : '—',
+        trackText,
+        trackInk: margin > 0 ? '#3ee08f' : (margin < 0 ? '#ff8a95' : '#ffffff'),
+        resultText: hit ? 'Hit' : 'Miss', resBg: hit ? '#3ee08f' : '#ff8a95',
+        plText: fin && g.bet > 0 ? (hit ? '+' + money(g.pl) : '−' + money(g.bet)) : '',
+        headline: g.status === 'pre' ? 'Bet placed · ' + money(g.bet) : (g.pick + ' ' + trackText),
+        headInk: g.status === 'pre' ? '#ffc72c' : (margin > 0 ? '#3ee08f' : '#ff8a95'),
+        winning: live && margin > 0
+      };
+    };
+    const all = games.map(dress);
+    // Hero: the unstarted game with a placed bet and the biggest edge. It hands off at each tip-off.
+    const upcoming = all.filter((g) => g.isPre && g.isBet).sort((x, y) => y.edge - x.edge);
+    const f = upcoming[0] || all[0];
+    const bets = all.filter((g) => g.isBet);
+    const settled = all.filter((g) => g.isSettled).reduce((s, g) => s + (g.trackInk === '#3ee08f' ? g.pl : -g.bet), 0);
+    const lastRaw = [
+      {a:'PHI',h:'BKN',as:114,hs:102,pick:'PHI',prob:64,odds:'−135',book:'DraftKings',hit:true,bet:38.20,pl:28.30},
+      {a:'DAL',h:'OKC',as:105,hs:118,pick:'OKC',prob:71,odds:'−210',book:'FanDuel',hit:true,bet:41.10,pl:19.57},
+      {a:'CHI',h:'ATL',as:121,hs:116,pick:'ATL',prob:56,odds:'+110',book:'BetMGM',hit:false,bet:22.40,pl:-22.40},
+      {a:'TOR',h:'WAS',as:99,hs:94,pick:'TOR',prob:58,odds:'−110',book:'BetRivers',hit:true,bet:0,pl:0}
+    ];
+    const lastNight = lastRaw.map((r) => ({
+      ...r,
+      a: { abbr: r.a, bg: T[r.a][1], alt: T[r.a][2], score: r.as, scoreInk: r.as > r.hs ? '#ffffff' : '#7f8fb0' },
+      h: { abbr: r.h, bg: T[r.h][1], alt: T[r.h][2], score: r.hs, scoreInk: r.hs > r.as ? '#ffffff' : '#7f8fb0' },
+      probText: r.prob + '%',
+      resultText: r.hit ? 'Hit' : 'Miss', resBg: r.hit ? '#3ee08f' : '#ff8a95',
+      betText: r.bet > 0 ? money(r.bet) : 'No bet', betInk: r.bet > 0 ? '#ffffff' : '#b7c4dd',
+      plText: r.pl === 0 ? '—' : (r.pl > 0 ? '+' : '−') + money(r.pl),
+      plInk: r.pl > 0 ? '#3ee08f' : (r.pl < 0 ? '#ff8a95' : '#b7c4dd')
+    }));
+    const liveGames = all.filter((g) => g.isLive);
+    return {
+      books, f,
+      others: all.filter((g) => g !== f),
+      lastNight,
+      slate: {
+        date: 'Tue, Nov 17', count: all.length,
+        final: all.filter((g) => g.isFinal).length, live: liveGames.length, pre: all.filter((g) => g.isPre).length,
+        bets: bets.length, risk: money(bets.reduce((s, g) => s + g.bet, 0)),
+        settled: (settled >= 0 ? '+' : '−') + money(settled),
+        winning: liveGames.filter((g) => g.winning).length + ' of ' + liveGames.length
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -7,7 +7,15 @@ from urllib.parse import urlsplit
 
 import pandas as pd
 from dotenv import load_dotenv
-from flask import Flask, g, jsonify, make_response, render_template, request
+from flask import (
+    Flask,
+    g,
+    jsonify,
+    make_response,
+    render_template,
+    request,
+    send_from_directory,
+)
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
@@ -16,6 +24,7 @@ from database import (  # noqa: E402  (needs the src/ path above)
     MissingColumnError,
     MissingTableError,
     normalize_game_id,
+    schema_v2_enabled,
     select_rows,
 )
 
@@ -572,12 +581,12 @@ def set_security_headers(response):
     return response
 
 
-def api_response(payload):
+def api_response(payload, cache_control=LEGACY_CACHE_CONTROL):
     body = dict(payload)
     body["generated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     body["migration_pending"] = bool(g.get("migration_pending", False))
     response = jsonify(body)
-    response.headers["Cache-Control"] = LEGACY_CACHE_CONTROL
+    response.headers["Cache-Control"] = cache_control
     return response
 
 
@@ -617,7 +626,25 @@ def method_not_allowed(exc):
     return error_response(405, "method_not_allowed")
 
 
+PUBLIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "public")
+
+
 @app.route("/")
+def dashboard_page():
+    # The dashboard is a static page (public/index.html); on Vercel the CDN serves the same
+    # file. Everything it shows comes from the /api/* routes.
+    response = send_from_directory(PUBLIC_DIR, "index.html")
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
+@app.route("/sample/<path:name>")
+def sample_data(name):
+    # Sample-mode JSON (?sample=1) for local runs; Vercel serves public/sample/ from the CDN.
+    return send_from_directory(os.path.join(PUBLIC_DIR, "sample"), name)
+
+
+@app.route("/legacy")
 def index():
     notice = None
     try:
@@ -687,6 +714,926 @@ def api_bankroll_series():
     return api_response(
         {"year": season_end_year(season), "season": season, "points": bankroll_series_for_season(season)}
     )
+
+
+# ---------------------------------------------------------------------------
+# Dashboard read API (04-API-CONTRACT sec2, sec4-9; build tasks B5/B6).
+#
+# [M] data (tables and columns a pending migration adds) is only read when
+# NBA_SCHEMA_V2 is on; otherwise it comes back null/empty with
+# migration_pending: true. Every route keeps a constant, bounded number of
+# Supabase calls no matter how many games or rows are involved (API-F1).
+# ---------------------------------------------------------------------------
+
+DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+GAME_ID_PATTERN = re.compile(r"^\d{10}$")
+TEAM_QUERY_PATTERN = re.compile(r"^[A-Za-z0-9 .'-]{1,40}$")
+EASTERN = "America/New_York"
+START_BANKROLL = 1000.0
+RECENT_BETS = 33
+# The sportsbooks odds.py keeps (src/odds.py PREFERRED_BOOKS), in grid order.
+PREFERRED_BOOKS = ["DraftKings", "FanDuel", "BetMGM", "BetRivers", "BetUS"]
+
+CACHE_SLATE_TODAY = "public, s-maxage=60, stale-while-revalidate=300"
+CACHE_PAST = "public, s-maxage=3600, stale-while-revalidate=86400"
+CACHE_GAME = "public, s-maxage=60, stale-while-revalidate=600"
+CACHE_MODEL = "public, s-maxage=600, stale-while-revalidate=86400"
+CACHE_WORKFLOW = "public, s-maxage=30, stale-while-revalidate=60"
+
+TEAMS = {
+    "ATL": "Atlanta Hawks", "BOS": "Boston Celtics", "BKN": "Brooklyn Nets",
+    "CHA": "Charlotte Hornets", "CHI": "Chicago Bulls", "CLE": "Cleveland Cavaliers",
+    "DAL": "Dallas Mavericks", "DEN": "Denver Nuggets", "DET": "Detroit Pistons",
+    "GSW": "Golden State Warriors", "HOU": "Houston Rockets", "IND": "Indiana Pacers",
+    "LAC": "LA Clippers", "LAL": "Los Angeles Lakers", "MEM": "Memphis Grizzlies",
+    "MIA": "Miami Heat", "MIL": "Milwaukee Bucks", "MIN": "Minnesota Timberwolves",
+    "NOP": "New Orleans Pelicans", "NYK": "New York Knicks", "OKC": "Oklahoma City Thunder",
+    "ORL": "Orlando Magic", "PHI": "Philadelphia 76ers", "PHX": "Phoenix Suns",
+    "POR": "Portland Trail Blazers", "SAC": "Sacramento Kings", "SAS": "San Antonio Spurs",
+    "TOR": "Toronto Raptors", "UTA": "Utah Jazz", "WAS": "Washington Wizards",
+}
+
+PREDICTION_COLUMNS = (
+    "game_id,game_date,home_team,away_team,home_win_prob,away_win_prob,predicted_winner,"
+    "actual_winner,correct,bet_placed,bet_amount,odds,profit_loss"
+)
+PREDICTION_V2_COLUMNS = (
+    PREDICTION_COLUMNS + ",season,tip_time_utc,bookmaker,implied_prob,edge,bankroll_at_bet,"
+    "kelly_full,kelly_fraction,model_name,predicted_at,status,home_score,away_score,skip_reason"
+)
+
+
+def bad_request(detail):
+    return error_response(400, "bad_request", detail=detail)
+
+
+def today_et():
+    """Today's date on the US East Coast, where the NBA schedules its nights."""
+    try:
+        from zoneinfo import ZoneInfo
+
+        return datetime.now(ZoneInfo(EASTERN)).date()
+    except Exception:  # no tz database: fall back to a fixed UTC-5 offset
+        return (datetime.now(timezone.utc) - timedelta(hours=5)).date()
+
+
+def parse_iso_date(value):
+    """A YYYY-MM-DD string as a date, or None when it isn't one."""
+    if not value or not DATE_PATTERN.match(value):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def pending_migration():
+    g.migration_pending = True
+
+
+def read_v2_rows(table, **kwargs):
+    """Read an [M] table only when the v2 schema is on; otherwise flag the payload."""
+    if not schema_v2_enabled():
+        pending_migration()
+        return pd.DataFrame()
+    return read_rows(table, **kwargs)
+
+
+def read_predictions(**kwargs):
+    """predictions rows, with the [M] columns when the v2 schema has them."""
+    if schema_v2_enabled():
+        try:
+            return select_rows("predictions", columns=PREDICTION_V2_COLUMNS, **kwargs)
+        except MissingColumnError:
+            pass
+    pending_migration()
+    return read_rows("predictions", columns=PREDICTION_COLUMNS, **kwargs)
+
+
+def game_id_filter_value(game_id):
+    # predictions.game_id is bigint until migration 0001 turns it into 10-char text.
+    return game_id if schema_v2_enabled() else int(game_id)
+
+
+def season_or_all_from_request():
+    """"all", a known season, the latest season, or None when ?season= is malformed."""
+    if (request.args.get("season") or "").strip().lower() == "all":
+        return "all"
+    return season_from_request()
+
+
+def season_or_all_filters(column, season):
+    return [] if season == "all" else season_filters(column, season)
+
+
+def money(value):
+    return round(float(value), 2)
+
+
+def record_text(wins, losses):
+    return f"{wins}-{losses}"
+
+
+def as_int(value):
+    number = safe_float(value)
+    return int(number) if number is not None else None
+
+
+def pick_probability(row):
+    """The model's probability for its own pick (None when the pick is unknown)."""
+    predicted = row.get("predicted_winner")
+    if predicted and predicted == row.get("home_team"):
+        return normalize_probability(row.get("home_win_prob"))
+    if predicted and predicted == row.get("away_team"):
+        return normalize_probability(row.get("away_win_prob"))
+    return None
+
+
+def prediction_edge(row):
+    stored = safe_float(row.get("edge"))
+    if stored is not None:
+        return stored
+    prob = pick_probability(row)
+    implied = implied_probability(row.get("odds"))
+    if prob is None or implied is None:
+        return None
+    return prob - implied
+
+
+def bet_amount(row):
+    return safe_float(row.get("bet_amount"), 0.0) or 0.0
+
+
+def is_settled(row):
+    return row.get("correct") in (0, 1)
+
+
+def prediction_status(row):
+    status = row.get("status")
+    if status in ("scheduled", "final", "postponed", "void"):
+        # 0011 backfills 'final' only where actual_winner is set; trust a settled result.
+        return "final" if status == "scheduled" and is_settled(row) else status
+    return "final" if is_settled(row) else "scheduled"
+
+
+def bet_result(row):
+    if prediction_status(row) in ("void", "postponed"):
+        return "void" if bet_amount(row) > 0 else None
+    if row.get("correct") == 1:
+        return "hit"
+    if row.get("correct") == 0:
+        return "miss"
+    return None
+
+
+def team_block(tricode, prob, form, score):
+    form = form or {}
+    return {
+        "tricode": tricode,
+        "name": TEAMS.get(tricode),
+        "record": form.get("record"),
+        "l10": form.get("l10"),
+        "win_prob": prob,
+        "score": score,
+    }
+
+
+def build_book_grid(rows):
+    """The 5-book "odds at time of bet" grid from book_odds rows for one game."""
+    if not rows:
+        return None
+    books = list(PREFERRED_BOOKS)
+    for row in rows:
+        if row.get("bookmaker") and row["bookmaker"] not in books:
+            books.append(row["bookmaker"])
+    by_book = {row.get("bookmaker"): row for row in rows}
+    home = [as_int(by_book.get(b, {}).get("home_price")) for b in books]
+    away = [as_int(by_book.get(b, {}).get("away_price")) for b in books]
+
+    def best(prices):
+        # A higher American price always pays more, for favourites and underdogs alike.
+        priced = [(p, -i) for i, p in enumerate(prices) if p is not None]
+        return -max(priced)[1] if priced else None  # ties go to the first book in grid order
+
+    return {
+        "books": books, "home": home, "away": away,
+        "best_home_idx": best(home), "best_away_idx": best(away),
+    }
+
+
+def build_game(row, grids=None, forms=None):
+    """One /api/slate games[] item (04 sec2) from a predictions row."""
+    grids = grids or {}
+    forms = forms or {}
+    game_id = normalize_game_id(row["game_id"])
+    home, away = row.get("home_team"), row.get("away_team")
+    odds = as_int(row.get("odds"))
+    implied = safe_float(row.get("implied_prob"))
+    if implied is None:
+        implied = implied_probability(odds)
+    amount = bet_amount(row)
+    bet = None
+    if amount > 0:
+        bet = {
+            "side": row.get("bet_placed") or row.get("predicted_winner"),
+            "amount": money(amount),
+            "bankroll_at_bet": safe_float(row.get("bankroll_at_bet")),
+            "kelly_full": safe_float(row.get("kelly_full")),
+            "kelly_fraction": safe_float(row.get("kelly_fraction")),
+            "result": bet_result(row),
+            "profit_loss": safe_float(row.get("profit_loss")),
+        }
+    return {
+        "game_id": game_id,
+        "date": row.get("game_date"),
+        "tip_time_utc": row.get("tip_time_utc"),
+        "status": prediction_status(row),
+        "home": team_block(home, normalize_probability(row.get("home_win_prob")),
+                           forms.get(home), as_int(row.get("home_score"))),
+        "away": team_block(away, normalize_probability(row.get("away_win_prob")),
+                           forms.get(away), as_int(row.get("away_score"))),
+        "pick": row.get("predicted_winner"),
+        "pick_prob": pick_probability(row),
+        "odds": odds,
+        "bookmaker": row.get("bookmaker"),
+        "implied_prob": implied,
+        "edge": prediction_edge(row),
+        "bet": bet,
+        "result": bet_result(row) if amount > 0 else (
+            {1: "hit", 0: "miss"}.get(row.get("correct"))
+        ),
+        "skip_reason": row.get("skip_reason"),
+        "book_grid": build_book_grid(grids.get(game_id)),
+    }
+
+
+def book_grids_for(game_ids):
+    """book_odds rows grouped by game_id, one query for the whole slate ([M])."""
+    ids = sorted({normalize_game_id(i) for i in game_ids})
+    if not ids:
+        return {}
+    grouped = {}
+    for row in records(read_v2_rows(
+        "book_odds",
+        columns="game_id,bookmaker,home_price,away_price",
+        filters=[("game_id", "in", ids)],
+        order_by=["game_id", "bookmaker"],
+    )):
+        grouped.setdefault(normalize_game_id(row["game_id"]), []).append(row)
+    return grouped
+
+
+def team_forms_for(teams, season, before_date):
+    """Season record and last-10 string per team as of before_date ([M]: games is only
+    complete after the Gate M re-collect, so pre-migration records would be wrong)."""
+    teams = sorted({t for t in teams if t})
+    if not teams:
+        return {}
+    rows = records(read_v2_rows(
+        "games",
+        columns="GAME_DATE,TEAM_ABBREVIATION,WL",
+        filters=[("SEASON", "eq", season), ("GAME_DATE", "lt", before_date),
+                 ("TEAM_ABBREVIATION", "in", teams)],
+        order_by="GAME_DATE",
+    ))
+    results = {}
+    for row in rows:
+        if row.get("WL") in ("W", "L"):
+            results.setdefault(row.get("TEAM_ABBREVIATION"), []).append(row["WL"])
+    return {
+        team: {"record": record_text(wl.count("W"), wl.count("L")), "l10": "".join(wl[-10:])}
+        for team, wl in results.items()
+    }
+
+
+def bankroll_around(game_date):
+    """(balance before the night, balance after it) from bankroll ([M])."""
+    rows = records(read_v2_rows(
+        "bankroll", columns="date,balance",
+        filters=[("date", "lte", game_date)], order_by="date", descending=True, limit=2,
+    ))
+    if not rows:
+        return None, None
+    if str(rows[0].get("date"))[:10] == game_date:
+        before = safe_float(rows[1].get("balance")) if len(rows) > 1 else None
+        return before, safe_float(rows[0].get("balance"))
+    return safe_float(rows[0].get("balance")), None
+
+
+def win_loss(rows):
+    wins = sum(1 for r in rows if r.get("correct") == 1)
+    losses = sum(1 for r in rows if r.get("correct") == 0)
+    return wins, losses
+
+
+def night_recap(rows, game_date):
+    settled = [r for r in rows if is_settled(r)]
+    bets = [r for r in settled if bet_amount(r) > 0]
+    staked = sum(bet_amount(r) for r in bets)
+    net = sum(safe_float(r.get("profit_loss"), 0.0) or 0.0 for r in bets)
+    before, after = bankroll_around(game_date)
+
+    def bet_ref(row):
+        return {"game_id": normalize_game_id(row["game_id"]),
+                "profit_loss": money(safe_float(row.get("profit_loss"), 0.0) or 0.0)}
+
+    ranked = sorted(bets, key=lambda r: safe_float(r.get("profit_loss"), 0.0) or 0.0)
+    return {
+        "net_pl": money(net),
+        "bankroll_before": before,
+        "bankroll_after": after,
+        "picks": record_text(*win_loss(settled)),
+        "bets": record_text(*win_loss(bets)),
+        "staked": money(staked),
+        "roi": (net / staked) if staked > 0 else None,
+        "best_bet": bet_ref(ranked[-1]) if ranked else None,
+        "worst_bet": bet_ref(ranked[0]) if ranked else None,
+    }
+
+
+def tip_order_key(game):
+    return (game.get("tip_time_utc") or "", game["game_id"])
+
+
+def latest_prediction_date_before(day):
+    earlier = [d for d in _prediction_dates() if d < day]
+    return max(earlier) if earlier else None
+
+
+def slate_phase(games, day, today, latest_date):
+    if games:
+        if all(game["status"] in ("final", "void", "postponed") for game in games):
+            return "all_final"
+        return "picks_posted"
+    if day < today.isoformat():
+        return "no_games"
+    # No schedule source until B2/B7: a date within a week of the last slate is taken to
+    # be a game night whose picks haven't posted yet; anything later is a break.
+    if latest_date and (date.fromisoformat(day) - date.fromisoformat(latest_date)).days <= 7:
+        return "before_predictions"
+    return "no_games"
+
+
+@app.route("/api/slate")
+def api_slate():
+    today = today_et()
+    raw = (request.args.get("date") or "").strip()
+    day = parse_iso_date(raw) if raw else today
+    if day is None:
+        return bad_request("date must look like 2026-04-12")
+    day = day.isoformat()
+
+    rows = records(read_predictions(filters=[("game_date", "eq", day)], order_by="game_id"))
+    latest_date = latest_prediction_date_before(day)
+    season = season_for(day)
+    grids = book_grids_for(r["game_id"] for r in rows) if rows else {}
+    forms = team_forms_for(
+        [t for r in rows for t in (r.get("home_team"), r.get("away_team"))], season, day
+    ) if rows else {}
+    games = sorted((build_game(r, grids, forms) for r in rows), key=tip_order_key)
+
+    phase = slate_phase(games, day, today, latest_date)
+    is_past = day < today.isoformat()
+    settled_bets = [r for r in rows if is_settled(r) and bet_amount(r) > 0]
+    days_since_last = (
+        (date.fromisoformat(day) - date.fromisoformat(latest_date)).days if latest_date else None
+    )
+    payload = {
+        "date": day,
+        "season": season,
+        "is_past": is_past,
+        "phase": phase,
+        "offseason": phase == "no_games" and (
+            days_since_last > 30 if days_since_last is not None
+            else not any(d > day for d in _prediction_dates())
+        ),
+        "last_slate_date": latest_date,
+        "summary": {
+            "games": len(games),
+            "final": sum(1 for x in games if x["status"] == "final"),
+            "live": 0,  # live state comes from /api/live-scores
+            "upcoming": sum(1 for x in games if x["status"] == "scheduled"),
+            "bets_placed": sum(1 for r in rows if bet_amount(r) > 0),
+            "staked": money(sum(bet_amount(r) for r in rows)),
+            "settled_pl": money(sum(safe_float(r.get("profit_loss"), 0.0) or 0.0
+                                    for r in settled_bets)),
+        },
+        "games": games,
+        "recap": night_recap(rows, day) if rows and (is_past or phase == "all_final") else None,
+    }
+    return api_response(payload, CACHE_PAST if is_past else CACHE_SLATE_TODAY)
+
+
+def tape_block(ctx, elo):
+    ctx = ctx or {}
+    return {
+        "elo": elo,
+        "rest_days": safe_float(ctx.get("rest_days")),
+        "roll_pts": safe_float(ctx.get("roll_pts")),
+        "roll_fg_pct": safe_float(ctx.get("roll_fg_pct")),
+        "roll_reb": safe_float(ctx.get("roll_reb")),
+        "roll_ast": safe_float(ctx.get("roll_ast")),
+        "roll_tov": safe_float(ctx.get("roll_tov")),
+        "roll_stocks": safe_float(ctx.get("roll_stocks")),
+    }
+
+
+def tape_better(home, away):
+    better = {}
+    for key in home:
+        h, a = home[key], away[key]
+        if h is None or a is None or h == a:
+            continue
+        lower_wins = key == "roll_tov"  # turnovers: fewer is better
+        better[key] = "home" if (h < a) == lower_wins else "away"
+    return better
+
+
+@app.route("/api/game/<game_id>")
+def api_game(game_id):
+    if not GAME_ID_PATTERN.match(game_id):
+        return bad_request("game_id must be 10 digits")
+    rows = records(read_predictions(
+        filters=[("game_id", "eq", game_id_filter_value(game_id))], order_by="game_id", limit=1,
+    ))
+    if not rows:
+        return error_response(404, "not_found")
+    row = rows[0]
+    day = str(row.get("game_date"))[:10]
+    home_team, away_team = row.get("home_team"), row.get("away_team")
+
+    grids = book_grids_for([row["game_id"]])
+    forms = team_forms_for([home_team, away_team], season_for(day), day)
+    game = build_game(row, grids, forms)
+
+    home_ctx = _latest_features_by_team([home_team], "HOME", day).get(home_team, {})
+    away_ctx = _latest_features_by_team([away_team], "AWAY", day).get(away_team, {})
+    ids = [c.get("team_id") for c in (home_ctx, away_ctx) if c.get("team_id") is not None]
+    elo = _latest_elo_by_team(ids, day)
+
+    def team_elo(ctx):
+        return elo.get(int(ctx["team_id"])) if ctx.get("team_id") is not None else None
+
+    home_tape = tape_block(home_ctx, team_elo(home_ctx))
+    away_tape = tape_block(away_ctx, team_elo(away_ctx))
+    result = None
+    if is_settled(row) or prediction_status(row) in ("void", "postponed"):
+        result = {
+            "winner": row.get("actual_winner"),
+            "home_score": as_int(row.get("home_score")),
+            "away_score": as_int(row.get("away_score")),
+            "correct": row.get("correct"),
+        }
+    payload = {
+        "game": game,
+        "tape": {"home": home_tape, "away": away_tape, "better": tape_better(home_tape, away_tape)},
+        "predicted_at": row.get("predicted_at"),
+        "model_name": row.get("model_name"),
+        "result": result,
+    }
+    return api_response(payload, CACHE_PAST if day < today_et().isoformat() else CACHE_GAME)
+
+
+@app.route("/api/days")
+def api_days():
+    raw_end = (request.args.get("end") or "").strip()
+    end = parse_iso_date(raw_end) if raw_end else today_et()
+    if end is None:
+        return bad_request("end must look like 2026-04-12")
+    raw_n = (request.args.get("n") or "7").strip()
+    if not raw_n.isdigit() or not 1 <= int(raw_n) <= 31:
+        return bad_request("n must be a whole number from 1 to 31")
+    n = int(raw_n)
+
+    all_dates = sorted(set(d for d in _prediction_dates() if d <= end.isoformat()), reverse=True)
+    dates = all_dates[:n]
+    days = []
+    if dates:
+        rows = records(read_rows(
+            "predictions",
+            columns="game_date,correct,bet_amount,profit_loss",
+            filters=[("game_date", "in", dates)],
+            order_by="game_date",
+        ))
+        by_date = {}
+        for row in rows:
+            by_date.setdefault(str(row.get("game_date"))[:10], []).append(row)
+        for day in dates:
+            night = by_date.get(day, [])
+            bets = [r for r in night if bet_amount(r) > 0]
+            days.append({
+                "date": day,
+                "games": len(night),
+                "picks": record_text(*win_loss(night)),
+                "bets": record_text(*win_loss(bets)),
+                "net_pl": money(sum(safe_float(r.get("profit_loss"), 0.0) or 0.0
+                                    for r in bets if is_settled(r))),
+                "pending": sum(1 for r in night if not is_settled(r)),
+            })
+    return api_response({"days": days, "has_earlier": len(all_dates) > n})
+
+
+def edge_bucket(edge):
+    if edge is None:
+        return None
+    pct = edge * 100
+    if pct < 0:
+        return "<0"
+    if pct < 3:
+        return "0-3"
+    if pct < 6:
+        return "3-6"
+    if pct < 10:
+        return "6-10"
+    return "10+"
+
+
+def split_rows(bets, key_fn, order):
+    groups = {}
+    for row in bets:
+        key = key_fn(row)
+        if key is not None:
+            groups.setdefault(key, []).append(row)
+    keys = [k for k in order if k in groups] + sorted(k for k in groups if k not in order)
+    out = []
+    for key in keys:
+        rows = groups[key]
+        staked = sum(bet_amount(r) for r in rows)
+        pl = sum(safe_float(r.get("profit_loss"), 0.0) or 0.0 for r in rows)
+        wins, losses = win_loss(rows)
+        out.append({"key": key, "bets": len(rows), "w": wins, "l": losses,
+                    "staked": money(staked), "pl": money(pl),
+                    "roi": (pl / staked) if staked > 0 else None})
+    return out
+
+
+def drawdown(series):
+    worst = {"amount": 0.0, "peak_date": None, "trough_date": None}
+    if not series:
+        return worst
+    peak, worst_amount = series[0], 0.0
+    for point in series:
+        if point["bankroll"] > peak["bankroll"]:
+            peak = point
+        amount = peak["bankroll"] - point["bankroll"]
+        if amount > worst_amount + 0.005:  # the first night of the deepest trough wins
+            worst_amount = amount
+            worst = {"amount": money(amount), "peak_date": peak["date"],
+                     "trough_date": point["date"]}
+    return worst
+
+
+def bankroll_by_date(season):
+    """{date: balance} from bankroll ([M]); empty before the migration."""
+    rows = records(read_v2_rows(
+        "bankroll", columns="date,balance",
+        filters=season_or_all_filters("date", season), order_by="date",
+    ))
+    return {str(r["date"])[:10]: safe_float(r.get("balance"))
+            for r in rows if r.get("date") and safe_float(r.get("balance")) is not None}
+
+
+def nightly_series(rows, balances):
+    """One point per prediction date, plus a start point the day before the first."""
+    by_date = {}
+    for row in rows:
+        by_date.setdefault(str(row.get("game_date"))[:10], []).append(row)
+    dates = sorted(by_date)
+    if not dates:
+        return [], START_BANKROLL
+    first = date.fromisoformat(dates[0])
+    start_balance = START_BANKROLL
+    if balances:
+        before = [d for d in balances if d < dates[0]]
+        start_balance = balances[max(before)] if before else balances[min(balances)]
+    series = [{"date": (first - timedelta(days=1)).isoformat(), "bankroll": money(start_balance),
+               "nightly_pl": 0.0, "bets": "0-0", "picks": "0-0", "pending": 0}]
+    running = start_balance
+    for day in dates:
+        night = by_date[day]
+        bets = [r for r in night if bet_amount(r) > 0 and is_settled(r)]
+        nightly = sum(safe_float(r.get("profit_loss"), 0.0) or 0.0 for r in bets)
+        running += nightly
+        # With a bankroll table, its balance wins; otherwise 1000 + cumulative P/L (04 sec6).
+        balance = balances.get(day, running) if balances else running
+        if balances:
+            running = balance
+        series.append({
+            "date": day, "bankroll": money(balance), "nightly_pl": money(nightly),
+            "bets": record_text(*win_loss(bets)),
+            "picks": record_text(*win_loss(night)),
+            "pending": sum(1 for r in night if not is_settled(r)),
+        })
+    return series, start_balance
+
+
+@app.route("/api/performance")
+def api_performance():
+    season = season_or_all_from_request()
+    if season is None:
+        return bad_season_response()
+    seasons = available_seasons()
+    rows = records(read_predictions(
+        filters=season_or_all_filters("game_date", season), order_by=["game_date", "game_id"],
+    ))
+    balances = bankroll_by_date(season)
+    series, start_balance = nightly_series(rows, balances)
+    settled = [r for r in rows if is_settled(r)]
+    bets = [r for r in settled if bet_amount(r) > 0]
+    staked = sum(bet_amount(r) for r in bets)
+    net = sum(safe_float(r.get("profit_loss"), 0.0) or 0.0 for r in bets)
+    picks_w, picks_l = win_loss(settled)
+    bankroll = series[-1]["bankroll"] if series else None
+    streaks = longest_streaks(settled)
+
+    kpis = {
+        "bankroll": bankroll,
+        "start_bankroll": money(start_balance),
+        "net_pl": money(net),
+        "roi": (net / staked) if staked > 0 else None,
+        "staked": money(staked),
+        "bets": record_text(*win_loss(bets)),
+        "picks": record_text(picks_w, picks_l),
+        "accuracy": (picks_w / len(settled)) if settled else None,
+        "max_drawdown": drawdown(series),
+        "longest_win_streak": streaks["longest_win_streak"],
+        "longest_loss_streak": streaks["longest_loss_streak"],
+        "pending": len(rows) - len(settled),
+    }
+    splits = {
+        "book": split_rows(bets, lambda r: r.get("bookmaker"), PREFERRED_BOOKS),
+        "confidence": split_rows(bets, lambda r: confidence_bucket(pick_probability(r)),
+                                 ["high", "medium", "low"]),
+        "edge": split_rows(bets, lambda r: edge_bucket(prediction_edge(r)),
+                           ["<0", "0-3", "3-6", "6-10", "10+"]),
+    }
+    recent = ["W" if r.get("correct") == 1 else "L" for r in bets][-RECENT_BETS:]
+    payload = {
+        "season": season,
+        "seasons": seasons,
+        "kpis": kpis,
+        "series": series,
+        "splits": splits,
+        "recent_bets": recent,
+    }
+    return api_response(payload)
+
+
+def prediction_log_row(row):
+    game = build_game(row)
+    return {
+        "game_id": game["game_id"],
+        "date": str(row.get("game_date"))[:10],
+        "matchup": f"{row.get('away_team')} @ {row.get('home_team')}",
+        "home": row.get("home_team"),
+        "away": row.get("away_team"),
+        "pick": game["pick"],
+        "pick_prob": game["pick_prob"],
+        "odds": game["odds"],
+        "bookmaker": game["bookmaker"],
+        "edge": game["edge"],
+        "bet_amount": money(bet_amount(row)),
+        "result": game["result"] or ("void" if game["status"] == "void" else "pending"),
+        "profit_loss": safe_float(row.get("profit_loss")),
+    }
+
+
+def team_matches(row, query):
+    q = query.strip().lower()
+    for side in ("home_team", "away_team"):
+        tricode = row.get(side) or ""
+        if tricode.lower() == q or q in (TEAMS.get(tricode) or "").lower():
+            return True
+    return False
+
+
+@app.route("/api/predictions")
+def api_predictions():
+    season = season_or_all_from_request()
+    if season is None:
+        return bad_season_response()
+    args = request.args
+    team = (args.get("team") or "").strip()
+    if team and not TEAM_QUERY_PATTERN.match(team):
+        return bad_request("team must be a team code or name")
+    bets_only = (args.get("bets_only") or "false").strip().lower()
+    if bets_only not in ("true", "false", "1", "0"):
+        return bad_request("bets_only must be true or false")
+    result = (args.get("result") or "any").strip().lower()
+    if result not in ("any", "hit", "miss", "pending"):
+        return bad_request("result must be any, hit, miss or pending")
+    book = (args.get("book") or "").strip()
+    min_edge = None
+    if (args.get("min_edge") or "").strip():
+        min_edge = safe_float(args.get("min_edge"))
+        if min_edge is None or not -1 <= min_edge <= 1:
+            return bad_request("min_edge must be a fraction from -1 to 1")
+    try:
+        page = int(args.get("page", 1))
+        page_size = int(args.get("page_size", 25))
+    except ValueError:
+        return bad_request("page and page_size must be whole numbers")
+    if page < 1 or not 1 <= page_size <= 100:
+        return bad_request("page must be at least 1 and page_size from 1 to 100")
+
+    rows = records(read_predictions(
+        filters=season_or_all_filters("game_date", season),
+        order_by=["game_date", "game_id"], descending=True,
+    ))
+    # Newest first, whatever order the store returned (04 sec7).
+    rows.sort(key=lambda r: (str(r.get("game_date")), normalize_game_id(r["game_id"])),
+              reverse=True)
+    books = sorted({r.get("bookmaker") for r in rows if r.get("bookmaker")})
+    if team:
+        rows = [r for r in rows if team_matches(r, team)]
+    if bets_only in ("true", "1"):
+        rows = [r for r in rows if bet_amount(r) > 0]
+    if result == "hit":
+        rows = [r for r in rows if r.get("correct") == 1]
+    elif result == "miss":
+        rows = [r for r in rows if r.get("correct") == 0]
+    elif result == "pending":
+        rows = [r for r in rows if not is_settled(r)]
+    if book:
+        rows = [r for r in rows if r.get("bookmaker") == book]
+    if min_edge is not None:
+        rows = [r for r in rows if (prediction_edge(r) is not None
+                                    and prediction_edge(r) >= min_edge)]
+    total = len(rows)
+    start = (page - 1) * page_size
+    payload = {
+        "season": season,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "books": books,
+        "rows": [prediction_log_row(r) for r in rows[start:start + page_size]],
+    }
+    return api_response(payload)
+
+
+CALIBRATION_EDGES = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 1.0001]
+
+
+def calibration_buckets(settled):
+    buckets = []
+    for low, high in zip(CALIBRATION_EDGES, CALIBRATION_EDGES[1:]):
+        rows = [(p, r) for r in settled
+                if (p := pick_probability(r)) is not None and low <= p < high]
+        if not rows:
+            continue
+        label = f"{low:.2f}-{min(high, 1.0):.2f}"
+        buckets.append({
+            "bucket": label,
+            "n": len(rows),
+            "predicted": sum(p for p, _ in rows) / len(rows),
+            "actual": sum(1 for _, r in rows if r.get("correct") == 1) / len(rows),
+        })
+    return buckets
+
+
+def latest_model_run():
+    rows = records(read_v2_rows(
+        "model_runs",
+        columns="trained_at,production_model,cutoff_date,test_games,leaderboard",
+        order_by="trained_at", descending=True, limit=1,
+    ))
+    return rows[0] if rows else None
+
+
+@app.route("/api/model")
+def api_model():
+    season = season_from_request()
+    if season is None:
+        return bad_season_response()
+    settled = [r for r in records(read_predictions(
+        filters=[*season_filters("game_date", season), ("correct", "not_is", "null")],
+        order_by=["game_date", "game_id"],
+    )) if is_settled(r)]
+    wins, _ = win_loss(settled)
+
+    run = latest_model_run()
+    production, trained_at, cutoff, test, leaderboard = None, None, None, None, []
+    if run:
+        production = run.get("production_model")
+        trained_at = run.get("trained_at")
+        cutoff = run.get("cutoff_date")
+        board = run.get("leaderboard") if isinstance(run.get("leaderboard"), list) else []
+        leaderboard = [{
+            "rank": as_int(item.get("rank")),
+            "model": item.get("model"),
+            "accuracy": safe_float(item.get("accuracy")),
+            "log_loss": safe_float(item.get("log_loss")),
+            "brier_score": safe_float(item.get("brier_score")),
+        } for item in board if isinstance(item, dict)]
+        mine = next((i for i in board if isinstance(i, dict) and i.get("model") == production), None)
+        if mine:
+            test = {
+                "games": as_int(mine.get("test_games")) or as_int(run.get("test_games")),
+                "accuracy": safe_float(mine.get("accuracy")),
+                "brier": safe_float(mine.get("brier_score")),
+                "log_loss": safe_float(mine.get("log_loss")),
+                "roc_auc": safe_float(mine.get("roc_auc")),
+                "baseline_home_win_rate": safe_float(mine.get("baseline_home_win_rate")),
+            }
+    payload = {
+        "production_model": production,
+        "trained_at": trained_at,
+        "cutoff_date": cutoff,
+        "test": test,
+        "season_live": {
+            "season": season,
+            "picks": len(settled),
+            "accuracy": (wins / len(settled)) if settled else None,
+        },
+        "calibration": calibration_buckets(settled),
+        "leaderboard": leaderboard,
+    }
+    return api_response(payload, CACHE_MODEL)
+
+
+WORKFLOW_KINDS = ("morning", "predict", "manual")
+MORNING_RUN_HOUR_ET = 6
+RUNNING_STALE_AFTER = timedelta(hours=2)
+MISSED_GRACE = timedelta(minutes=30)
+
+
+def parse_timestamp(value):
+    if not value:
+        return None
+    try:
+        stamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)
+
+
+def now_utc():
+    return datetime.now(timezone.utc)
+
+
+def eastern_time(day, hour):
+    """day at hour:00 US Eastern, as an aware datetime."""
+    try:
+        from zoneinfo import ZoneInfo
+
+        return datetime(day.year, day.month, day.day, hour, tzinfo=ZoneInfo(EASTERN))
+    except Exception:
+        return datetime(day.year, day.month, day.day, hour, tzinfo=timezone(timedelta(hours=-5)))
+
+
+def workflow_state(kind, row, now, today):
+    status = row.get("status")
+    started = parse_timestamp(row.get("started_at"))
+    if status == "running" and started and now - started < RUNNING_STALE_AFTER:
+        return "running"
+    if status in ("failed", "partial"):
+        return "failed"
+    if status == "running":
+        return "failed"  # a run still "running" after 2h died without finishing
+    if kind == "morning" and str(row.get("run_date"))[:10] < today.isoformat():
+        # The morning job is due at 06:00 ET; after a 30 min grace it counts as missed.
+        if now > eastern_time(today, MORNING_RUN_HOUR_ET) + MISSED_GRACE:
+            return "missed"
+    return "ok"
+
+
+@app.route("/api/workflow-status")
+def api_workflow_status():
+    controls = run_controls_allowed(request)
+    running = False
+    if controls:
+        import daily_workflow  # lazy: local laptop only, never on Vercel
+
+        running = bool(daily_workflow.workflow_is_running())
+
+    rows = records(read_v2_rows(
+        "workflow_log",
+        columns="run_date,kind,trigger,started_at,finished_at,status,pipeline_ok,"
+                "predict_ok,sms_sent,notes",
+        order_by="started_at", descending=True, limit=30,
+    ))
+    now, today = now_utc(), today_et()
+    latest = {kind: None for kind in WORKFLOW_KINDS}
+    for row in rows:
+        kind = row.get("kind") if row.get("kind") in WORKFLOW_KINDS else "manual"
+        if latest[kind] is not None:
+            continue
+        latest[kind] = {
+            "run_date": str(row.get("run_date"))[:10] if row.get("run_date") else None,
+            "started_at": row.get("started_at"),
+            "finished_at": row.get("finished_at"),
+            "status": row.get("status"),
+            "state": workflow_state(kind, row, now, today),
+            "trigger": row.get("trigger"),
+            "pipeline_ok": row.get("pipeline_ok"),
+            "predict_ok": row.get("predict_ok"),
+            "sms_sent": row.get("sms_sent"),
+            "notes": (row.get("notes") or "")[:200],
+        }
+    payload = {"controls_allowed": bool(controls), "running": running, "latest": latest}
+    # The local view (controls allowed) is per-machine: never let anything cache it.
+    return api_response(payload, "private, no-store" if controls else CACHE_WORKFLOW)
 
 
 # ---------------------------------------------------------------------------

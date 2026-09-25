@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hero fallbacks: all bets started, all final, no bets</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&amp;family=Barlow:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0a1630;font-family:'Barlow',sans-serif;color:#ffffff}
+a{color:#ffc72c}a:hover{color:#ffe08a}
+.cond{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div style="width: 1440px; height: 2560px; box-sizing: border-box; padding: 40px 48px 48px; background: #0a1630; display: flex; flex-direction: column; gap: 28px; overflow: hidden;">
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span class="cond" style="font-size: 20px; font-weight: 700; letter-spacing: .12em; color: #ffc72c;">Edge cases · Round 6</span>
+<h1 class="cond" style="margin: 0; font-size: 64px; font-weight: 800; line-height: .92;">Hero when there's no unstarted bet</h1>
+
+</div><div style="display: flex; align-items: center; gap: 16px;"><span class="cond" style="font-size: 20px; font-weight: 700; letter-spacing: .1em; color: #ffc72c; white-space: nowrap;">Every bet has tipped off · Option A: follow the closest live bet (smallest margin; ties go to biggest edge)</span><span style="flex-grow: 1; height: 2px; background: #1d3461;"></span></div><section style="display: flex; flex-direction: column; gap: 14px;"><h2 class="cond" style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: .1em; color: #ffc72c;">Live now · closest bet</h2><div style="display: grid; grid-template-columns: 1fr 1.3fr 1fr; background: #102244;">
+<div style="background: #0E2240; border-top: 8px solid #FEC524; padding: 28px; display: flex; flex-direction: column; justify-content: space-between; gap: 20px;">
+<div style="display: flex; align-items: center; gap: 16px;"><div style="width: 96px; height: 96px; flex-shrink: 0; border-radius: 50%; background: #0E2240; border: 2px dashed #FEC524; box-sizing: border-box; display: flex; align-items: center; justify-content: center;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .06em;">DEN logo</span></div><div style="display: flex; flex-direction: column;"><span class="cond" style="font-size: 18px; font-weight: 700; letter-spacing: .08em; opacity: .85;">Away · 10–5</span><span class="cond" style="font-size: 72px; font-weight: 800; line-height: .9;">DEN</span></div></div>
+<div style="display: flex; align-items: flex-end; gap: 16px;"><span class="cond" style="font-size: 120px; font-weight: 800; line-height: .85;">98</span><span class="cond" style="font-size: 20px; font-weight: 700; display: flex; flex-direction: column;"><span>47%</span><span>pregame</span></span></div>
+</div>
+<div style="padding: 28px 32px; display: flex; flex-direction: column; gap: 20px;">
+<div style="display: flex; align-items: center; justify-content: space-between;"><span class="cond" style="display: flex; align-items: center; gap: 8px; background: #d62839; padding: 4px 10px; font-size: 17px; font-weight: 800; letter-spacing: .08em;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #ffffff;"></span>Live · Q4 3:10</span><span class="cond" style="font-size: 26px; font-weight: 800; color: #ff8a95;">MIN down 2</span></div>
+<div style="display: flex; flex-direction: column; gap: 8px;"><div class="cond" style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;"><span>Pregame win probability</span><span>47% – 53%</span></div><div style="display: flex; height: 14px;"><div style="width: 47%; background: #0E2240;"></div><div style="width: 53%; background: #236192;"></div></div></div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; background: #1d3461;">
+<div style="background: #102244; padding: 12px 14px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Pick</span><span class="cond" style="font-size: 34px; font-weight: 800;">MIN</span></div>
+<div style="background: #102244; padding: 12px 14px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Odds taken</span><span class="cond" style="font-size: 34px; font-weight: 800;">+124</span></div>
+<div style="background: #102244; padding: 12px 14px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Edge</span><span class="cond" style="font-size: 34px; font-weight: 800; color: #3ee08f;">+8.4%</span></div>
+<div style="background: #102244; padding: 12px 14px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Bet placed</span><span class="cond" style="font-size: 34px; font-weight: 800; color: #ffc72c;">$44.71</span></div>
+</div>
+</div>
+<div style="background: #236192; border-top: 8px solid #78BE20; padding: 28px; display: flex; flex-direction: column; justify-content: space-between; gap: 20px; text-align: right; align-items: flex-end;">
+<div style="display: flex; align-items: center; gap: 16px; flex-direction: row-reverse;"><div style="width: 96px; height: 96px; flex-shrink: 0; border-radius: 50%; background: #236192; border: 2px dashed #78BE20; box-sizing: border-box; display: flex; align-items: center; justify-content: center;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .06em;">MIN logo</span></div><div style="display: flex; flex-direction: column;"><span class="cond" style="font-size: 18px; font-weight: 700; letter-spacing: .08em; opacity: .85;">Home · 10–5</span><span class="cond" style="font-size: 72px; font-weight: 800; line-height: .9;">MIN</span></div></div>
+<div style="display: flex; align-items: flex-end; gap: 16px; flex-direction: row-reverse;"><span class="cond" style="font-size: 120px; font-weight: 800; line-height: .85;">96</span><span class="cond" style="font-size: 20px; font-weight: 700; display: flex; flex-direction: column;"><span>53%</span><span>pregame</span></span></div>
+</div>
+</div></section><div style="display: flex; align-items: center; gap: 16px;"><span class="cond" style="font-size: 20px; font-weight: 700; letter-spacing: .1em; color: #ffc72c; white-space: nowrap;">Every bet has tipped off · Option B: running scoreboard of tonight's bets</span><span style="flex-grow: 1; height: 2px; background: #1d3461;"></span></div><section style="display: flex; flex-direction: column; gap: 14px;"><h2 class="cond" style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: .1em; color: #ffc72c;">Tonight so far</h2><div style="display: grid; grid-template-columns: 1fr 1.4fr; gap: 2px; background: #1d3461; border-top: 8px solid #ffc72c;">
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; background: #1d3461;">
+<div style="background: #102244; padding: 18px 22px; display: flex; flex-direction: column; gap: 2px;"><span class="cond" style="font-size: 15px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Settled</span><span class="cond" style="font-size: 52px; font-weight: 800; line-height: 1; color: #3ee08f;">+$50.95</span><span style="font-size: 15px; color: #b7c4dd;">Bets 2–1</span></div>
+<div style="background: #102244; padding: 18px 22px; display: flex; flex-direction: column; gap: 2px;"><span class="cond" style="font-size: 15px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Still open</span><span class="cond" style="font-size: 52px; font-weight: 800; line-height: 1; color: #ffc72c;">$100.29</span><span style="font-size: 15px; color: #b7c4dd;">2 bets in play</span></div>
+<div style="background: #102244; padding: 18px 22px; display: flex; flex-direction: column; gap: 2px;"><span class="cond" style="font-size: 15px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Open picks ahead</span><span class="cond" style="font-size: 52px; font-weight: 800; line-height: 1; color: #ffffff;">1 of 2</span></div>
+<div style="background: #102244; padding: 18px 22px; display: flex; flex-direction: column; gap: 2px;"><span class="cond" style="font-size: 15px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">If it ended now</span><span class="cond" style="font-size: 52px; font-weight: 800; line-height: 1; color: #3ee08f;">+$59.17</span><span style="font-size: 15px; color: #b7c4dd;">Settled plus open bets at the current score</span></div>
+</div>
+<div style="background: #102244; padding: 16px 28px; display: flex; flex-direction: column;">
+<span class="cond" style="font-size: 15px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Open bets</span>
+<div style="display: grid; grid-template-columns: 44px 44px minmax(0, 1fr) 150px 130px 120px; gap: 14px; align-items: center; padding: 12px 0; border-bottom: 1px solid #1d3461;">
+<div style="width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; background: #0E2240; border: 2px dashed #FEC524; box-sizing: border-box; display: flex; align-items: center; justify-content: center;"><span class="cond" style="font-size: 10px; font-weight: 700; letter-spacing: .06em;">Logo</span></div><div style="width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; background: #236192; border: 2px dashed #78BE20; box-sizing: border-box; display: flex; align-items: center; justify-content: center;"><span class="cond" style="font-size: 10px; font-weight: 700; letter-spacing: .06em;">Logo</span></div>
+<span class="cond" style="font-size: 24px; font-weight: 800;">DEN @ MIN <span style="color: #b7c4dd; font-size: 18px;">· pick MIN</span></span>
+<span class="cond" style="display: flex; align-items: center; gap: 8px; background: #d62839; padding: 4px 10px; font-size: 17px; font-weight: 800; letter-spacing: .08em;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #ffffff;"></span>Q4 3:10</span>
+<span class="cond" style="font-size: 24px; font-weight: 800; color: #ff8a95;">Down 2</span>
+<span class="cond" style="font-size: 22px; font-weight: 800; text-align: right; color: #ffc72c;">$44.71</span>
+</div>
+<div style="display: grid; grid-template-columns: 44px 44px minmax(0, 1fr) 150px 130px 120px; gap: 14px; align-items: center; padding: 12px 0; border-bottom: 1px solid #1d3461;">
+<div style="width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; background: #1D428A; border: 2px dashed #FFC72C; box-sizing: border-box; display: flex; align-items: center; justify-content: center;"><span class="cond" style="font-size: 10px; font-weight: 700; letter-spacing: .06em;">Logo</span></div><div style="width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; background: #5A2D81; border: 2px dashed #8A9AA3; box-sizing: border-box; display: flex; align-items: center; justify-content: center;"><span class="cond" style="font-size: 10px; font-weight: 700; letter-spacing: .06em;">Logo</span></div>
+<span class="cond" style="font-size: 24px; font-weight: 800;">GSW @ SAC <span style="color: #b7c4dd; font-size: 18px;">· pick SAC</span></span>
+<span class="cond" style="display: flex; align-items: center; gap: 8px; background: #d62839; padding: 4px 10px; font-size: 17px; font-weight: 800; letter-spacing: .08em;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #ffffff;"></span>Q1 4:12</span>
+<span class="cond" style="font-size: 24px; font-weight: 800; color: #3ee08f;">Up 3</span>
+<span class="cond" style="font-size: 22px; font-weight: 800; text-align: right; color: #ffc72c;">$55.58</span>
+</div>
+</div>
+</div></section><div style="display: flex; align-items: center; gap: 16px;"><span class="cond" style="font-size: 20px; font-weight: 700; letter-spacing: .1em; color: #ffc72c; white-space: nowrap;">Every game is final (either option ends here): tonight's recap, same component as a past night</span><span style="flex-grow: 1; height: 2px; background: #1d3461;"></span></div><section style="display: flex; flex-direction: column; gap: 14px;"><h2 class="cond" style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: .1em; color: #ffc72c;">Tonight · all final</h2><div style="display: grid; grid-template-columns: 1.1fr 1fr 1.2fr; gap: 2px; background: #1d3461; border-top: 8px solid #3ee08f;">
+<div style="background: #102244; padding: 28px 32px; display: flex; flex-direction: column; justify-content: space-between; gap: 16px;">
+<div style="display: flex; justify-content: space-between; align-items: center;"><span class="cond" style="font-size: 18px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Net P/L</span><span class="cond" style="border: 1px solid #3a5185; color: #b7c4dd; padding: 3px 8px; font-size: 14px; font-weight: 700; letter-spacing: .08em;">Unofficial until the 6 AM run</span></div>
+<span class="cond" style="font-size: 132px; font-weight: 800; line-height: .85; color: #3ee08f;">+$59.17</span>
+<span class="cond" style="font-size: 20px; font-weight: 700; letter-spacing: .04em; color: #b7c4dd;">Bankroll <span style="color: #ffffff;">$1,111.67 → $1,170.84</span></span>
+</div>
+<div style="background: #102244; padding: 16px 32px; display: flex; flex-direction: column;">
+<div style="display: flex; justify-content: space-between; align-items: baseline; padding: 12px 0; border-bottom: 1px solid #1d3461;"><span class="cond" style="font-size: 18px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Picks</span><span class="cond" style="font-size: 40px; font-weight: 800;">4–2</span></div>
+<div style="display: flex; justify-content: space-between; align-items: baseline; padding: 12px 0; border-bottom: 1px solid #1d3461;"><span class="cond" style="font-size: 18px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Bets</span><span class="cond" style="font-size: 40px; font-weight: 800;">3–2</span></div>
+<div style="display: flex; justify-content: space-between; align-items: baseline; padding: 12px 0; border-bottom: 1px solid #1d3461;"><span class="cond" style="font-size: 18px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Staked</span><span class="cond" style="font-size: 40px; font-weight: 800; color: #ffc72c;">$240.36</span></div>
+<div style="display: flex; justify-content: space-between; align-items: baseline; padding: 12px 0;"><span class="cond" style="font-size: 18px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">ROI</span><span class="cond" style="font-size: 40px; font-weight: 800; color: #3ee08f;">+24.6%</span></div>
+</div>
+<div style="background: #102244; padding: 20px 32px; display: flex; flex-direction: column; gap: 22px; justify-content: center;">
+<div style="display: flex; flex-direction: column; gap: 8px;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Best bet</span><div style="display: flex; align-items: center; gap: 12px;"><div style="width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; background: #98002E; border: 2px dashed #F9A01B; box-sizing: border-box; display: flex; align-items: center; justify-content: center;"><span class="cond" style="font-size: 10px; font-weight: 700; letter-spacing: .06em;">Logo</span></div><span class="cond" style="font-size: 26px; font-weight: 800;">MIA +105</span><span class="cond" style="font-size: 15px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">FanDuel</span><span class="cond" style="margin-left: auto; background: #3ee08f; color: #0a1630; font-size: 20px; font-weight: 800; padding: 4px 12px;">Hit +$74.18</span></div></div>
+<div style="display: flex; flex-direction: column; gap: 8px;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Worst bet</span><div style="display: flex; align-items: center; gap: 12px;"><div style="width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; background: #236192; border: 2px dashed #78BE20; box-sizing: border-box; display: flex; align-items: center; justify-content: center;"><span class="cond" style="font-size: 10px; font-weight: 700; letter-spacing: .06em;">Logo</span></div><span class="cond" style="font-size: 26px; font-weight: 800;">MIN +124</span><span class="cond" style="font-size: 15px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">BetMGM</span><span class="cond" style="margin-left: auto; background: #ff8a95; color: #0a1630; font-size: 20px; font-weight: 800; padding: 4px 12px;">Miss −$44.71</span></div></div>
+</div>
+</div></section><div style="display: flex; align-items: center; gap: 16px;"><span class="cond" style="font-size: 20px; font-weight: 700; letter-spacing: .1em; color: #ffc72c; white-space: nowrap;">No bets on the slate</span><span style="flex-grow: 1; height: 2px; background: #1d3461;"></span></div><section style="display: flex; flex-direction: column; gap: 14px;"><h2 class="cond" style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: .1em; color: #ffc72c;">Next up · biggest edge</h2><div style="background: #102244; border-top: 8px solid #3a5185; padding: 36px 40px; display: grid; grid-template-columns: 1.3fr 1fr; gap: 40px; align-items: center;">
+<div style="display: flex; flex-direction: column; gap: 12px;"><span class="cond" style="font-size: 88px; font-weight: 800; line-height: .9;">No bets tonight</span><p style="margin: 0; font-size: 20px; line-height: 1.45; color: #b7c4dd; max-width: 620px;">The model didn't find a price better than its own odds on any of the 6 games. Its picks are still below.</p></div>
+<div style="background: #0d1d3b; padding: 20px 24px; display: flex; flex-direction: column; gap: 10px;"><span class="cond" style="font-size: 15px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Closest to a bet</span><div style="display: flex; align-items: center; gap: 12px;"><div style="width: 48px; height: 48px; flex-shrink: 0; border-radius: 50%; background: #552583; border: 2px dashed #FDB927; box-sizing: border-box; display: flex; align-items: center; justify-content: center;"><span class="cond" style="font-size: 10px; font-weight: 700; letter-spacing: .06em;">Logo</span></div><span class="cond" style="font-size: 30px; font-weight: 800;">LAL −140</span><span class="cond" style="font-size: 15px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">BetRivers</span></div><span class="cond" style="font-size: 22px; font-weight: 800; color: #ff8a95;">Edge −3.3% <span style="color: #b7c4dd; font-size: 18px; font-weight: 700;">· model 55.0%, price 58.3%</span></span></div>
+</div></section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2560}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

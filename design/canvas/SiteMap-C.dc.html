@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Site map option C: six sections</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&amp;family=Barlow:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0a1630;font-family:'Barlow',sans-serif;color:#ffffff}
+a{color:#ffc72c}a:hover{color:#ffe08a}
+.cond{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1820px; box-sizing: border-box; padding: 40px 48px 48px; background: #0a1630; display: flex; flex-direction: column; gap: 32px;">
+
+<header style="display: flex; align-items: flex-end; justify-content: space-between; gap: 40px;">
+<div style="display: flex; flex-direction: column; gap: 10px;">
+<span class="cond" style="font-size: 20px; font-weight: 700; letter-spacing: .12em; color: #ffc72c;">Site map · Option {{opt.letter}}</span>
+<h1 class="cond" style="margin: 0; font-size: 84px; font-weight: 800; line-height: .92;">{{opt.name}}</h1>
+<p style="margin: 0; font-size: 20px; line-height: 1.4; color: #b7c4dd; max-width: 860px;">{{opt.line}}</p>
+</div>
+<div style="display: flex; gap: 2px; background: #1d3461;">
+<div style="background: #102244; padding: 14px 22px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Top tabs</span><span class="cond" style="font-size: 40px; font-weight: 800;">{{opt.tabCount}}</span></div>
+<div style="background: #102244; padding: 14px 22px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">Screens to build</span><span class="cond" style="font-size: 40px; font-weight: 800;">{{opt.screens}}</span></div>
+<div style="background: #102244; padding: 14px 22px; display: flex; flex-direction: column;"><span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .1em; color: #b7c4dd;">New endpoints</span><span class="cond" style="font-size: 40px; font-weight: 800; color: #ffc72c;">{{opt.endpointCount}}</span></div>
+</div>
+</header>
+
+<section style="display: flex; flex-direction: column; gap: 12px;">
+<h2 class="cond" style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: .1em; color: #ffc72c;">Top bar in this option</h2>
+<div style="display: flex; align-items: center; justify-content: space-between; background: #102244; padding: 18px 24px; border-bottom: 2px solid #1d3461;">
+<div style="display: flex; align-items: center; gap: 36px;">
+<span class="cond" style="background: #ffc72c; color: #0a1630; padding: 6px 12px; font-size: 20px; font-weight: 800; letter-spacing: .1em;">NBA Predictor</span>
+<nav class="cond" style="display: flex; gap: 28px; font-size: 20px; font-weight: 700; letter-spacing: .08em;">
+<sc-for list="{{opt.tabs}}" as="t" hint-placeholder-count="4"><a href="#" style="color: {{t.ink}}; text-decoration: none; padding-bottom: 6px; border-bottom: 3px solid {{t.line}};">{{t.label}}</a></sc-for>
+</nav>
+</div>
+<div class="cond" style="display: flex; align-items: center; gap: 14px; font-size: 16px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd;">
+<sc-if value="{{opt.hasPill}}" hint-placeholder-val="{{ false }}"><span style="display: flex; align-items: center; gap: 8px; border: 1px solid #3ee08f; color: #3ee08f; padding: 4px 10px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #3ee08f;"></span>Pipeline OK · 6:02 AM</span></sc-if>
+<sc-if value="{{opt.hasDateNav}}" hint-placeholder-val="{{ true }}"><span style="display: flex; align-items: center; gap: 2px; background: #1d3461;"><button class="cond" aria-label="Previous day" style="background: #0d1d3b; color: #ffffff; border: 0; font: inherit; font-size: 18px; padding: 6px 12px;">‹</button><span style="background: #0d1d3b; color: #ffffff; padding: 6px 14px;">Tue, Nov 17</span><button class="cond" aria-label="Next day" style="background: #0d1d3b; color: #ffffff; border: 0; font: inherit; font-size: 18px; padding: 6px 12px;">›</button></span></sc-if>
+<span style="border: 1px solid #3a5185; padding: 3px 8px;">Sample data</span>
+</div>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 12px;">
+<h2 class="cond" style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: .1em; color: #ffc72c;">The six candidate pages, and where each one lands</h2>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px;">
+<sc-for list="{{opt.pages}}" as="p" hint-placeholder-count="6">
+<article style="background: #102244; border-top: 4px solid {{p.bar}}; display: flex; flex-direction: column;">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid #1d3461;">
+<span class="cond" style="font-size: 30px; font-weight: 800; line-height: 1; color: {{p.titleInk}};">{{p.name}}</span>
+<span class="cond" style="font-size: 15px; font-weight: 800; letter-spacing: .08em; padding: 4px 10px; background: {{p.chipBg}}; color: {{p.chipInk}}; border: 2px {{p.chipStyle}} {{p.chipBd}};">{{p.status}}</span>
+</div>
+<div style="margin: 16px 20px 0; height: 220px; box-sizing: border-box; padding: 12px; background: #0a1630; border: 1px solid #1d3461; display: flex; flex-direction: column; gap: 6px;">
+<sc-for list="{{p.wire}}" as="r" hint-placeholder-count="4">
+<div style="display: flex; gap: 6px; height: {{r.h}}px; flex-shrink: 0;">
+<sc-for list="{{r.cells}}" as="c" hint-placeholder-count="2"><div class="cond" style="flex: {{c.w}} 1 0; min-width: 0; box-sizing: border-box; background: {{c.bg}}; border: 2px solid {{c.bd}}; color: {{c.ink}}; font-size: 12px; font-weight: 700; letter-spacing: .06em; padding: 4px 6px; overflow: hidden; white-space: nowrap;">{{c.label}}</div></sc-for>
+</div>
+</sc-for>
+</div>
+<ul style="margin: 0; padding: 16px 20px 18px 40px; display: flex; flex-direction: column; gap: 6px; font-size: 16px; line-height: 1.35; color: #dfe6f3;">
+<sc-for list="{{p.items}}" as="it" hint-placeholder-count="4"><li>{{it}}</li></sc-for>
+</ul>
+<div style="margin-top: auto; padding: 14px 20px; background: #0d1d3b; display: flex; gap: 10px; align-items: baseline;">
+<span class="cond" style="font-size: 14px; font-weight: 700; letter-spacing: .08em; color: #b7c4dd; flex-shrink: 0;">Data</span>
+<span style="font-size: 15px; color: {{p.dataInk}};">{{p.data}}</span>
+</div>
+</article>
+</sc-for>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 12px;">
+<h2 class="cond" style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: .1em; color: #ffc72c;">Backend work this option adds</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 10px;">
+<sc-for list="{{opt.endpoints}}" as="e" hint-placeholder-count="4"><span style="display: flex; flex-direction: column; gap: 2px; background: #102244; border-left: 0; padding: 10px 16px;"><span class="cond" style="font-size: 20px; font-weight: 800; color: {{e.ink}};">{{e.name}}</span><span style="font-size: 14px; color: #b7c4dd;">{{e.why}}</span></span></sc-for>
+</div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1820}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const opt = {"letter": "C", "name": "Full: six sections", "line": "Every candidate becomes its own screen, including a month calendar and an editable Settings page. Most complete, and the most to build and keep in sync.", "screens": 7, "tabs": ["Games", "Calendar", "Performance", "Model", "System", "Settings"], "hasPill": false, "hasDateNav": false, "pages": [{"name": "Games", "kind": "tab", "status": "Top tab", "wire": [[20, [["Header", 1]]], [60, [["Hero · next up, biggest edge", 1, "h"]]], [40, [["Game card", 1], ["Game card", 1]]], [40, [["Game card", 1], ["Game card", 1]]]], "items": ["Tonight only", "Last night moves to Calendar", "Live scores every 30s"], "data": "Existing /api/recommendations + new /api/live-scores"}, {"name": "Performance", "kind": "tab", "status": "Top tab", "wire": [[30, [["ROI", 1], ["Bankroll", 1], ["Bet win %", 1], ["Pick acc.", 1], ["Drawdown", 1]]], [60, [["Bankroll over time", 1, "h"]]], [40, [["By book", 1], ["By bucket", 1], ["By edge", 1]]], [46, [["Prediction log + filters", 1]]]], "items": ["Bankroll, ROI, win rates, streaks, drawdown", "P/L splits", "Prediction log with filters"], "data": "Existing summary + bankroll endpoints, new log endpoint"}, {"name": "Game detail", "kind": "over", "status": "Full page", "wire": [[50, [["‹ Back · matchup header", 1, "h"]]], [70, [["Elo · rest · Elo diff", 1], ["Rolling stats, both teams", 1]]], [36, [["Odds by book", 1]]], [22, [["Result", 1]]]], "items": ["Own page at /game/<id>, back link", "Why the pick, odds across books, result"], "data": "New /api/game/<id>"}, {"name": "Model", "kind": "tab", "status": "Top tab", "wire": [[40, [["Live model · accuracy · trained", 1, "h"]]], [60, [["Leaderboard · 5 models", 1]]], [70, [["Calibration", 1], ["Feature importance", 1]]]], "items": ["Live model, leaderboard, calibration, features"], "data": "model_leaderboard.csv + model_metadata.json"}, {"name": "History", "kind": "tab", "status": "Calendar tab", "wire": [[24, [["November ‹ ›", 1, "h"]]], [36, [["1", 1], ["2", 1], ["3", 1], ["4", 1], ["5", 1], ["6", 1], ["7", 1]]], [36, [["8", 1], ["9", 1], ["10", 1], ["11", 1], ["12", 1], ["13", 1], ["14", 1]]], [36, [["15", 1], ["16", 1], ["17", 1], ["18", 1], ["19", 1], ["20", 1], ["21", 1]]], [36, [["22", 1], ["23", 1], ["24", 1], ["25", 1], ["26", 1], ["27", 1], ["28", 1]]]], "items": ["Month grid, each day shows record and P/L", "Click a day to open its slate"], "data": "New /api/calendar (per-day rollup)"}, {"name": "System", "kind": "tab", "status": "Two tabs", "wire": [[40, [["Pipeline", 1, "h"], ["Predict", 1, "h"], ["SMS", 1, "h"]]], [60, [["Run history + log", 1]]], [80, [["Settings form · Kelly · min edge · books · SMS", 1, "y"]]]], "items": ["System: status and run log", "Settings: Kelly fraction, min edge, books, SMS on/off", "predict.py must read settings from the DB"], "data": "New settings table + write endpoints"}], "endpoints": [["/api/live-scores", "Live scoreboard, 20–30s cache", true], ["/api/predictions", "Filtered log", true], ["/api/game/<id>", "Game page", true], ["/api/models", "Leaderboard + metadata", true], ["/api/calendar", "Per-day rollup", true], ["/api/workflow-runs", "workflow_log rows", true], ["POST /api/run-workflow", "Run now", true], ["GET/PUT /api/settings", "Plus a settings table read by predict.py", true]]};
+    const TAB = { chipBg: '#ffc72c', chipInk: '#0a1630', chipBd: '#ffc72c', chipStyle: 'solid', bar: '#ffc72c', titleInk: '#ffffff', dataInk: '#dfe6f3' };
+    const OVER = { chipBg: 'transparent', chipInk: '#ffc72c', chipBd: '#ffc72c', chipStyle: 'solid', bar: '#ffc72c', titleInk: '#ffffff', dataInk: '#dfe6f3' };
+    const IN = { chipBg: '#3a5185', chipInk: '#ffffff', chipBd: '#3a5185', chipStyle: 'solid', bar: '#3a5185', titleInk: '#ffffff', dataInk: '#dfe6f3' };
+    const DEF = { chipBg: 'transparent', chipInk: '#b7c4dd', chipBd: '#3a5185', chipStyle: 'dashed', bar: '#1d3461', titleInk: '#b7c4dd', dataInk: '#b7c4dd' };
+    const kinds = { tab: TAB, over: OVER, in: IN, def: DEF };
+    const TONE = {
+      n: { bg: '#1d3461', bd: '#1d3461', ink: '#b7c4dd' },
+      y: { bg: '#2b2d25', bd: '#ffc72c', ink: '#ffc72c' },
+      d: { bg: '#102244', bd: '#102244', ink: '#6f83aa' },
+      h: { bg: '#24406f', bd: '#24406f', ink: '#ffffff' }
+    };
+    const pages = opt.pages.map((p) => ({
+      ...p, ...kinds[p.kind],
+      wire: p.wire.map((r) => ({ h: r[0], cells: r[1].map((c) => ({ label: c[0], w: c[1] || 1, ...TONE[c[2] || 'n'] })) }))
+    }));
+    const tabs = opt.tabs.map((label, i) => ({ label, ink: i === 0 ? '#ffffff' : '#b7c4dd', line: i === 0 ? '#ffc72c' : 'transparent' }));
+    const endpoints = opt.endpoints.map((e) => ({ name: e[0], why: e[1], ink: e[2] ? '#ffc72c' : '#ffffff' }));
+    return { opt: { ...opt, pages, tabs, endpoints, tabCount: opt.tabs.length, endpointCount: opt.endpoints.filter((e) => e[2]).length } };
+  }
+}
+</script>
+</body>
+</html>
