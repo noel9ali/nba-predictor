@@ -11,8 +11,9 @@ The numbers follow design/DESIGN_STATE.md sec1 "Sample data fixes" and the appro
 - the nightly bankroll follows the Performance board's timeline (peak $1,177.87 on Nov 5,
   max drawdown $91.67 to Nov 15), and the last 7 nights match the date rail;
 - Nov 16 is the draft's "Last night" (TOR a no-bet at -150, edge -2.0%);
-- Nov 17 is the Games draft slate, with the SAC bet at $55.58 (quarter-Kelly 5.0%, capped
-  at 5% of $1,111.67; the hit pays +$52.93).
+- Nov 17 is the Games draft slate. Every bet there is quarter-Kelly capped at 5% of the
+  $1,111.67 bankroll, as the design's SAC fix is ($55.58, the hit pays +$52.93); MIA, NYK,
+  MIN and CLE follow the same rule (the canvas drew them at $70.65/$25.00/$44.71/$44.42).
 
 Run from the repo root:  venv\\Scripts\\python scripts\\build_sample_data.py
 It is deterministic (fixed seed) and rewrites public/sample/ completely.
@@ -366,13 +367,13 @@ def fixed_nights():
 # Tonight (Nov 17): the Games draft slate. (away, home, pick side, p_pick, price, book,
 # stake, tip, away prices, home prices)
 TONIGHT_GAMES = [
-    ("MIA", "ORL", "away", 0.61, 105, "FanDuel", 70.65, (19, 0),
+    ("MIA", "ORL", "away", 0.61, 105, "FanDuel", 55.58, (19, 0),
      [103, 105, 102, -103, -103], [-119, -124, -125, -119, -112]),
-    ("BOS", "NYK", "home", 0.58, -118, "DraftKings", 25.00, (19, 30),
+    ("BOS", "NYK", "home", 0.58, -118, "DraftKings", 23.46, (19, 30),
      [100, 104, 103, 105, 102], [-118, -126, -124, -121, -126]),
-    ("DEN", "MIN", "home", 0.53, 124, "BetMGM", 44.71, (20, 0),
+    ("DEN", "MIN", "home", 0.53, 124, "BetMGM", 41.96, (20, 0),
      [-142, -142, -152, -150, -145], [118, 116, 124, 122, 121]),
-    ("CLE", "MIL", "away", 0.66, -150, "DraftKings", 44.42, (20, 0),
+    ("CLE", "MIL", "away", 0.66, -150, "DraftKings", 41.69, (20, 0),
      [-150, -156, -156, -158, -155], [122, 132, 130, 131, 133]),
     ("LAL", "PHX", "away", 0.55, -140, "BetRivers", 0.0, (22, 0),
      [-142, -146, -146, -140, -145], [115, 123, 118, 119, 121]),
@@ -705,12 +706,12 @@ def edges_slate(tables):
     """The Round 6 card edge cases on one slate (sample scene "edges")."""
     Game._next_id = 99001
     specs = [
-        ("DEN", "MIN", "home", 0.53, 124, "BetMGM", 44.71, (20, 0), None),
+        ("DEN", "MIN", "home", 0.53, 124, "BetMGM", 41.96, (20, 0), None),
         ("GSW", "SAC", "home", 0.61, -105, "FanDuel", 55.58, (19, 0), None),
-        ("CLE", "MIL", "away", 0.66, -150, "DraftKings", 44.42, (19, 30), "postponed"),
-        ("BOS", "NYK", "home", 0.58, -118, "DraftKings", 25.00, (20, 30), "partial"),
+        ("CLE", "MIL", "away", 0.66, -150, "DraftKings", 41.69, (19, 30), "postponed"),
+        ("BOS", "NYK", "home", 0.58, -118, "DraftKings", 23.46, (20, 30), "partial"),
         ("LAL", "PHX", "away", 0.55, None, None, 0.0, (22, 0), "no_odds"),
-        ("ATL", "CHI", "home", 0.58, -118, "DraftKings", 25.00, (19, 30), None),
+        ("ATL", "CHI", "home", 0.58, -118, "DraftKings", 23.46, (19, 30), None),
         ("HOU", "DAL", "home", 0.57, None, None, 0.0, (21, 30), "missing_data"),
     ]
     ids = []

@@ -44,5 +44,5 @@ After explicit approval: merge `dashboard-build` into `main` with `--no-ff`, run
 - Sample mode adds `&scene=` to review every hero/page state.
 
 ## Open questions (for Noel)
-- Sample MIA bet $70.65 (and NYK/MIN/CLE) aren't quarter-Kelly-consistent like the fixed SAC bet; kept as drawn on the canvas. Fix to Kelly (changes the tonight recap figures)?
+- Resolved (Noel: "default to what you see best fit"): tonight's sample bets are now all quarter-Kelly capped at 5% (MIA $55.58, NYK $23.46, MIN $41.96, CLE $41.69, SAC $55.58; staked $218.27, final-night net +$47.52 → $1,159.19).
 - `vercel curl` created a deployment-protection bypass token on the project while smoke testing; revoke it in Project Settings → Deployment Protection if you don't want it.

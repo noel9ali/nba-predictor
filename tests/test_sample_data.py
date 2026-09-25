@@ -140,10 +140,20 @@ class SampleTonightTests(unittest.TestCase):
         self.assertEqual(sac["odds"], -105)
         self.assertEqual(sac["bookmaker"], "FanDuel")
 
+    def test_every_bet_tonight_is_quarter_kelly_capped_at_five_percent(self):
+        for game in self.slate["games"]:
+            bet = game["bet"]
+            if not bet:
+                continue
+            with self.subTest(pick=game["pick"]):
+                quarter = bet["kelly_full"] * bet["kelly_fraction"]
+                # kelly_full is stored to 4 decimals, so allow a one-cent rounding difference.
+                self.assertAlmostEqual(bet["amount"], min(quarter, 0.05) * bet["bankroll_at_bet"], delta=0.011)
+
     def test_tonight_is_the_games_draft_slate(self):
         self.assertEqual(self.slate["phase"], "picks_posted")
         self.assertEqual(self.slate["summary"]["bets_placed"], 5)
-        self.assertEqual(self.slate["summary"]["staked"], 240.36)
+        self.assertEqual(self.slate["summary"]["staked"], 218.27)
         self.assertEqual(self.slate["last_slate_date"], "2026-11-16")
         expected_edges = {"MIA": 0.122, "NYK": 0.039, "MIN": 0.084, "CLE": 0.06, "LAL": -0.033, "SAC": 0.098}
         for pick, edge in expected_edges.items():
