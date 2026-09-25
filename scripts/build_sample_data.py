@@ -774,7 +774,8 @@ def main():
         write(f"game-{g.game_id}", fetch(nobets_tables, f"/api/game/{g.game_id}"))
 
     # Offseason: the day after the sample season, as the real site looks today.
-    off = fetch(tables, "/api/slate", today=date(2027, 7, 20), now="2027-07-20T19:00:00Z")
+    off_tables, _ = build_tables(history, targets, tonight_variant="none")
+    off = fetch(off_tables, "/api/slate", today=date(2027, 7, 20), now="2027-07-20T19:00:00Z")
     write(f"slate-{TONIGHT}-offseason", off)
 
     # Card edge cases.

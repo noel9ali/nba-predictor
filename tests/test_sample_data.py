@@ -166,7 +166,7 @@ class SampleTonightTests(unittest.TestCase):
         off = load("slate-2026-11-17-offseason")
         self.assertEqual(off["phase"], "no_games")
         self.assertTrue(off["offseason"])
-        self.assertEqual(off["last_slate_date"], "2026-11-17")
+        self.assertEqual(off["last_slate_date"], "2026-11-16")
 
 
 class SampleHygieneTests(unittest.TestCase):
