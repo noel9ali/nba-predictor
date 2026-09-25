@@ -12,13 +12,29 @@ Branch `dashboard-build`, worktree `C:\Users\noel9\Desktop\nba-predictor.worktre
 | Step | What | Commit |
 |---|---|---|
 | 0 | Worktree off main d4fd9b6; excludeFiles fix carried over | a944a26 |
+| 0 | Canvas snapshot, this log, hardened offline runner | f11d560 |
+| 1 | Read endpoints B5/B6 (`app.py`), `tests/test_api_v2.py`, `tests/contract_shapes.py` | 9845f02 |
+| 4 | Sample season: `scripts/build_sample_data.py` → `public/sample/` (real API output over fake tables), `tests/test_sample_data.py` | 7bb3f6c |
+| 2 | Serving B9: `/` → `public/index.html`, `/legacy`, `/sample/*`, vercel.json header rules, tests | c0cc115 |
+| 3,5,6,7 | UI: shell, Games, drawer, Performance (`public/index.html`, `public/static/{dashboard.css,js/*,fonts/*}`) | aeb899c |
 
-## Next
-- Step 0: commit this log, `design/canvas/`, `scripts/run_offline_tests.py`.
-- Step 1: read endpoints (B5/B6) in `app.py` + `tests/test_api_v2.py`, `tests/contract_shapes.py`.
-- Step 2: serving (B9): `/` → `public/index.html`, `/legacy`, `/sample/*`, vercel.json header rules, move legacy tests to `/legacy`.
-- Steps 3–9: shell, sample data, Games, drawer, Performance, a11y, verification.
-- Step 10: preview deploy, smoke test, STOP for review.
+| 8,9 | A11y pass, `tests/test_dashboard_static.py`, `scripts/browser_check.mjs`, `scripts/xss_harness.py` | 827e9be |
+| — | Box score: "Probability not recorded" bucket (30 real rows have NULL win probabilities) | 24d1d00 |
+| 10 | Branch pushed; private preview deployed and smoke-tested | — |
+
+Suite: 228/228 OK at 24d1d00, both `scripts/run_offline_tests.py` and `venv\Scripts\python -m unittest discover -s tests -v`.
+Browser: headless Chrome (CDP) at 1440 and 375 on every sample scene, the XSS harness and the preview (real data): 0 CSP violations, 0 console errors, 0 horizontal overflow, 0 payloads fired; reduced motion drops the flash and cross-fade. Screenshots: `design/build-screens/` (local) and `design/build-screens/preview/` (preview), not committed.
+
+## Preview (private)
+- https://nba-predictor-5i4zle96n-nubber.vercel.app (target null = preview; anonymous → 302 SSO).
+- Smoke: `/`, `/?sample=1`, static, all new APIs, `/legacy` → 200 with the 5 headers once each; 404 → 404; POST run-workflow → 403; no runtime errors.
+- The CDN serves `public/index.html` at `/` (Vercel static Cache-Control), so the excludeFiles fallback isn't needed.
+
+## Next — WAITING FOR NOEL'S REVIEW. Do nothing below until he approves.
+After explicit approval: merge `dashboard-build` into `main` with `--no-ff`, run the suite on `main`, SEC-01 scan over `origin/main..main`, push `main`, `npx vercel deploy --prod`, repeat the smoke test on production. Production stays behind Vercel Authentication (his call).
+
+## Local run
+`SUPABASE_URL=http://127.0.0.1:9 SUPABASE_SECRET_KEY=local-dummy FLASK_PORT=5057 venv/Scripts/python app.py`, then `http://127.0.0.1:5057/?sample=1&scene=<live|nextup|sofar|final|nobets|before|failed|offseason|stale|feeddown|edges|early|replay>` (add `&view=local` for the Run now popover). The worktree has no dotenv file, so real data is checked on the Vercel preview.
 
 ## Decisions / deviations so far
 - Pre-Gate M `record`/`l10` are null ("—"): `games` holds only home rows until the re-collect, so computed records would be wrong.
@@ -27,5 +43,6 @@ Branch `dashboard-build`, worktree `C:\Users\noel9\Desktop\nba-predictor.worktre
 - `/api/predictions` paginates in pandas (season ≤ 1,230 rows) instead of `select_page`.
 - Sample mode adds `&scene=` to review every hero/page state.
 
-## Open questions
-- None yet.
+## Open questions (for Noel)
+- Sample MIA bet $70.65 (and NYK/MIN/CLE) aren't quarter-Kelly-consistent like the fixed SAC bet; kept as drawn on the canvas. Fix to Kelly (changes the tonight recap figures)?
+- `vercel curl` created a deployment-protection bypass token on the project while smoke testing; revoke it in Project Settings → Deployment Protection if you don't want it.
