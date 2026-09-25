@@ -26,10 +26,13 @@ class DashboardPageTests(unittest.TestCase):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.mimetype, "text/html")
-        html = response.get_data(as_text=True)
+        body = response.get_data()
         response.close()
-        with open(INDEX_PATH, encoding="utf-8") as fh:
-            self.assertEqual(html, fh.read())
+        # Compare bytes: a checkout with core.autocrlf rewrites line endings, and the page
+        # must be served exactly as it is on disk either way.
+        with open(INDEX_PATH, "rb") as fh:
+            self.assertEqual(body, fh.read())
+        html = body.decode("utf-8")
         self.assertIn('<script type="module" src="/static/js/main.js"></script>', html)
         self.assertEqual(response.headers["Cache-Control"], "no-cache")
 
