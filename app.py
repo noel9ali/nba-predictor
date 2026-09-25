@@ -7,7 +7,15 @@ from urllib.parse import urlsplit
 
 import pandas as pd
 from dotenv import load_dotenv
-from flask import Flask, g, jsonify, make_response, render_template, request
+from flask import (
+    Flask,
+    g,
+    jsonify,
+    make_response,
+    render_template,
+    request,
+    send_from_directory,
+)
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
@@ -618,7 +626,25 @@ def method_not_allowed(exc):
     return error_response(405, "method_not_allowed")
 
 
+PUBLIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "public")
+
+
 @app.route("/")
+def dashboard_page():
+    # The dashboard is a static page (public/index.html); on Vercel the CDN serves the same
+    # file. Everything it shows comes from the /api/* routes.
+    response = send_from_directory(PUBLIC_DIR, "index.html")
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
+@app.route("/sample/<path:name>")
+def sample_data(name):
+    # Sample-mode JSON (?sample=1) for local runs; Vercel serves public/sample/ from the CDN.
+    return send_from_directory(os.path.join(PUBLIC_DIR, "sample"), name)
+
+
+@app.route("/legacy")
 def index():
     notice = None
     try:
@@ -886,8 +912,8 @@ def build_book_grid(rows):
 
     def best(prices):
         # A higher American price always pays more, for favourites and underdogs alike.
-        priced = [(p, i) for i, p in enumerate(prices) if p is not None]
-        return max(priced)[1] if priced else None
+        priced = [(p, -i) for i, p in enumerate(prices) if p is not None]
+        return -max(priced)[1] if priced else None  # ties go to the first book in grid order
 
     return {
         "books": books, "home": home, "away": away,

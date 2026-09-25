@@ -447,12 +447,22 @@ class PostMigrationTests(ApiTestCase):
         self.assertEqual(grid["home"], [-113, -105, -107, None, None])
         self.assertEqual(grid["best_home_idx"], 1)
         self.assertEqual(grid["best_away_idx"], 0)
+
         self.assertEqual(game["home"]["record"], "8-4")
         self.assertEqual(game["home"]["l10"], "LWLWWLWWLW")
         self.assertEqual(game["bookmaker"], "FanDuel")
         self.assertEqual(game["tip_time_utc"], "2026-04-10T23:30:00Z")
         self.assertEqual(body["recap"]["bankroll_before"], 1000.0)
         self.assertEqual(body["recap"]["bankroll_after"], 1027.93)
+
+    def test_best_price_ties_go_to_the_first_book(self):
+        grid = dashboard.build_book_grid([
+            {"bookmaker": "DraftKings", "home_price": 118, "away_price": -142},
+            {"bookmaker": "FanDuel", "home_price": 116, "away_price": -142},
+            {"bookmaker": "BetMGM", "home_price": 124, "away_price": -152},
+        ])
+        self.assertEqual(grid["best_away_idx"], 0)
+        self.assertEqual(grid["best_home_idx"], 2)
 
     def test_performance_reads_the_bankroll_table(self):
         body = self.get("/api/performance").get_json()

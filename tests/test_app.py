@@ -218,7 +218,7 @@ class LegacyRouteTests(AppTestCase):
                 self.assertIn("s-maxage=300", response.headers["Cache-Control"])
 
     def test_index_renders_the_season_selector(self):
-        response = self.client.get("/")
+        response = self.client.get("/legacy")
         self.assertEqual(response.status_code, 200)
         html = response.get_data(as_text=True)
         self.assertIn('name="season"', html)
@@ -226,7 +226,7 @@ class LegacyRouteTests(AppTestCase):
         self.assertIn('<option value="2024-25" >', html)
 
     def test_stylesheet_is_served_from_public_static(self):
-        self.assertIn('href="/static/style.css"', self.client.get("/").get_data(as_text=True))
+        self.assertIn('href="/static/style.css"', self.client.get("/legacy").get_data(as_text=True))
         response = self.client.get("/static/style.css")
         self.assertEqual(response.status_code, 200)
         response.close()
@@ -325,7 +325,7 @@ class DatabaseFailureTests(AppTestCase):
         body = self.client.get("/api/dashboard-state").get_json()
         self.assertTrue(body["migration_pending"])
         self.assertEqual(body["bankroll_series"], [])
-        self.assertEqual(self.client.get("/").status_code, 200)
+        self.assertEqual(self.client.get("/legacy").status_code, 200)
 
     def test_database_error_is_503_without_exception_text(self):
         self.db.errors["predictions"] = DatabaseError("Reading predictions failed: detail-XYZ")
@@ -339,7 +339,7 @@ class DatabaseFailureTests(AppTestCase):
 
     def test_index_renders_empty_with_a_notice_when_the_database_is_down(self):
         self.db.errors["predictions"] = DatabaseError("Reading predictions failed: detail-XYZ")
-        response = self.client.get("/")
+        response = self.client.get("/legacy")
         self.assertEqual(response.status_code, 200)
         html = response.get_data(as_text=True)
         self.assertIn("Game data is unavailable right now", html)
@@ -404,10 +404,10 @@ class SecretExposureTests(AppTestCase):
         secret = "sb_" "secret_TESTVALUE"  # split so secret scanners skip this fake key
         # ALLOW_RUN_WORKFLOW is forced off so the POST can never start a real run.
         with patch.dict(os.environ, {"SUPABASE_SECRET_KEY": secret, "ALLOW_RUN_WORKFLOW": "false"}):
-            bodies = [self.client.get(route).get_data(as_text=True) for route in ["/", *LEGACY_ROUTES]]
+            bodies = [self.client.get(route).get_data(as_text=True) for route in ["/legacy", *LEGACY_ROUTES]]
             bodies.append(self.client.post("/api/run-workflow").get_data(as_text=True))
             self.db.errors["predictions"] = DatabaseError(f"Reading predictions failed: {secret}")
-            bodies += [self.client.get(route).get_data(as_text=True) for route in ["/", *LEGACY_ROUTES]]
+            bodies += [self.client.get(route).get_data(as_text=True) for route in ["/legacy", *LEGACY_ROUTES]]
         for body in bodies:
             self.assertNotIn("TESTVALUE", body)
 
@@ -440,12 +440,12 @@ class QueryBudgetTests(unittest.TestCase):
     def test_index_call_count_is_constant_regardless_of_slate_size(self):
         one_game = CountingFakeDB(slate_tables(1))
         with patch.object(dashboard, "select_rows", one_game):
-            response = self.client.get("/?season=2025-26&game_date=2026-03-01")
+            response = self.client.get("/legacy?season=2025-26&game_date=2026-03-01")
         self.assertEqual(response.status_code, 200)
 
         fifteen_games = CountingFakeDB(slate_tables(15))
         with patch.object(dashboard, "select_rows", fifteen_games):
-            response = self.client.get("/?season=2025-26&game_date=2026-03-01")
+            response = self.client.get("/legacy?season=2025-26&game_date=2026-03-01")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(one_game.total_calls, fifteen_games.total_calls)
 
@@ -526,26 +526,26 @@ class BatchedLookupTests(AppTestCase):
 
 class CacheControlTests(AppTestCase):
     def test_index_success_sends_the_legacy_cache_control(self):
-        response = self.client.get("/")
+        response = self.client.get("/legacy")
         self.assertIn("s-maxage=300", response.headers["Cache-Control"])
 
     def test_index_degraded_sends_no_store(self):
         self.db.errors["predictions"] = DatabaseError("Reading predictions failed: detail-XYZ")
-        response = self.client.get("/")
+        response = self.client.get("/legacy")
         self.assertEqual(response.headers.get("Cache-Control"), "no-store")
 
 
 class MigrationNoticeTests(AppTestCase):
     def test_index_shows_a_status_notice_when_migration_pending_but_not_fully_down(self):
         self.db.errors["bankroll"] = MissingTableError("Reading bankroll failed: table is missing")
-        response = self.client.get("/")
+        response = self.client.get("/legacy")
         self.assertEqual(response.status_code, 200)
         html = response.get_data(as_text=True)
         self.assertIn('role="status"', html)
         self.assertIn("migration", html.lower())
 
     def test_index_has_no_migration_notice_when_data_is_complete(self):
-        response = self.client.get("/")
+        response = self.client.get("/legacy")
         html = response.get_data(as_text=True)
         self.assertNotIn("migration", html.lower())
 

@@ -151,12 +151,23 @@ class SecurityHeadersTests(unittest.TestCase):
         for name, value in SECURITY_HEADERS.items():
             self.assertEqual(response.headers.get(name), value, f"header {name} on {response}")
 
-    def test_index_has_all_headers(self):
-        self.assert_all_headers(self.client.get("/"))
+    def test_dashboard_page_has_all_headers(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assert_all_headers(response)
+        response.close()
+
+    def test_legacy_page_has_all_headers(self):
+        response = self.client.get("/legacy")
+        self.assertEqual(response.status_code, 200)
+        self.assert_all_headers(response)
 
     def test_api_routes_have_all_headers(self):
         for route in ("/api/dashboard-state", "/api/ytd-summary",
-                      "/api/recommendations", "/api/bankroll-series"):
+                      "/api/recommendations", "/api/bankroll-series",
+                      "/api/slate", "/api/days", "/api/performance", "/api/predictions",
+                      "/api/model", "/api/workflow-status", "/api/game/0022501100",
+                      "/api/game/bad"):
             with self.subTest(route=route):
                 self.assert_all_headers(self.client.get(route))
 
@@ -173,33 +184,66 @@ class SecurityHeadersTests(unittest.TestCase):
             raise DatabaseError("boom")
 
         with patch.object(dashboard, "select_rows", erroring):
-            self.assert_all_headers(self.client.get("/"))
+            self.assert_all_headers(self.client.get("/legacy"))
+            self.assert_all_headers(self.client.get("/api/slate"))
 
     def test_static_file_response_has_all_headers(self):
         response = self.client.get("/static/style.css")
         self.assert_all_headers(response)
         response.close()
 
+    def test_dashboard_assets_have_all_headers(self):
+        for path in ("/static/dashboard.css", "/static/js/main.js", "/static/favicon.svg",
+                     "/static/fonts/barlow-latin-400-normal.woff2", "/sample/days.json"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 200)
+                self.assert_all_headers(response)
+                response.close()
+
+    def test_sample_path_traversal_is_refused(self):
+        for path in ("/sample/../../app.py", "/sample/..%2F..%2Fapp.py", "/sample/nope.json"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 404)
+                self.assert_all_headers(response)
+                response.close()
+
+
+# Everything the Vercel CDN serves straight from public/ (Flask never sees these requests
+# there, so its after_request can't add the headers): the dashboard page itself, its
+# static assets and the sample-mode JSON.
+CDN_SOURCES = ("/", "/index.html", "/static/(.*)", "/sample/(.*)")
+
 
 class VercelJsonHeadersTests(unittest.TestCase):
-    """SEC-F2: vercel.json parses and its /static/(.*) rule mirrors the same five headers,
-    compared against the same SECURITY_HEADERS constant so they can't drift."""
+    """SEC-F2: vercel.json parses and every CDN-served source rule mirrors the same five
+    headers, compared against the same SECURITY_HEADERS constant so they can't drift."""
 
-    def test_static_rule_matches_flask_headers(self):
+    def setUp(self):
         path = os.path.join(os.path.dirname(__file__), "..", "vercel.json")
         with open(path, encoding="utf-8") as f:
-            config = json.load(f)
+            self.rules = json.load(f).get("headers", [])
 
-        rules = config.get("headers", [])
-        static_rules = [r for r in rules if r.get("source") == "/static/(.*)"]
-        self.assertEqual(len(static_rules), 1)
-        headers = {h["key"]: h["value"] for h in static_rules[0]["headers"]}
-        for name, value in SECURITY_HEADERS.items():
-            self.assertEqual(headers.get(name), value, f"vercel.json header {name}")
+    def test_every_cdn_source_rule_matches_flask_headers(self):
+        for source in CDN_SOURCES:
+            with self.subTest(source=source):
+                matching = [r for r in self.rules if r.get("source") == source]
+                self.assertEqual(len(matching), 1)
+                headers = {h["key"]: h["value"] for h in matching[0]["headers"]}
+                self.assertEqual(headers, SECURITY_HEADERS)
 
-        # Must not duplicate onto every response (only /static/(.*), not /(.*)).
-        sources = [r.get("source") for r in rules]
+    def test_no_catch_all_rule(self):
+        # Must not duplicate onto every (Flask) response: only the CDN-served paths.
+        sources = [r.get("source") for r in self.rules]
         self.assertNotIn("/(.*)", sources)
+        self.assertEqual(sorted(sources), sorted(CDN_SOURCES))
+
+    def test_excludefiles_fits_vercels_limit(self):
+        path = os.path.join(os.path.dirname(__file__), "..", "vercel.json")
+        with open(path, encoding="utf-8") as f:
+            exclude = json.load(f)["functions"]["app.py"]["excludeFiles"]
+        self.assertLessEqual(len(exclude), 256)
 
 
 class SecretKeyTests(unittest.TestCase):
