@@ -14,7 +14,7 @@ import { logo } from "./teams.js";
 const PAGE_SIZE = 25;
 const EDGE_OPTIONS = [["", "Any"], ["0", "0%+"], ["0.03", "3%+"], ["0.06", "6%+"], ["0.1", "10%+"]];
 const RESULT_OPTIONS = [["any", "Any result"], ["hit", "Hit"], ["miss", "Miss"], ["pending", "Pending"]];
-const CONFIDENCE_LABELS = { high: "High · 65%+", medium: "Medium · 58–65%", low: "Low · under 58%" };
+const CONFIDENCE_LABELS = { high: "High · 65%+", medium: "Medium · 58–65%", low: "Low · under 58%", unknown: "Probability not recorded" };
 const EDGE_LABELS = { "<0": "Below 0%", "0-3": "0–3%", "3-6": "3–6%", "6-10": "6–10%", "10+": "10%+" };
 
 let chosenSeason = null; // remembered across visits within the session
