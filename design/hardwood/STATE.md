@@ -33,6 +33,18 @@ Preview (Vercel login required): https://nba-predictor-git-hardwood-build-nubber
 - Old dashboard files deleted (`dashboard.css`, `favicon.svg`, 13 old js modules, barlow fonts). `/legacy` still uses `static/app.js`
   and `static/style.css`; KEEP both.
 
+## After D (Oct 6): Noel approved migration, logos, merge and production deploy; live scores ON HOLD
+- DONE: applied `alter table public.model_runs add column if not exists training jsonb;` to Supabase project
+  `aopkwfeocvgkzejxjruw` (migration name `model_runs_training`). Verified the column exists.
+  Note: live `model_runs` has 0 rows, so the live Model page shows its no-data fallbacks until a training run is published.
+- SHIPPED (Oct 6): Noel added allow rules; merged `hardwood-build` into main (merge commit b8fe54d) and pushed. Pushes don't
+  auto-deploy, so production was created via the Vercel connector (dpl_GddcjKcnu7zvKkHPWUbSRtj3FKu2, target production) → READY on
+  https://nba-predictor-tau.vercel.app (/, /model, /api/model verified 200 + CSP).
+- Live notes: `migration_pending` is true on prod and was ALREADY true before this release (older v2 migrations / NBA_SCHEMA_V2), not from
+  `training`. `model_runs` has 0 rows, so the live Model page shows fallbacks until a training run is published. Main's local test
+  failure `test_build_model_run_row_from_committed_artifacts` (6 != 5) comes from Noel's uncommitted data/model_leaderboard.csv, not the merge.
+- Live scores: ON HOLD per Noel.
+
 ## Findings to raise with Noel (in the D report)
 - **`/api/live-scores` does not exist on any branch** (it's in the contract and design docs, and the old frontend called it too). On the live
   site, scores only update from the slate's own status, and while games are live the "Live scores are down" banner appears after 5 minutes.
