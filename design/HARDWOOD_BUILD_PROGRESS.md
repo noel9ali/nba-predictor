@@ -37,8 +37,23 @@ Noel asked (Oct 6): be token-frugal, lean subagent briefs, keep this log current
   ≤3 toasts, step 3 `.tn`. All sample scenes + past night + invalid date: 0 errors.
 - Backend B1–B4 delegated to a subagent (app.py /api/model extras, elo consts + parity test, training w/
   defensive read + migration FILE only, /api/featured-pick, tests in test_api_v2).
-- Preview deploy: `npx vercel deploy` → "Not authorized" (CLI login expired). Needs Noel: `! npx vercel login`
-  or OK to push branch `hardwood-build` (git integration makes a preview). `.vercel/project.json` copied into worktree.
+- Backend B1–B4 done (subagent): app.py ELO_PARAMS, feature_importance, training (defensive read, MissingColumnError
+  → migration_pending), /api/featured-pick; src/model_metadata.build_training_summary; src/model.py writes it;
+  migration file 20261006000100 (NOT applied). Sample builder now gets these from the real route.
+- tests/test_security CDN_SOURCES += /model, /model.html. Offline suite: 4 failures, all old-dashboard tests
+  (test_dashboard_page root markers, test_dashboard_static entry point / innerHTML ban / run-now) → rewrite in phase D.
+- Commit d28e07a on hardwood-build, pushed branch (Noel chose "push the branch"). Branch push did NOT auto-deploy;
+  preview created via Vercel connector create_deployment (gitSource ref hardwood-build) →
+  https://nba-predictor-git-hardwood-build-nubber.vercel.app (SSO protection on: Vercel login required).
+  To refresh the preview after new commits: push, then create_deployment again with the new sha.
+
+- CHECKPOINT B reported to Noel (preview link sent). Open question to Noel: apply the model_runs.training migration?
+- Phase 4 / checkpoint C started (Noel: "Go ahead with C"). Lead wrote public/model.html, css/model.css,
+  js/model.js (old dashboard model.js deleted), js/model/claim.js, js/model/calibration.js, tests/js/pure.test.mjs
+  (run: `node --test tests/js/pure.test.mjs`; dir form fails on Windows).
+  S4 → js/model/{alltime,weights,tryouts}.js + css/model-a.css. S5 → js/model/{seasons,rowcard,walkthrough}.js + css/model-b.css.
+  After C: concatenate model-a/b.css into model.css and drop the two extra <link>s.
+- Decision: hero kicker date + footer use ET (ruling 11) → "retrained Oct 5, 2026" for the 02:05Z sample.
 
 ## How to run locally
 - Server: `cd worktree; SUPABASE_URL=http://127.0.0.1:9 SUPABASE_SECRET_KEY=offline FLASK_PORT=5057 <venv python> app.py`
