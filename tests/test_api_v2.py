@@ -14,7 +14,8 @@ sys.path.insert(0, os.path.dirname(__file__))
 import app as dashboard  # noqa: E402
 import daily_workflow  # noqa: E402
 from contract_shapes import (  # noqa: E402
-    DAYS, GAME_DETAIL, MODEL, PERFORMANCE, PREDICTIONS, SLATE, WORKFLOW_STATUS, check,
+    DAYS, FEATURED_PICK, GAME_DETAIL, MODEL, PERFORMANCE, PREDICTIONS, SLATE,
+    WORKFLOW_STATUS, check,
 )
 from database import DatabaseError, MissingColumnError, MissingTableError  # noqa: E402
 from test_app import CountingFakeDB, FakeDB, prediction  # noqa: E402
@@ -158,6 +159,7 @@ ROUTES = {
     "/api/performance?season=all": PERFORMANCE,
     "/api/predictions": PREDICTIONS,
     "/api/model": MODEL,
+    "/api/featured-pick": FEATURED_PICK,
     "/api/workflow-status": WORKFLOW_STATUS,
 }
 
@@ -526,6 +528,145 @@ class PostMigrationTests(ApiTestCase):
     def test_game_id_is_matched_as_text_after_the_migration(self):
         self.assertEqual(self.get("/api/game/0022501100").get_json()["game"]["bookmaker"],
                          "FanDuel")
+
+
+SIGNAL = [  # feature_signal as the training run stores it (logistic rows carry signed values)
+    {"feature": "ELO_DIFF", "importance": 0.4}, {"feature": "HOME_ELO", "importance": 0.2},
+    {"feature": "AWAY_ELO", "coefficient": -0.1}, {"feature": "rest_diff", "importance": 0.08},
+    {"feature": "HOME_roll_REB", "importance": 0.06}, {"feature": "AWAY_roll_TOV", "importance": 0.04},
+    {"feature": "AWAY_roll_STOCKS", "importance": 0.02}, {"feature": "mystery", "importance": 0.1},
+]
+TRAINING_BLOCK = {
+    "first_game_date": "2019-11-22", "cutoff_date": "2025-02-25", "last_game_date": "2026-04-12",
+    "games_total": 7979, "train_games": 6383, "test_games": 1596, "home_win_rate": 0.5501,
+    "rolling_window": 10,
+    "seasons": [{"season": "2024-25", "games": 1225, "train": 854, "test": 371}],
+}
+
+
+class ModelExtrasTests(ApiTestCase):
+    """B1-B3: leaderboard extras, feature_importance, elo, training."""
+    env = V2_ON
+
+    def tables(self):
+        tables = v2_tables()
+        run = tables["model_runs"][0]
+        run["leaderboard"][0]["feature_signal"] = SIGNAL
+        run["leaderboard"][0]["calibration_ece"] = 0.031
+        run["leaderboard"][1]["test_games"] = 1500
+        return tables
+
+    def model(self):
+        body = self.get("/api/model").get_json()
+        self.assert_shape(body, MODEL)
+        return body
+
+    def test_leaderboard_rows_carry_the_b1_fields(self):
+        prod, other = self.model()["leaderboard"]
+        self.assertEqual((prod["roc_auc"], prod["calibration_ece"], prod["test_games"],
+                          prod["is_production"]), (0.7295, 0.031, 1596, True))
+        self.assertEqual((other["roc_auc"], other["calibration_ece"], other["test_games"],
+                          other["is_production"]), (None, None, 1500, False))
+
+    def test_feature_importance_is_the_production_rows_top_five_shares(self):
+        shares = self.model()["feature_importance"]
+        self.assertEqual([r["feature"] for r in shares],
+                         ["ELO_DIFF", "HOME_ELO", "AWAY_ELO", "mystery", "rest_diff", "other"])
+        self.assertEqual([r["label"] for r in shares],
+                         ["Rating gap", "Home team's rating", "Away team's rating", "mystery",
+                          "Rest gap", "The other 3 inputs"])
+        self.assertEqual([r["share"] for r in shares], [0.4, 0.2, 0.1, 0.1, 0.08, 0.12])
+        self.assertAlmostEqual(sum(r["share"] for r in shares), 1.0)
+
+    def test_feature_labels(self):
+        for feature, label in [("HOME_roll_REB", "Home rebounds, last 10"),
+                               ("AWAY_roll_FG_PCT", "Away field goal %, last 10"),
+                               ("AWAY_roll_TOV", "Away turnovers, last 10"),
+                               ("HOME_roll_STOCKS", "Home steals + blocks, last 10"),
+                               ("REST_DIFF", "Rest gap"), ("HOME_roll_XYZ", "HOME_roll_XYZ")]:
+            self.assertEqual(dashboard.feature_label(feature), label)
+
+    def test_feature_importance_is_omitted_without_a_usable_signal(self):
+        for signal in (None, "", [], [{"feature": "ELO_DIFF", "importance": 0}], "not json"):
+            self.assertEqual(dashboard.feature_importance(signal), [])
+        self.db.tables["model_runs"][0]["leaderboard"][0]["feature_signal"] = None
+        self.assertNotIn("feature_importance", self.model())
+
+    def test_feature_importance_accepts_a_json_string_and_few_inputs(self):
+        shares = dashboard.feature_importance('[{"feature": "ELO_DIFF", "importance": 3},'
+                                              ' {"feature": "HOME_ELO", "importance": 1}]')
+        self.assertEqual(shares, [{"feature": "ELO_DIFF", "label": "Rating gap", "share": 0.75},
+                                  {"feature": "HOME_ELO", "label": "Home team's rating",
+                                   "share": 0.25}])
+
+    def test_elo_constants_match_src_elo(self):
+        import elo
+        self.assertEqual(self.model()["elo"], {
+            "k": elo.K, "home_advantage": elo.HOME_ADVANTAGE,
+            "mean_reversion": elo.MEAN_REVERSION, "start": elo.STARTING_ELO})
+
+    def test_training_is_emitted_only_when_the_run_has_it(self):
+        self.assertNotIn("training", self.model())
+        self.db.tables["model_runs"][0]["training"] = TRAINING_BLOCK
+        body = self.model()
+        self.assertEqual(body["training"], TRAINING_BLOCK)
+        self.assertFalse(body["migration_pending"])
+
+    def test_a_database_without_the_training_column_falls_back_and_flags_it(self):
+        real = self.db
+        calls = []
+
+        def fake(table, **kwargs):
+            calls.append((table, kwargs.get("columns")))
+            if table == "model_runs" and "training" in kwargs.get("columns", ""):
+                raise MissingColumnError("Reading model_runs failed: column is missing")
+            return real(table, **kwargs)
+
+        with patch.object(dashboard, "select_rows", fake):
+            body = self.model()
+        self.assertTrue(body["migration_pending"])
+        self.assertNotIn("training", body)
+        self.assertEqual(body["production_model"], "legacy-calibrated-logistic")
+        self.assertEqual(len(body["leaderboard"]), 2)
+        self.assertEqual(len([c for c in calls if c[0] == "model_runs"]), 2)
+
+
+class FeaturedPickTests(ApiTestCase):
+    env = V2_ON
+
+    def tables(self):
+        return v2_tables()
+
+    def pick(self):
+        body = self.get("/api/featured-pick").get_json()
+        self.assert_shape(body, FEATURED_PICK)
+        return body["game_id"]
+
+    def test_the_largest_edge_settled_bet_of_the_latest_bet_night(self):
+        # Apr 12 has only an unsettled bet; Apr 11 has PHX +120 (edge .25) and DEN -110 (.14).
+        self.assertEqual(self.pick(), "0022501150")
+        self.db.tables["predictions"][3]["edge"] = 0.01  # a stored edge wins over the derived one
+        self.assertEqual(self.pick(), "0022501151")
+
+    def test_falls_back_to_the_most_recent_settled_pick_without_bets(self):
+        for row in self.db.tables["predictions"]:
+            row["bet_amount"] = 0.0
+        self.assertEqual(self.pick(), "0022501151")
+
+    def test_null_before_any_settled_pick(self):
+        self.db.tables["predictions"] = [r for r in self.db.tables["predictions"]
+                                         if r["correct"] is None]
+        self.assertIsNone(self.pick())
+        self.db.tables["predictions"] = []
+        self.assertIsNone(self.pick())
+
+
+class FeaturedPickPreMigrationTests(ApiTestCase):
+    def test_works_on_the_old_schema_and_is_flagged(self):
+        body = self.get("/api/featured-pick").get_json()
+        self.assert_shape(body, FEATURED_PICK)
+        self.assertEqual(body["game_id"], "0022501150")
+        self.assertTrue(body["migration_pending"])
 
 
 def big_slate(n_games, game_date="2026-04-10", v2=False):

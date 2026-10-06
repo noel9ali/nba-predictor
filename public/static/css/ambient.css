@@ -1,0 +1,28 @@
+.ambient{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
+.ambient .lamp{position:absolute;left:50%;top:-34vh;width:130vw;height:84vh;margin-left:-65vw;
+  background:radial-gradient(ellipse at center,rgba(255,214,160,.17),rgba(255,214,160,.05) 45%,transparent 68%);
+  animation:amb-lamp 28s ease-in-out infinite alternate}
+.ambient .lamp.b{top:auto;bottom:-50vh;opacity:.5;animation-duration:36s;animation-direction:alternate-reverse}
+@keyframes amb-lamp{from{transform:translateX(-16vw)}to{transform:translateX(16vw)}}
+.ambient .sheen{position:absolute;inset:-30% -60%;
+  background:linear-gradient(100deg,transparent 42%,rgba(255,232,196,.035) 50%,transparent 58%);
+  animation:amb-sheen 22s linear infinite}
+@keyframes amb-sheen{from{transform:translateX(-35%)}to{transform:translateX(35%)}}
+.ambient .court-bg{position:absolute;left:50%;top:50%;width:max(1100px,128vw);height:auto;opacity:.06;
+  transform:translate(-50%,-50%) translateY(var(--py,0px)) rotate(-2deg)}
+.ambient .court-bg *{fill:none;stroke:#ffecd2;stroke-width:3;stroke-dasharray:1;stroke-dashoffset:1;
+  animation:amb-draw 3.2s cubic-bezier(.4,0,.2,1) forwards;animation-delay:var(--dl,0s)}
+@keyframes amb-draw{to{stroke-dashoffset:0}}
+/* per-part draw delays (classes instead of the prototype's inline style="--dl:…") */
+.ambient .court-bg .cb-half{--dl:.3s}
+.ambient .court-bg .cb-cc1{--dl:.5s}
+.ambient .court-bg .cb-cc2{--dl:.7s}
+.ambient .court-bg .cb-key{--dl:.6s}
+.ambient .court-bg .cb-ft{--dl:.8s}
+.ambient .court-bg .cb-arc{--dl:1s}
+.ambient .court-bg .cb-board{--dl:1.2s}
+.ambient .court-bg .cb-rim{--dl:1.3s}
+@media (prefers-reduced-motion:reduce){
+  .ambient *{animation:none!important}
+  .ambient .court-bg *{stroke-dashoffset:0}
+}

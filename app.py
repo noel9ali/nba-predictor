@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import secrets
@@ -638,6 +639,15 @@ def dashboard_page():
     return response
 
 
+@app.route("/model")
+@app.route("/model.html")
+def model_page():
+    # B7: "The model" page, a second static file served the same way as "/".
+    response = send_from_directory(PUBLIC_DIR, "model.html")
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 @app.route("/sample/<path:name>")
 def sample_data(name):
     # Sample-mode JSON (?sample=1) for local runs; Vercel serves public/sample/ from the CDN.
@@ -738,6 +748,7 @@ CACHE_SLATE_TODAY = "public, s-maxage=60, stale-while-revalidate=300"
 CACHE_PAST = "public, s-maxage=3600, stale-while-revalidate=86400"
 CACHE_GAME = "public, s-maxage=60, stale-while-revalidate=600"
 CACHE_MODEL = "public, s-maxage=600, stale-while-revalidate=86400"
+FEATURED_PICK_WINDOW = 200  # rows, newest first: far more than one night's games
 CACHE_WORKFLOW = "public, s-maxage=30, stale-while-revalidate=60"
 
 TEAMS = {
@@ -1492,13 +1503,82 @@ def calibration_buckets(settled):
     return buckets
 
 
+# B3: the Elo constants from src/elo.py. vercel.json keeps src/ out of the function bundle, so
+# they are copied here; tests/test_api_v2.py fails if they drift from src/elo.py.
+ELO_PARAMS = {"k": 20, "home_advantage": 100, "mean_reversion": 0.25, "start": 1500}
+
+MODEL_RUN_COLUMNS = "trained_at,production_model,cutoff_date,test_games,leaderboard"
+ROLLING_WINDOW = 10  # src/features.py ROLLING_WINDOW (same bundle note as ELO_PARAMS)
+FEATURE_LABELS = {
+    "ELO_DIFF": "Rating gap",
+    "HOME_ELO": "Home team's rating",
+    "AWAY_ELO": "Away team's rating",
+    "REST_DIFF": "Rest gap",
+}
+ROLL_STAT_LABELS = {
+    "PTS": "points", "FG_PCT": "field goal %", "REB": "rebounds",
+    "AST": "assists", "TOV": "turnovers", "STOCKS": "steals + blocks",
+}
+FEATURE_IMPORTANCE_TOP = 5
+
+
 def latest_model_run():
-    rows = records(read_v2_rows(
-        "model_runs",
-        columns="trained_at,production_model,cutoff_date,test_games,leaderboard",
-        order_by="trained_at", descending=True, limit=1,
-    ))
+    """The newest model_runs row. `training` (B2) needs its migration: until it is applied the
+    select falls back to the old column list and the payload is flagged migration_pending."""
+    kwargs = dict(order_by="trained_at", descending=True, limit=1)
+    if not schema_v2_enabled():
+        pending_migration()
+        return None
+    try:
+        df = select_rows("model_runs", columns=MODEL_RUN_COLUMNS + ",training", **kwargs)
+    except MissingColumnError:
+        pending_migration()
+        df = read_rows("model_runs", columns=MODEL_RUN_COLUMNS, **kwargs)
+    except MissingTableError:
+        pending_migration()
+        return None
+    rows = records(df)
     return rows[0] if rows else None
+
+
+def feature_label(feature):
+    name = str(feature)
+    if name.upper() in FEATURE_LABELS:
+        return FEATURE_LABELS[name.upper()]
+    match = re.fullmatch(r"(HOME|AWAY)_roll_([A-Z_]+)", name)
+    if match and match.group(2) in ROLL_STAT_LABELS:
+        side = match.group(1).capitalize()
+        return f"{side} {ROLL_STAT_LABELS[match.group(2)]}, last {ROLLING_WINDOW}"
+    return name
+
+
+def feature_importance(signal):
+    """Top five inputs as shares of the total |importance|, then the rest as "other"; [] when the
+    production row carries no usable signal."""
+    if isinstance(signal, str):
+        try:
+            signal = json.loads(signal)
+        except ValueError:
+            return []
+    weights = []
+    for item in signal if isinstance(signal, list) else []:
+        if not isinstance(item, dict) or not item.get("feature"):
+            continue
+        value = next((safe_float(item[k]) for k in ("importance", "coefficient", "value")
+                      if k in item and safe_float(item[k]) is not None), None)
+        if value is not None:
+            weights.append((str(item["feature"]), abs(value)))
+    total = sum(w for _, w in weights)
+    if not weights or total <= 0:
+        return []
+    weights.sort(key=lambda fw: fw[1], reverse=True)
+    top = [{"feature": f, "label": feature_label(f), "share": round(w / total, 4)}
+           for f, w in weights[:FEATURE_IMPORTANCE_TOP]]
+    rest = len(weights) - len(top)
+    if rest > 0:
+        top.append({"feature": "other", "label": f"The other {rest} inputs",
+                    "share": round(max(0.0, 1 - sum(r["share"] for r in top)), 4)})
+    return top
 
 
 @app.route("/api/model")
@@ -1514,6 +1594,7 @@ def api_model():
 
     run = latest_model_run()
     production, trained_at, cutoff, test, leaderboard = None, None, None, None, []
+    mine_signal, training = [], None
     if run:
         production = run.get("production_model")
         trained_at = run.get("trained_at")
@@ -1525,9 +1606,15 @@ def api_model():
             "accuracy": safe_float(item.get("accuracy")),
             "log_loss": safe_float(item.get("log_loss")),
             "brier_score": safe_float(item.get("brier_score")),
+            "roc_auc": safe_float(item.get("roc_auc")),
+            "calibration_ece": safe_float(item.get("calibration_ece")),
+            "test_games": as_int(item.get("test_games")),
+            "is_production": item.get("model") == production,
         } for item in board if isinstance(item, dict)]
         mine = next((i for i in board if isinstance(i, dict) and i.get("model") == production), None)
+        training = run.get("training")
         if mine:
+            mine_signal = feature_importance(mine.get("feature_signal"))
             test = {
                 "games": as_int(mine.get("test_games")) or as_int(run.get("test_games")),
                 "accuracy": safe_float(mine.get("accuracy")),
@@ -1548,8 +1635,34 @@ def api_model():
         },
         "calibration": calibration_buckets(settled),
         "leaderboard": leaderboard,
+        "elo": dict(ELO_PARAMS),
     }
+    if mine_signal:
+        payload["feature_importance"] = mine_signal
+    if isinstance(training, dict):
+        payload["training"] = training
     return api_response(payload, CACHE_MODEL)
+
+
+@app.route("/api/featured-pick")
+def api_featured_pick():
+    """B4: the Model page's walkthrough subject: the largest-edge settled bet of the most recent
+    night that had one, else the most recent settled pick, else null."""
+    settled = [r for r in records(read_predictions(
+        filters=[("correct", "not_is", "null")],
+        order_by=["game_date", "game_id"], descending=True, limit=FEATURED_PICK_WINDOW,
+    )) if is_settled(r) and r.get("game_id") is not None]
+    bets = [r for r in settled if bet_amount(r) > 0 and bet_result(r) in ("hit", "miss")]
+    pick = None
+    if bets:
+        latest = max(str(r["game_date"]) for r in bets)
+        night = [r for r in bets if str(r["game_date"]) == latest]
+        pick = max(night, key=lambda r: (prediction_edge(r) is not None,
+                                         prediction_edge(r) or 0.0, str(r["game_id"])))
+    elif settled:
+        pick = settled[0]
+    game_id = normalize_game_id(pick["game_id"]) if pick else None
+    return api_response({"game_id": game_id}, CACHE_MODEL)
 
 
 WORKFLOW_KINDS = ("morning", "predict", "manual")

@@ -1,143 +1,127 @@
-// Number, money, odds and date formatting. Signs use the real minus (U+2212) and records use
-// an en dash, as the design does. Every P/L carries a sign (DESIGN sec1: colour is never
-// the only cue).
+// Formatting and shared constants (port of the prototype's common.js fmt, with null guards).
+// No window/document access at import time: this module is unit-tested under Node.
 
-export const MINUS = "−";
-const TZ = "America/New_York";
+export const TZ = 'America/New_York';
+export const MINUS = '−';
+export const NDASH = '–';
 
-export function isNum(v) {
-  return typeof v === "number" && Number.isFinite(v);
+export const fmt = {
+  money(v, sign) {
+    if (v == null || Number.isNaN(v)) return '—';
+    const r = Math.round(v * 100) / 100;
+    const s = '$' + Math.abs(r).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return sign ? (r > 0 ? '+' : r < 0 ? MINUS : '±') + s : (r < 0 ? MINUS : '') + s;
+  },
+  pct(p, d = 1) { return p == null || Number.isNaN(p) ? '—' : (p * 100).toFixed(d) + '%'; },
+  pts(p, d = 1) { return p == null || Number.isNaN(p) ? '—' : (p >= 0 ? '+' : MINUS) + Math.abs(p * 100).toFixed(d); },
+  odds(o) { return o == null ? '—' : (o > 0 ? '+' + o : MINUS + Math.abs(o)); },
+  time(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (Number.isNaN(+d)) return '—';
+    return d.toLocaleTimeString('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit' }).replace(/[  ]/g, ' ');
+  },
+  date(iso, opts) {
+    return new Date(String(iso).slice(0, 10) + 'T12:00:00Z').toLocaleDateString('en-US', Object.assign({ timeZone: 'UTC' }, opts));
+  },
+  implied(o) { return o > 0 ? 100 / (o + 100) : -o / (-o + 100); },
+  payout(amount, o) { return o > 0 ? amount * o / 100 : amount * 100 / -o; },
+  until(iso, nowMs) {
+    const m = Math.max(0, Math.round((Date.parse(iso) - nowMs) / 60000));
+    return m >= 60 ? Math.floor(m / 60) + 'h ' + String(m % 60).padStart(2, '0') + 'm' : m + 'm';
+  }
+};
+
+// HTML-escape every API string before it goes into an HTML string.
+export function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-const moneyFmt = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-export function money(v) {
-  if (!isNum(v)) return "—";
-  return (v < 0 ? MINUS : "") + "$" + moneyFmt.format(Math.abs(v));
+export const pct1 = v => (Math.round(v * 10000) / 100).toFixed(1);       // 0.6811 -> "68.1"
+export const fmtInt = n => (n == null ? '—' : Math.round(n).toLocaleString('en-US'));
+// "2025-02-25" -> "Feb 25, 2025"
+export function fmtDate(iso) {
+  if (!iso) return '';
+  return new Date(String(iso).slice(0, 10) + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 }
-
-export function signedMoney(v) {
-  if (!isNum(v)) return "—";
-  const r = Math.round(v * 100) / 100;
-  if (r === 0) return "$0.00";
-  return (r > 0 ? "+" : MINUS) + "$" + moneyFmt.format(Math.abs(r));
-}
-
-export function odds(v) {
-  if (!isNum(v)) return "—";
-  return (v > 0 ? "+" : MINUS) + Math.abs(Math.round(v));
-}
-
-export function pct(v, digits = 0) {
-  if (!isNum(v)) return "—";
-  return (v < 0 ? MINUS : "") + (Math.abs(v) * 100).toFixed(digits) + "%";
-}
-
-export function signedPct(v, digits = 1) {
-  if (!isNum(v)) return "—";
-  const r = Number((v * 100).toFixed(digits));
-  if (r === 0) return (0).toFixed(digits) + "%";
-  return (r > 0 ? "+" : MINUS) + Math.abs(r).toFixed(digits) + "%";
-}
-
-export function record(text) {
-  return typeof text === "string" ? text.replace("-", "–") : "—";
-}
-
-export function recordParts(text) {
-  const m = typeof text === "string" ? text.match(/^(\d+)-(\d+)$/) : null;
+// "Nov 17" from a YYYY-MM-DD
+export const monthDay = iso => fmt.date(iso, { month: 'short', day: 'numeric' });
+export const wl = s => String(s == null ? '' : s).replace('-', NDASH);               // "54-41" -> "54–41"
+export function parseWL(s) {
+  const m = /^(\d+)-(\d+)$/.exec(String(s || ''));
   return m ? [Number(m[1]), Number(m[2])] : [0, 0];
 }
+export const seasonLabel = s => String(s || '').replace('-', NDASH);
 
-export function signClass(v) {
-  if (!isNum(v) || Math.round(v * 100) === 0) return "";
-  return v > 0 ? "pos" : "neg";
+// A Date as YYYY-MM-DD in America/New_York.
+export function dateET(d) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
+    .formatToParts(d).map(x => [x.type, x.value]));
+  return p.year + '-' + p.month + '-' + p.day;
 }
-
-// Implied probability of an American price.
-export function impliedProb(price) {
-  if (!isNum(price) || price === 0) return null;
-  return price > 0 ? 100 / (price + 100) : Math.abs(price) / (Math.abs(price) + 100);
-}
-
-// Profit on a winning stake at an American price, rounded to cents.
-export function payout(stake, price) {
-  if (!isNum(stake) || !isNum(price) || price === 0) return null;
-  const mult = price > 0 ? price / 100 : 100 / Math.abs(price);
-  return Math.round(stake * mult * 100) / 100;
+// NBA season label of a date: Oct–Dec -> YYYY-(YY+1), Jan–Sep -> (YYYY-1)-YY.
+export function seasonOf(iso) {
+  const y = Number(iso.slice(0, 4)), m = Number(iso.slice(5, 7));
+  const start = m >= 10 ? y : y - 1;
+  return start + '-' + String((start + 1) % 100).padStart(2, '0');
 }
 
-// ---------------------------------------------------------------- dates (US Eastern)
-function parseDay(day) {
-  // YYYY-MM-DD at noon UTC, so it lands on the same calendar day in Eastern time.
-  return new Date(`${day}T12:00:00Z`);
+const WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
+export const word = n => (n >= 0 && n <= 12 && Number.isInteger(n) ? WORDS[n] : String(n));
+export const Word = n => { const w = word(n); return w.charAt(0).toUpperCase() + w.slice(1); };
+export function ord(n) {
+  const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+export function joinAnd(list) {
+  if (list.length <= 1) return list.join('');
+  return list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1];
+}
+export function fractionWord(x) {
+  if (x === 0.25) return 'a quarter';
+  if (x === 0.5) return 'half';
+  if (x === 0.75) return 'three quarters';
+  return Math.round(x * 100) + '%';
+}
+export function kellyNoun(x) {
+  if (x === 0.25) return 'quarter';
+  if (x === 0.5) return 'half';
+  return Math.round(x * 100) + '%';
 }
 
-const fmtCache = new Map();
-function fmt(options) {
-  const key = JSON.stringify(options);
-  if (!fmtCache.has(key)) fmtCache.set(key, new Intl.DateTimeFormat("en-US", { timeZone: TZ, ...options }));
-  return fmtCache.get(key);
-}
+export const KELLY_FRACTION = 0.25;
+export const MAX_STAKE = 0.05;
+export const FEATURE_COUNT = 16;                 // no API field carries it yet (B2 follow-up)
+export const PANDEMIC_2019_20_GAMES = 1059;
+export const FULL_SEASON_GAMES = 1230;
+export const ELO_DEFAULTS = { k: 20, home_advantage: 100, mean_reversion: 0.25, start: 1500 };   // src/elo.py
 
-export function dayLong(day) { // "Tue, Nov 17"
-  return day ? fmt({ weekday: "short", month: "short", day: "numeric" }).format(parseDay(day)) : "—";
-}
-export function dayShort(day) { // "Nov 17"
-  return day ? fmt({ month: "short", day: "numeric" }).format(parseDay(day)) : "—";
-}
-export function weekday(day) { // "Tue"
-  return day ? fmt({ weekday: "short" }).format(parseDay(day)) : "";
-}
-export function timeET(iso) { // "7:00 PM"
-  if (!iso) return null;
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? null : fmt({ hour: "numeric", minute: "2-digit" }).format(d);
-}
-export function dateTimeET(iso) { // "Nov 17, 6:31 PM"
-  if (!iso) return null;
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? null : fmt({ month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(d);
-}
-export function dateET(date) { // YYYY-MM-DD for an instant, in Eastern time
-  const parts = fmt({ year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
-  const get = (t) => parts.find((p) => p.type === t).value;
-  return `${get("year")}-${get("month")}-${get("day")}`;
-}
-export function addDays(day, n) {
-  const d = parseDay(day);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-
-export function countdown(ms) {
-  if (ms <= 0) return "Tipping off";
-  const mins = Math.ceil(ms / 60000);
-  if (mins < 60) return `Tips in ${mins} min`;
-  const hrs = Math.floor(mins / 60);
-  const rest = mins % 60;
-  return rest ? `Tips in ${hrs}h ${rest}m` : `Tips in ${hrs}h`;
-}
-
-export function elapsed(ms) {
-  const secs = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(secs / 60);
-  return m ? `${m}m ${secs % 60}s` : `${secs}s`;
-}
-
-export function seasonLabel(season) { // "2025-26" -> "2025–26"
-  if (season === "all") return "All seasons";
-  return typeof season === "string" ? season.replace("-", "–") : "—";
-}
-
-// Model ids from model_metadata.json -> short display names.
-const MODEL_NAMES = {
-  "legacy-calibrated-logistic": "Calibrated logistic",
-  "current-xgboost": "XGBoost",
-  "calibrated-xgboost": "Calibrated XGBoost",
-  "gradient-boosting-gridsearch": "Gradient boosting",
+export const TEAM_COLORS = {
+  MIA: '#98002E', ORL: '#0077C0', BOS: '#007A33', NYK: '#006BB6', DEN: '#0E2240', MIN: '#236192',
+  CLE: '#860038', MIL: '#00471B', LAL: '#552583', PHX: '#1D1160', GSW: '#1D428A', SAC: '#5A2D81'
 };
-export function modelName(id) {
-  if (!id) return null;
-  return MODEL_NAMES[id] || id;
+export const TRICODE = /^[A-Z]{2,4}$/;
+
+const NICKS = ['Trail Blazers', 'Timberwolves', 'Mavericks', 'Cavaliers', 'Grizzlies', 'Clippers', 'Pelicans', 'Wizards', 'Raptors', 'Rockets',
+  'Celtics', 'Hornets', 'Nuggets', 'Pistons', 'Thunder', 'Knicks', 'Lakers', 'Hawks', 'Nets', 'Bulls', 'Pacers', 'Heat', 'Bucks', 'Magic', '76ers',
+  'Suns', 'Kings', 'Spurs', 'Jazz', 'Warriors'];
+export function teamParts(t) {
+  const n = (t && t.name) || '', tri = (t && t.tricode) || '';
+  const nick = NICKS.find(k => n.endsWith(k));
+  return nick ? { city: n.slice(0, -nick.length).trim() || tri, nick } : { city: n || tri, nick: n || tri };
+}
+
+export const MODEL_LABELS = {
+  'gradient-boosting': 'Gradient boosting',
+  'calibrated-xgboost': 'Calibrated XGBoost',
+  'current-xgboost': 'XGBoost',
+  lstm: 'LSTM',
+  'random-forest': 'Random forest',
+  logistic: 'Calibrated logistic'
+};
+export function modelLabel(key) {
+  if (key == null) return '';
+  if (Object.prototype.hasOwnProperty.call(MODEL_LABELS, key)) return MODEL_LABELS[key];
+  const s = String(key).replace(/[-_]+/g, ' ');
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

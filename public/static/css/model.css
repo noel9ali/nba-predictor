@@ -1,0 +1,326 @@
+/* The model page: hero claim (M1/M2), chapter heads, chapter 6 and the footer.
+   Chapter components live in model-a.css (ch1, ch4, ch5) and model-b.css (ch2, ch3). */
+
+.claim{padding-top:clamp(48px,7vw,88px)}
+.claim > .k{font:600 12px/1 var(--mono);text-transform:uppercase;letter-spacing:.14em;color:var(--ink-2);margin:0 0 18px;overflow-wrap:anywhere}
+.scrolly{position:relative;height:150vh;margin-top:clamp(28px,4vw,44px)}
+.scrolly.flat{height:auto}
+@media (max-width:600px){.scrolly{height:140vh}}
+.pin{position:sticky;top:max(24px,calc(50vh - 280px));display:grid;gap:22px}
+.pin__head{display:flex;flex-direction:column;justify-content:flex-end}
+.pin__k{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;font:600 11px/1 var(--mono);text-transform:uppercase;letter-spacing:.12em;color:var(--ink-2)}
+.pin__k i{display:block;width:22px;height:4px;background:var(--edge)}
+.pin__k i.on{background:var(--paint)}
+.pin__t{margin:14px 0;font:600 clamp(32px,5.4vw,62px)/1.08 var(--body);letter-spacing:-.025em;max-width:20ch;text-wrap:balance}
+.pin__t .w{display:block}
+.pin__t .n{font:400 1em/1 var(--jersey);letter-spacing:0;color:var(--paint);margin:0}
+.pin__x{margin:0;color:var(--ink-2);font-size:18px;max-width:56ch;min-height:3.2em}
+@media (max-width:600px){.pin__x{font-size:16px}}
+.lg-add{opacity:.35;transition:opacity .3s}
+.pin[data-state="model"] .lg-add{opacity:1}
+.scroll-cue{margin:0;font:600 11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2);transition:opacity .3s}
+.pin[data-state="model"] .scroll-cue{opacity:0}
+.swap{animation:swap .45s cubic-bezier(.2,.8,.2,1)}
+@keyframes swap{from{opacity:0;transform:translateY(10px)}}
+.court-slot:empty{height:clamp(96px,12vw,132px)}
+.scrolly.flat .court-slot:empty{display:none}
+
+/* chapter heads (no 3px rule on this page: ruling 12) */
+body.page-model section.chapter{padding-block:clamp(64px,8vw,104px) 0}
+.ch{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;margin-bottom:clamp(30px,4vw,46px);max-width:760px}
+.ch .k{font:600 12px/1 var(--mono);text-transform:uppercase;letter-spacing:.14em;color:var(--ink-2)}
+.ch h2{margin:0;font:400 clamp(28px,4vw,42px)/1.05 var(--jersey)}
+.ch p{margin:0;color:var(--ink-2);max-width:62ch;font-size:17px}
+.ch p:empty{display:none}
+
+/* chapter 6: calibration */
+.cal{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr);gap:clamp(24px,4vw,48px);align-items:center}
+@media (max-width:860px){.cal{grid-template-columns:minmax(0,1fr)}}
+.cal .sum{display:grid;gap:18px}
+.cal .sum b{display:block;font:400 34px/1 var(--jersey)}
+.cal .sum span{color:var(--ink-2);font-size:15px}
+
+/* page-level error panel and footer */
+.model-error{margin-top:clamp(28px,4vw,44px);display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px}
+.model-error p{margin:0}
+.foot{margin:clamp(64px,8vw,104px) 0 0;border-top:3px solid var(--line);padding-top:20px;font:500 12px/1.7 var(--mono);color:var(--ink-2)}
+.foot:empty{display:none}
+
+@media (prefers-reduced-motion:reduce){
+  .court-strip--claim,.court-strip--claim *,.pin__head .swap{animation:none!important;transition:none!important}
+}
+
+/* ===== chapters 1, 4, 5 (alltime, weights, tryouts) ===== */
+/* Model page, chapters 1, 4 and 5: all-time board, weights bars, rank bump chart. */
+
+/* ---- shared scroll reveal (.rv); pre-states only under html.js ---- */
+.rv{transition:opacity .6s,transform .6s cubic-bezier(.2,.8,.2,1)}
+.js .rv:not(.in){opacity:0;transform:translateY(18px)}
+
+/* ---- Chapter 1: season switcher, board, compare cards ---- */
+.seasonbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.seasonbar span{font:600 11px/1 var(--mono);text-transform:uppercase;letter-spacing:.12em;color:var(--ink-2);margin-right:6px}
+.seasonbar button{min-height:40px;padding:0 14px;border:2px solid var(--line);background:transparent;color:var(--ink-2);
+  font:700 12px/1 var(--body);text-transform:uppercase;letter-spacing:.08em;cursor:pointer}
+.seasonbar button[aria-pressed="true"]{border-color:var(--paint);color:var(--ink)}
+
+.vs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(18px,3vw,32px);margin-top:clamp(26px,3vw,36px)}
+.vs .card p{font-size:15px;color:var(--ink-2);margin:0 0 14px}
+.vs .card p.cap{font:500 12px/1.5 var(--mono);margin:12px 0 0}
+@media (max-width:700px){.vs{grid-template-columns:minmax(0,1fr)}}
+
+/* M5: board cells rise (the board itself does not move) */
+.board.rv div{transition:opacity .5s,transform .5s cubic-bezier(.2,.8,.2,1)}
+.js .board.rv:not(.in) div{opacity:0;transform:translateY(10px)}
+.js .board.rv:not(.in){opacity:1;transform:none}
+.board.rv div:nth-child(2){transition-delay:.07s}
+.board.rv div:nth-child(3){transition-delay:.14s}
+.board.rv div:nth-child(4){transition-delay:.21s}
+.board.rv div:nth-child(5){transition-delay:.28s}
+.board.rv div:nth-child(6){transition-delay:.35s}
+
+/* M6: compare cards rise, the paint segment grows */
+.vs .seg{transform-origin:left center;transition:transform .9s cubic-bezier(.2,.8,.2,1)}
+.js .vs:not(.in) .seg{transform:scaleX(0)}
+
+/* ---- Chapter 4: weights bars ---- */
+.wts{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+.wts .w{display:grid;grid-template-columns:minmax(0,15em) minmax(0,1fr) 4em;gap:16px;align-items:center}
+.wts .nm{font:500 15px/1.3 var(--body);overflow-wrap:anywhere}
+.wts .nm small{display:block;font:500 11px/1.3 var(--mono);color:var(--ink-2)}
+.wts .tr{display:block;height:22px;position:relative;background:linear-gradient(90deg,var(--edge) 1px,transparent 1px) 0 0/10% 100%}
+.wts .tr i{position:absolute;left:0;top:0;bottom:0;background:var(--paint-wash);border-right:3px solid var(--paint)}
+.wts .val{font:500 14px/1 var(--mono);text-align:right}
+.wts .w.other .tr i{background:transparent;border:2px dashed var(--ink-2)}
+@media (max-width:620px){
+  .wts .w{grid-template-columns:minmax(0,1fr) 4em}
+  .wts .w .tr{grid-column:1/-1;grid-row:2}
+}
+/* M7: bars grow from the left */
+.wts .w .tr i{transform-origin:left center;transition:transform .9s cubic-bezier(.2,.8,.2,1)}
+.js .wts:not(.in) .w .tr i{transform:scaleX(0)}
+.wts .w:nth-child(2) .tr i{transition-delay:.08s}
+.wts .w:nth-child(3) .tr i{transition-delay:.16s}
+.wts .w:nth-child(4) .tr i{transition-delay:.24s}
+.wts .w:nth-child(5) .tr i{transition-delay:.32s}
+.wts .w:nth-child(6) .tr i{transition-delay:.4s}
+.wts .w:nth-child(7) .tr i{transition-delay:.48s}
+.wts .w:nth-child(8) .tr i{transition-delay:.56s}
+.js .wts.rv:not(.in){opacity:1;transform:none}
+
+/* ---- Chapter 5: rank bump chart, leaderboard table, why card ---- */
+.bh{margin:0;font:400 20px/1.1 var(--jersey)}
+.card .bh + .cap{margin:4px 0 18px}
+.bump svg{display:block;width:100%;height:auto;overflow:visible}
+.bump .gl{stroke:var(--edge)}
+.bump .col{font:600 11px/1 var(--mono);fill:var(--ink);text-transform:uppercase;letter-spacing:.06em}
+.bump .colsub{font:400 10px/1 var(--mono);fill:var(--ink-2)}
+.bump .rk{font:400 13px/1 var(--jersey);fill:var(--ink-2)}
+.bump .ln{fill:none;stroke:var(--paint);stroke-width:2;opacity:.45}
+.bump .nd{fill:var(--panel);stroke:var(--paint);stroke-width:2}
+.bump .nm{font:500 12px/1 var(--body);fill:var(--ink-2)}
+.bump g.prod .ln{stroke:var(--ball);stroke-width:4;opacity:1}
+.bump g.prod .nd{fill:var(--ball);stroke:var(--ball)}
+.bump g.prod .nm{fill:var(--ball);font-weight:700}
+.bump .vl{font:600 11px/1 var(--mono);fill:var(--ball)}
+.bump g:hover .ln{opacity:1}
+
+.tblwrap{overflow-x:auto}
+.board-tbl{width:100%;border-collapse:collapse;font:400 14px/1 var(--mono);font-variant-numeric:tabular-nums;margin-top:clamp(40px,5vw,56px)}
+.board-tbl th,.board-tbl td{padding:12px 10px;text-align:right;border-bottom:2px solid var(--edge)}
+.board-tbl tbody th{font-weight:400}
+.board-tbl th:first-child,.board-tbl td:first-child{text-align:left;font-family:var(--body)}
+.board-tbl thead th{font:600 11px/1.2 var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-2)}
+.board-tbl td.best{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:5px}
+.board-tbl tr.prod th,.board-tbl tr.prod td{color:var(--ball)}
+.board-tbl tr.prod th:first-child{font-weight:700}
+
+.why{margin-top:clamp(28px,3vw,36px);background:var(--stock);color:var(--t-ink);padding:18px 22px;box-shadow:var(--shadow)}
+.why h3{margin:0 0 6px;font:400 20px/1.1 var(--jersey)}
+.why p{margin:0;color:var(--t-ink-2);max-width:72ch}
+
+/* M8: lines draw left to right, production last; nodes and values fade in */
+.bump .ln{stroke-dasharray:1;stroke-dashoffset:0;transition:stroke-dashoffset 1.4s cubic-bezier(.4,0,.2,1)}
+.js .bump:not(.in) .ln{stroke-dashoffset:1}
+.bump g.prod .ln{transition-delay:.5s;transition-duration:1.6s}
+.bump .nd,.bump .vl{transition:opacity .4s 1.2s}
+.js .bump:not(.in) .nd,.js .bump:not(.in) .vl{opacity:0}
+.js .bump.rv:not(.in){opacity:1;transform:none}
+
+/* ---- reduced motion (the .tag exclusion keeps the court-strip tag anchoring transform) ---- */
+@media (prefers-reduced-motion:reduce){
+  .js .rv,.js .rv *:not(.tag){animation:none!important;transition:none!important;transform:none!important;opacity:1!important}
+  .js .rv *{stroke-dashoffset:0!important}
+  .js .rv .tag{animation:none!important;transition:none!important}
+}
+
+/* ===== chapters 2, 3 (seasons, row card, walkthrough) ===== */
+/* The model page, chapters 2 and 3: season strip scrolly, number strip, notes, the row card and the
+   seven-step walkthrough. Scoped: walkthrough under .walk, row card under .rowcard .paper. */
+
+/* ---------- chapter 2: season strip scrolly ---------- */
+.scrolly.s2{height:140vh;margin-top:0}
+.scrolly.s2.flat{height:auto}
+.pin2{position:sticky;top:max(24px,calc(50vh - 230px))}
+.s2card{background:var(--panel);border:3px solid var(--line);padding:clamp(18px,2.4vw,26px);padding-bottom:22px;box-shadow:0 22px 34px -14px rgba(0,0,0,.8);position:relative}
+.s2head{margin-bottom:22px;display:flex;flex-direction:column;justify-content:flex-end;min-height:118px}
+.s2head h3{margin:12px 0 6px;font:400 clamp(22px,3vw,30px)/1.1 var(--jersey)}
+.s2head p{margin:0;color:var(--ink-2);max-width:60ch}
+.s2head--probe{position:absolute;left:-9999px;top:0;visibility:hidden;pointer-events:none;margin:0}
+
+.splitflag{position:relative;height:30px}
+.splitflag i{position:absolute;bottom:0;transform:translateX(-50%);font:600 11px/1.2 var(--mono);font-style:normal;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;background:var(--ink);color:var(--floor);padding:5px 7px;transition:transform .5s cubic-bezier(.2,.9,.3,1.3),opacity .3s}
+.splitflag i::after{content:"";position:absolute;left:50%;bottom:-6px;margin-left:-6px;border:6px solid transparent;border-bottom:0;border-top-color:var(--ink)}
+.splitflag[hidden]{display:none}
+
+.slabels,.scounts{display:flex;gap:3px}
+.slabels span{flex:var(--g) 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:400 15px/1 var(--jersey);padding:0 0 10px}
+.scounts span{flex:var(--g) 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:500 12px/1.4 var(--mono);color:var(--ink-2);padding-top:8px}
+.seasons{display:flex;gap:3px;height:96px;margin-top:6px}
+.sz{position:relative;flex:var(--g) 1 0;min-width:0;border:3px solid var(--line);background:var(--paint-wash);display:flex;transform-origin:left center;transition:background .4s}
+.sz.test{background:var(--hatch);box-shadow:inset 0 0 0 1.5px var(--ball)}
+.sz.split{background:transparent}
+.sz .tr{flex:var(--a) 1 0;min-width:0;background:var(--paint-wash)}
+.sz .te{flex:var(--b) 1 0;min-width:0;background:var(--hatch);border-left:3px solid var(--ink)}
+.lg-test{transition:opacity .3s}
+
+/* the flip */
+.pin2[data-state="all"] .sz.test,
+.pin2[data-state="all"] .sz .te{background:var(--paint-wash);box-shadow:none;border-left-color:transparent}
+.sz.test,.sz .te{transition:background .45s,box-shadow .45s,border-color .45s}
+.pin2[data-state="split"] .sz .te{transition-delay:.25s}
+.pin2[data-state="split"] .sz.test{transition-delay:.05s}
+.pin2[data-state="all"] .splitflag i{opacity:0;transform:translate(-50%,-14px)}
+.pin2[data-state="all"] .lg-test{opacity:.35}
+
+/* deal-in (only under html.js) */
+.js .sz{animation:szin .6s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--n) * 90ms);animation-play-state:paused}
+.js .pin2.lit .sz{animation-play-state:running}
+@keyframes szin{from{transform:scaleX(0);opacity:0}}
+
+@media (max-width:700px){
+  .seasons{height:70px}
+  .slabels span{font-size:11px}
+  .scounts span{font-size:10px;padding-top:8px}
+  .splitflag i{transform:translateX(-84%)}
+  .splitflag i::after{left:84%}
+  .pin2[data-state="all"] .splitflag i{transform:translate(-84%,-14px)}
+}
+
+/* five-number strip and notes */
+.nums{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:2px;background:var(--line);border:3px solid var(--line);margin:clamp(28px,3vw,36px) 0 0}
+.nums div{background:var(--panel);padding:14px 16px;display:flex;flex-direction:column-reverse;min-width:0}
+.nums dd{margin:0;font:400 26px/1 var(--jersey)}
+.nums dt{font:500 12px/1.4 var(--body);color:var(--ink-2)}
+@media (max-width:760px){
+  .nums{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .nums div:last-child{grid-column:1/-1}
+}
+.notes3{display:grid;grid-template-columns:repeat(var(--n),minmax(0,1fr));gap:clamp(18px,3vw,32px);margin-top:clamp(24px,3vw,32px)}
+.notes3 p{margin:0;font-size:15px;color:var(--ink-2)}
+.notes3 b{color:var(--ink);font-weight:600;display:block;margin-bottom:4px}
+@media (max-width:760px){.notes3{grid-template-columns:minmax(0,1fr)}}
+
+@media (prefers-reduced-motion:reduce){
+  .s2head .swap,.js .sz{animation:none!important}
+  .sz,.sz.test,.sz .te,.splitflag i,.lg-test{transition:none!important}
+}
+
+/* ---------- row card: "One game, one row" ---------- */
+.rowcard{margin-top:clamp(36px,4vw,52px);display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:clamp(24px,4vw,48px);align-items:center}
+@media (max-width:860px){.rowcard{grid-template-columns:minmax(0,1fr)}}
+.rowcard h3{margin:0 0 8px;font:400 22px/1.15 var(--jersey)}
+.rowcard p{margin:0;color:var(--ink-2)}
+.rowcard .paper{background:var(--stock);color:var(--t-ink);box-shadow:var(--shadow);padding:0 0 14px;min-width:0}
+.rowcard .paper .band{display:flex;justify-content:space-between;gap:12px;padding:10px 18px;font:600 11px/1 var(--mono);text-transform:uppercase;letter-spacing:.12em;color:var(--t-print);border-bottom:1px solid var(--t-rule)}
+.rowcard .paper .tblwrap{overflow-x:auto}
+.rowcard .paper table{width:100%;border-collapse:collapse;font:400 13px/1 var(--mono);font-variant-numeric:tabular-nums}
+.rowcard .paper th,.rowcard .paper td{padding:8px 18px;text-align:right;border-bottom:1px dashed var(--t-rule)}
+.rowcard .paper tbody th,.rowcard .paper tfoot th{text-align:left;color:var(--t-ink-2);font-weight:400;text-transform:uppercase;font-size:11px;letter-spacing:.06em}
+.rowcard .paper thead th{font:400 18px/1 var(--jersey);color:var(--t-ink);text-transform:none;letter-spacing:0}
+.rowcard .paper thead th:first-child{text-align:left}
+.rowcard .paper tfoot td{border-bottom:0;font-weight:600;color:var(--t-print)}
+.rowcard .paper tfoot th{border-bottom:0}
+@media (max-width:560px){.rowcard .paper th,.rowcard .paper td{padding-inline:12px}.rowcard .paper .band{padding-inline:12px}}
+
+/* ---------- chapter 3: walkthrough (no animation anywhere) ---------- */
+.walk .steps{display:grid;gap:clamp(48px,6vw,72px)}
+.walk .step{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:clamp(24px,4vw,56px);align-items:center}
+@media (max-width:860px){.walk .step{grid-template-columns:minmax(0,1fr)}}
+@media (min-width:861px){
+  .walk .steps{gap:0}
+  .walk .step{min-height:58vh;align-items:start}
+  .walk .step .txt{padding-top:10vh;padding-bottom:10vh}
+  .walk .step .gfx{position:sticky;top:max(80px,calc(50vh - 190px))}
+}
+.walk .txt,.walk .gfx{min-width:0}
+.walk .txt .no{font:400 44px/1 var(--jersey);color:var(--paint)}
+.walk .txt h3{margin:6px 0 10px;font:600 22px/1.25 var(--body)}
+.walk .txt p{margin:0 0 10px;color:var(--ink-2);max-width:48ch}
+.walk .math{font:500 13px/1.6 var(--mono);color:var(--ink);background:var(--panel);border-left:3px solid var(--paint);padding:10px 14px;margin-top:8px;overflow-wrap:anywhere}
+.walk .math .ml{display:block}
+.walk .need{font:500 12px/1.5 var(--mono);color:var(--ball);border:1.5px dashed var(--ball);padding:8px 12px;margin-top:12px}
+
+/* step 1: Elo */
+.walk .elo{display:grid;gap:14px}
+.walk .elo .r{display:grid;grid-template-columns:52px minmax(0,1fr) 70px;gap:12px;align-items:center;font:500 13px/1 var(--mono)}
+.walk .elo .r b{font:400 20px/1 var(--jersey)}
+.walk .elo .v{text-align:right}
+.walk .elo .track{position:relative;height:30px;background:linear-gradient(90deg,var(--edge) 1px,transparent 1px) 0 0/10% 100%;border-bottom:2px solid var(--line)}
+.walk .elo .fill{position:absolute;left:0;top:4px;bottom:4px;background:var(--paint-wash);border-right:3px solid var(--paint)}
+.walk .elo .floor-bump{position:absolute;top:4px;bottom:4px;background:var(--hatch);box-shadow:inset 0 0 0 1.5px var(--ball)}
+.walk .elo .axis{display:flex;justify-content:space-between;font:500 11px/1 var(--mono);color:var(--ink-2);padding-left:64px;padding-right:82px}
+.walk .elo .legend{margin-top:4px}
+
+/* step 2: tale of the tape */
+.walk .tth{display:flex;justify-content:space-between;font:400 20px/1 var(--jersey);margin-bottom:6px}
+.walk .tt{display:grid;grid-template-columns:4.5em minmax(0,1fr) 7.5em minmax(0,1fr) 4.5em;gap:8px;align-items:center;padding:8px 0;font:500 13px/1 var(--mono);border-bottom:1px dashed var(--edge)}
+.walk .tt .v{text-align:right}
+.walk .tt .v.r{text-align:left}
+.walk .tt .lb{text-align:center;font:500 12px/1.2 var(--body);color:var(--ink-2);white-space:nowrap}
+.walk .tt .b{height:10px;background:var(--edge);position:relative}
+.walk .tt .b i{position:absolute;top:0;bottom:0;background:var(--ink-2);opacity:.5}
+.walk .tt .b.l i{right:0}
+.walk .tt .b.r i{left:0}
+.walk .tt .b.bt i{background:var(--paint);opacity:1}
+.walk .tt b{color:var(--paint);font-weight:600}
+
+/* step 3: rest */
+.walk .rest{display:grid;gap:12px}
+.walk .rest .r{display:grid;grid-template-columns:52px repeat(4,minmax(0,1fr));gap:6px;align-items:center}
+.walk .rest .r b{font:400 20px/1 var(--jersey)}
+.walk .rest .cap{margin:0}
+.walk .rest .d{height:44px;border:2px solid var(--line);display:grid;place-items:center;font:500 11px/1.2 var(--mono);color:var(--ink-2);text-align:center;min-width:0}
+.walk .rest .d.g{background:var(--panel);border-color:var(--ink-2);color:var(--ink)}
+.walk .rest .d.o{background:var(--paint-wash);border-color:var(--paint);color:var(--ink)}
+
+/* steps 4 and 5: the strips use the shared court-strip vocabulary; only spacing here */
+.walk .legend{margin-top:14px}
+.walk .elo .legend{margin-top:4px}
+
+/* step 6: Kelly */
+.walk .kelly{display:grid;gap:10px}
+.walk .kelly .lab{display:flex;justify-content:space-between;gap:12px;font:500 12px/1.4 var(--mono);color:var(--ink-2)}
+.walk .kelly .lab b{color:var(--ink);font-weight:600}
+.walk .kelly .bar{position:relative;height:46px;border:3px solid var(--line);background:var(--floor)}
+.walk .kelly .full{position:absolute;left:0;top:0;bottom:0;border-right:2px dashed var(--ink);background:rgba(255,236,210,.06)}
+.walk .kelly .q{position:absolute;left:0;top:0;bottom:0;background:var(--hatch);box-shadow:inset 0 0 0 1.5px var(--ball)}
+
+/* step 7: mini ticket */
+.walk .mini-ticket{background:var(--stock);color:var(--t-ink);box-shadow:var(--shadow);display:grid;grid-template-columns:96px minmax(0,1fr);position:relative;max-width:520px}
+.walk .mini-ticket .stub{background:var(--stub);border-right:2px dashed var(--t-rule);padding:16px 12px;font:500 11px/1.3 var(--mono);text-transform:uppercase;color:var(--t-ink-2);display:grid;gap:10px;align-content:start;overflow-wrap:anywhere;min-width:0}
+.walk .mini-ticket .stub b{display:block;font:400 28px/1 var(--jersey);color:var(--t-print);margin-top:4px}
+.walk .mini-ticket .body{padding:16px 20px;display:grid;gap:8px;min-width:0}
+.walk .mini-ticket .tm{display:flex;justify-content:space-between;align-items:center;font:400 30px/1 var(--jersey)}
+.walk .mini-ticket .tm.lo{color:var(--t-ink-2)}
+.walk .mini-ticket .sp{height:74px}
+.walk .mini-ticket .mt-note{font:500 12px/1 var(--mono);color:var(--t-ink-2)}
+.walk .mini-stamp{position:absolute;right:22px;bottom:30px;transform:rotate(-9deg);color:var(--t-cash);border:5px double currentColor;padding:8px 14px 6px;font:400 30px/1 var(--jersey);text-align:center;background:var(--stock);box-shadow:0 0 0 6px var(--stock)}
+.walk .mini-stamp.lost{color:var(--t-lost)}
+.walk .mini-stamp.void{color:var(--t-ink-2)}
+.walk .mini-stamp small{display:block;font:600 12px/1.2 var(--mono);margin-top:4px}
+@media (max-width:420px){
+  .walk .mini-ticket{grid-template-columns:80px minmax(0,1fr)}
+  .walk .mini-ticket .body{padding:16px 14px}
+  .walk .mini-stamp{right:12px;font-size:24px}
+}

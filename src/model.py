@@ -7,7 +7,12 @@ import numpy as np
 import pandas as pd
 from console import force_utf8_stdio
 from database import schema_v2_enabled, select_rows, upsert_rows
-from model_metadata import build_model_run_row, load_metadata_and_leaderboard
+from features import ROLLING_WINDOW
+from model_metadata import (
+    build_model_run_row,
+    build_training_summary,
+    load_metadata_and_leaderboard,
+)
 from model_wrappers import TorchLSTMClassifier
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
@@ -445,7 +450,7 @@ def save_model(model, scaler):
     print("Model saved!")
 
 
-def _save_leaderboard(leaderboard, best_model_name, cutoff):
+def _save_leaderboard(leaderboard, best_model_name, cutoff, training=None):
     _ensure_data_dir()
     leaderboard.to_csv(LEADERBOARD_PATH, index=False)
     metadata = {
@@ -457,6 +462,8 @@ def _save_leaderboard(leaderboard, best_model_name, cutoff):
         "features": FEATURES,
         "leaderboard_path": LEADERBOARD_PATH,
     }
+    if training is not None:
+        metadata["training"] = training
     with open(METADATA_PATH, "w", encoding="utf-8") as handle:
         json.dump(metadata, handle, indent=2)
 
@@ -520,7 +527,8 @@ def run():
 
     best_model = fitted_lookup[best_model_name]
     cutoff = pd.to_datetime(test["GAME_DATE"]).min().strftime("%Y-%m-%d")
-    _save_leaderboard(leaderboard, best_model_name, cutoff)
+    training = build_training_summary(train, test, ROLLING_WINDOW, TARGET)
+    _save_leaderboard(leaderboard, best_model_name, cutoff, training)
 
     print("\nEvaluating selected production model...")
     evaluate_model(best_model, scaler, test)

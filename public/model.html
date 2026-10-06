@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#2b1d11">
+<title>NBA Predictor · The model</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23ff8a3d'/%3E%3C/svg%3E">
+<link rel="preload" href="/static/fonts/graduate-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fonts/hanken-grotesk-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fonts/ibm-plex-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fonts/ibm-plex-mono-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/css/fonts.css">
+<link rel="stylesheet" href="/static/css/tokens.css">
+<link rel="stylesheet" href="/static/css/base.css">
+<link rel="stylesheet" href="/static/css/components.css">
+<link rel="stylesheet" href="/static/css/model.css">
+<link rel="stylesheet" href="/static/css/ambient.css">
+<script src="/static/js/gate.js"></script>
+<link rel="modulepreload" href="/static/js/model.js">
+<link rel="modulepreload" href="/static/js/shell.js">
+<link rel="modulepreload" href="/static/js/api.js">
+<link rel="modulepreload" href="/static/js/format.js">
+<link rel="modulepreload" href="/static/js/ambient.js">
+<link rel="modulepreload" href="/static/js/reveal.js">
+<link rel="modulepreload" href="/static/js/model/claim.js">
+<link rel="modulepreload" href="/static/js/court.js">
+<link rel="modulepreload" href="/static/js/logo.js">
+<link rel="modulepreload" href="/static/js/model/alltime.js">
+<link rel="modulepreload" href="/static/js/board.js">
+<link rel="modulepreload" href="/static/js/model/seasons.js">
+<link rel="modulepreload" href="/static/js/model/rowcard.js">
+<link rel="modulepreload" href="/static/js/model/walkthrough.js">
+<link rel="modulepreload" href="/static/js/model/weights.js">
+<link rel="modulepreload" href="/static/js/model/tryouts.js">
+<link rel="modulepreload" href="/static/js/model/calibration.js">
+<link rel="modulepreload" href="/static/js/calibration-chart.js">
+</head>
+<body class="page-model">
+<div class="ambient" aria-hidden="true">
+  <div class="lamp"></div>
+  <div class="lamp b"></div>
+  <div class="sheen"></div>
+  <svg class="court-bg" viewBox="-10 -10 960 520" focusable="false">
+    <rect class="cb-outline" x="0" y="0" width="940" height="500" pathLength="1"/>
+    <path class="cb-half" d="M470 0V500" pathLength="1"/>
+    <circle class="cb-cc1" cx="470" cy="250" r="60" pathLength="1"/>
+    <circle class="cb-cc2" cx="470" cy="250" r="20" pathLength="1"/>
+    <rect class="cb-key" x="0" y="170" width="190" height="160" pathLength="1"/>
+    <rect class="cb-key" x="750" y="170" width="190" height="160" pathLength="1"/>
+    <circle class="cb-ft" cx="190" cy="250" r="60" pathLength="1"/>
+    <circle class="cb-ft" cx="750" cy="250" r="60" pathLength="1"/>
+    <path class="cb-arc" d="M0 30H140A237.5 237.5 0 0 1 140 470H0" pathLength="1"/>
+    <path class="cb-arc" d="M940 30H800A237.5 237.5 0 0 0 800 470H940" pathLength="1"/>
+    <circle class="cb-rim" cx="52.5" cy="250" r="7.5" pathLength="1"/>
+    <circle class="cb-rim" cx="887.5" cy="250" r="7.5" pathLength="1"/>
+    <path class="cb-board" d="M40 220V280M900 220V280" pathLength="1"/>
+  </svg>
+</div>
+
+<div class="wrap wrap--model">
+  <header class="top">
+    <div class="brand"><span class="ball" aria-hidden="true"></span><b>NBA Predictor</b><small>Paper trading</small></div>
+    <nav class="tabs" aria-label="Pages">
+      <a href="/" data-tab="tonight">Tonight</a>
+      <a href="/?date=" data-tab="past">Past nights</a>
+      <a href="/#season" data-tab="season">Season</a>
+      <a href="/model" data-tab="model" aria-current="page">The model</a>
+    </nav>
+    <div class="top__r">
+      <span class="sample-tag" data-sample-tag hidden>Sample data</span>
+      <span class="status" data-status data-state="none" hidden><i aria-hidden="true"></i><span data-status-text></span></span>
+    </div>
+  </header>
+  <p class="note" data-migration-note role="status" hidden>Some numbers are pending a database update.</p>
+
+  <main id="model">
+    <section class="claim" aria-labelledby="h1">
+      <p class="k" data-kicker>The model</p>
+      <div class="scrolly" data-scrolly>
+        <div class="pin" data-state="base">
+          <div class="pin__head" aria-live="polite">
+            <span class="pin__k"><i class="on" aria-hidden="true"></i><i aria-hidden="true"></i><span data-step>1 of 2 · the bar to beat</span></span>
+            <h1 class="pin__t" id="h1" data-title><span class="w">Home-team rule</span></h1>
+            <p class="pin__x" data-expl></p>
+          </div>
+          <div class="court-slot" data-court-slot></div>
+          <div class="legend" aria-hidden="true">
+            <span><i class="lg-p"></i>Games called right</span>
+            <span><i class="lg-m"></i>Home-team rule</span>
+            <span class="lg-add"><i class="lg-h"></i>What the model adds</span>
+          </div>
+          <p class="scroll-cue" aria-hidden="true">Keep scrolling: see what the model adds ↓</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="chapter" id="ch1" aria-labelledby="ch1-title" data-chapter="alltime" hidden>
+      <div class="ch"><span class="k">Chapter 1</span><h2 id="ch1-title">Every pick so far</h2><p>Since tracking started, the model has made a pick in every game and placed a paper bet whenever its chance beat the market's. These are the running totals.</p></div>
+      <div class="ch-body" data-body></div>
+    </section>
+    <section class="chapter" id="ch2" aria-labelledby="ch2-title" data-chapter="studied" hidden>
+      <div class="ch"><span class="k">Chapter 2</span><h2 id="ch2-title">What it studied</h2><p data-lede></p></div>
+      <div class="ch-body" data-body></div>
+    </section>
+    <section class="chapter walk" id="ch3" aria-labelledby="ch3-title" data-chapter="walkthrough" hidden>
+      <div class="ch"><span class="k">Chapter 3</span><h2 id="ch3-title">How it thinks, one pick at a time</h2><p data-lede></p></div>
+      <div class="ch-body" data-body></div>
+    </section>
+    <section class="chapter" id="ch4" aria-labelledby="ch4-title" data-chapter="weights" hidden>
+      <div class="ch"><span class="k">Chapter 4</span><h2 id="ch4-title">What it leans on</h2><p data-lede></p></div>
+      <div class="ch-body" data-body></div>
+    </section>
+    <section class="chapter" id="ch5" aria-labelledby="ch5-title" data-chapter="tryouts" hidden>
+      <div class="ch"><span class="k">Chapter 5</span><h2 id="ch5-title">Six models tried out</h2><p data-lede></p></div>
+      <div class="ch-body" data-body></div>
+    </section>
+    <section class="chapter" id="ch6" aria-labelledby="ch6-title" data-chapter="calibration" hidden>
+      <div class="ch"><span class="k">Chapter 6</span><h2 id="ch6-title">When it says 60%, is it?</h2><p>A good model's 60% picks should win about 60% of the time. Each dot groups this season's picks by what the model said; dots on the dashed line are perfectly calibrated.</p></div>
+      <div class="ch-body" data-body></div>
+    </section>
+    <p class="foot" data-foot></p>
+  </main>
+</div>
+<noscript><p class="foot">This page needs JavaScript to load the model's numbers.</p></noscript>
+<script type="module" src="/static/js/model.js"></script>
+</body>
+</html>
