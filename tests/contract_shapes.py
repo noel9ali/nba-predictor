@@ -3,7 +3,9 @@ and the sample-data tests so the API and public/sample/*.json can't drift apart.
 
 A shape is a type (str, bool, NUM, INT), an Opt(shape) (the value may be null), an
 Enum(...) of allowed values, a one-element list [shape] (a list of that shape), or a dict
-{key: shape}. Dicts are checked for the exact key set: no missing and no extra keys.
+{key: shape}. Dicts are checked for the exact key set: no missing and no extra keys, except
+that a Maybe(shape) key may be absent (or null): the Hardwood Tickets fields that the API
+does not emit yet (backend items B1-B3, handoff/api-integration.md sec3).
 """
 import re
 
@@ -12,6 +14,13 @@ INT = "int"
 
 
 class Opt:
+    def __init__(self, shape):
+        self.shape = shape
+
+
+class Maybe:
+    """A dict key that may be missing or null; when present it must match shape."""
+
     def __init__(self, shape):
         self.shape = shape
 
@@ -109,6 +118,13 @@ PREDICTIONS = {
     **ENVELOPE, "season": Pattern(r"^(\d{4}-\d{2}|all)$"), "total": INT, "page": INT,
     "page_size": INT, "books": [str], "rows": [PREDICTION_ROW],
 }
+LEADERBOARD_ROW = {
+    "rank": Opt(INT), "model": Opt(str), "accuracy": Opt(NUM), "log_loss": Opt(NUM),
+    "brier_score": Opt(NUM),
+    # B1 (optional until the API emits them)
+    "roc_auc": Maybe(NUM), "calibration_ece": Maybe(NUM), "test_games": Maybe(INT),
+    "is_production": Maybe(bool),
+}
 MODEL = {
     **ENVELOPE, "production_model": Opt(str), "trained_at": Opt(TIMESTAMP),
     "cutoff_date": Opt(DATE),
@@ -118,9 +134,21 @@ MODEL = {
     "season_live": {"season": SEASON, "picks": INT, "accuracy": Opt(NUM)},
     "calibration": [{"bucket": Pattern(r"^\d\.\d{2}-\d\.\d{2}$"), "n": INT, "predicted": NUM,
                      "actual": NUM}],
-    "leaderboard": [{"rank": Opt(INT), "model": Opt(str), "accuracy": Opt(NUM),
-                     "log_loss": Opt(NUM), "brier_score": Opt(NUM)}],
+    "leaderboard": [LEADERBOARD_ROW],
+    # B1: the production model's top inputs, then {feature: "other"} for the rest
+    "feature_importance": Maybe([{"feature": str, "label": str, "share": NUM}]),
+    # B2: written by the training run into model_metadata.json
+    "training": Maybe({
+        "first_game_date": DATE, "cutoff_date": DATE, "last_game_date": DATE,
+        "games_total": INT, "train_games": INT, "test_games": INT, "home_win_rate": NUM,
+        "rolling_window": INT,
+        "seasons": [{"season": SEASON, "games": INT, "train": INT, "test": INT}],
+    }),
+    # B3: the src/elo.py constants
+    "elo": Maybe({"k": NUM, "home_advantage": NUM, "mean_reversion": NUM, "start": NUM}),
 }
+# B4: GET /api/featured-pick. game_id is null when no settled pick exists yet.
+FEATURED_PICK = {**ENVELOPE, "game_id": Opt(GAME_ID)}
 WORKFLOW_RUN = {
     "run_date": Opt(DATE), "started_at": Opt(TIMESTAMP), "finished_at": Opt(TIMESTAMP),
     "status": Enum("running", "success", "partial", "failed"),
@@ -146,6 +174,8 @@ def _is_number(value):
 
 def check(value, shape, path="$"):
     """Return a list of human-readable mismatches (empty when value matches shape)."""
+    if isinstance(shape, Maybe):
+        return [] if value is None else check(value, shape.shape, path)
     if isinstance(shape, Opt):
         return [] if value is None else check(value, shape.shape, path)
     if shape == "better":
@@ -176,7 +206,7 @@ def check(value, shape, path="$"):
         if not isinstance(value, dict):
             return [f"{path}: expected an object, got {type(value).__name__}"]
         errors = []
-        missing = set(shape) - set(value)
+        missing = {k for k in set(shape) - set(value) if not isinstance(shape[k], Maybe)}
         extra = set(value) - set(shape)
         if missing:
             errors.append(f"{path}: missing keys {sorted(missing)}")

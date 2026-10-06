@@ -1,0 +1,25 @@
+/* Hardwood Night: the only colorway (no light theme, no toggle). */
+:root{
+  color-scheme:dark;
+  --floor:#2b1d11; --plank:#26190e; --panel:#1d140c;
+  --line:rgba(255,236,210,.40); --edge:rgba(255,236,210,.14);
+  --ink:#f7ecdb; --ink-2:#c9ad8a;
+  --paint:#4cc2b5; --paint-wash:rgba(76,194,181,.22);
+  --ball:#ff8a3d; --ball-hatch:rgba(255,138,61,.60);
+  --hatch:repeating-linear-gradient(135deg,var(--ball-hatch) 0 4px,transparent 4px 9px);
+  --live:#ff5d6e; --win:#5fdc9f; --loss:#ff8d84;
+  /* paper */
+  --stock:#f1e4cc; --stub:#e6d4b3; --t-ink:#24170b; --t-ink-2:#6a4e2e; --t-rule:#c9b48f;
+  --t-print:#0f5f5a; --t-wash:rgba(15,95,90,.10); --t-cash:#0b6a3a; --t-lost:#a3211a; --t-live:#a30f29;
+  --shadow:0 2px 0 rgba(0,0,0,.35),0 18px 30px -16px rgba(0,0,0,.9);
+  /* type */
+  --jersey:"Graduate","Rockwell","Courier New",serif;
+  --body:"Hanken Grotesk",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --gutter:clamp(16px,4vw,56px);
+  /* motion */
+  --ease-out:cubic-bezier(.2,.8,.2,1);
+  --ease-pop:cubic-bezier(.2,.9,.3,1.15);
+  --ease-stamp:cubic-bezier(.2,.9,.3,1.25);
+  --ease-slide:cubic-bezier(.16,.84,.24,1);
+}

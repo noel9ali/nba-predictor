@@ -82,5 +82,38 @@ class ModelPublishTests(unittest.TestCase):
             fake_upsert.assert_not_called()
 
 
+class TrainingSummaryTests(unittest.TestCase):
+    def frames(self):
+        dates = ["2024-10-25", "2024-12-01", "2025-02-20", "2025-02-25", "2025-10-30", "2026-04-12"]
+        df = pd.DataFrame({"GAME_DATE": dates, "home_win": [1, 0, 1, 1, 0, 1]})
+        return df.iloc[:3], df.iloc[3:]
+
+    def test_summary_counts_dates_and_seasons(self):
+        train, test = self.frames()
+        summary = model_metadata.build_training_summary(train, test, 10)
+        self.assertEqual(summary, {
+            "first_game_date": "2024-10-25", "cutoff_date": "2025-02-25",
+            "last_game_date": "2026-04-12", "games_total": 6, "train_games": 3, "test_games": 3,
+            "home_win_rate": 0.6667, "rolling_window": 10,
+            "seasons": [{"season": "2024-25", "games": 4, "train": 3, "test": 1},
+                        {"season": "2025-26", "games": 2, "train": 0, "test": 2}],
+        })
+        json.dumps(summary)  # plain JSON types only
+
+    def test_season_label_follows_the_sept_to_aug_season(self):
+        self.assertEqual(model_metadata.season_label("2020-08-30"), "2019-20")
+        self.assertEqual(model_metadata.season_label("2020-09-01"), "2020-21")
+
+    def test_training_is_only_in_the_model_run_row_when_written(self):
+        metadata, leaderboard = model_metadata.load_metadata_and_leaderboard(
+            METADATA_PATH, LEADERBOARD_PATH
+        )
+        metadata = {k: v for k, v in metadata.items() if k != "training"}
+        self.assertNotIn("training", model_metadata.build_model_run_row(metadata, leaderboard))
+        metadata["training"] = {"games_total": 6}
+        row = model_metadata.build_model_run_row(metadata, leaderboard)
+        self.assertEqual(row["training"], {"games_total": 6})
+
+
 if __name__ == "__main__":
     unittest.main()

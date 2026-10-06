@@ -213,7 +213,7 @@ class SecurityHeadersTests(unittest.TestCase):
 # Everything the Vercel CDN serves straight from public/ (Flask never sees these requests
 # there, so its after_request can't add the headers): the dashboard page itself, its
 # static assets and the sample-mode JSON.
-CDN_SOURCES = ("/", "/index.html", "/static/(.*)", "/sample/(.*)")
+CDN_SOURCES = ("/", "/index.html", "/model", "/model.html", "/static/(.*)", "/sample/(.*)")  # /model: B7
 
 
 class VercelJsonHeadersTests(unittest.TestCase):

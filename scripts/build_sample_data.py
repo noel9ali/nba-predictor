@@ -15,9 +15,20 @@ The numbers follow design/DESIGN_STATE.md sec1 "Sample data fixes" and the appro
   $1,111.67 bankroll, as the design's SAC fix is ($55.58, the hit pays +$52.93); MIA, NYK,
   MIN and CLE follow the same rule (the canvas drew them at $70.65/$25.00/$44.71/$44.42).
 
+Hardwood Tickets additions (handoff/api-integration.md sec3, backend items B1-B4):
+- model.json carries the B1 leaderboard extras and feature_importance, the B2 training block
+  and the B3 Elo constants, all emitted by the real /api/model route from the fake model_runs
+  row (FEATURE_SIGNAL, TRAINING); only the production row's key is shortened afterwards
+  (shorten_production_model);
+- featured-pick.json is the real /api/featured-pick response over the settled fixture below;
+- game-0022600195.json is a SETTLED fixture (SAC 118-110 GSW, bet hit +$52.93) for the Model
+  page's walkthrough; the Nov 17 slate still lists that game as scheduled;
+- performance-all.json and performance-<season>.json feed the Model page's season switcher.
+
 Run from the repo root:  venv\\Scripts\\python scripts\\build_sample_data.py
 It is deterministic (fixed seed) and rewrites public/sample/ completely.
 """
+import copy
 import json
 import os
 import random
@@ -383,6 +394,53 @@ TONIGHT_GAMES = [
 TONIGHT_BANKROLL = 1111.67
 
 
+# The latest training run (model_runs row). Six models graded on the same 1,596 test games,
+# ranked by log loss as the real leaderboard CSV is (rank 1 = best log loss). The production
+# model is stored under its real name so /api/model derives `test` from it; the leaderboard
+# key is shortened to "logistic" for the page by shorten_production_model().
+PRODUCTION = "legacy-calibrated-logistic"
+LEADERBOARD = [  # (key, accuracy, brier, log loss, auc, calibration error)
+    ("gradient-boosting", 0.6792, 0.2094, 0.6075, 0.7295, 0.035),
+    ("calibrated-xgboost", 0.6779, 0.2099, 0.6085, 0.7250, 0.031),
+    ("current-xgboost", 0.6736, 0.2100, 0.6086, 0.7244, 0.026),
+    ("lstm", 0.6805, 0.2098, 0.6087, 0.7258, 0.027),
+    ("random-forest", 0.6817, 0.2102, 0.6092, 0.7285, 0.042),
+    (PRODUCTION, 0.6811, 0.2091, 0.6325, 0.7293, 0.031),
+]
+# The production model's feature_signal, as the training run stores it. The API turns it into
+# feature_importance: top five as shares of the total (.296/.244/.183/.078/.072), then
+# "The other 11 inputs" (.127). Raw importances already sum to 1.
+FEATURE_SIGNAL = [{"feature": f, "importance": v} for f, v in [
+    ("ELO_DIFF", 0.296), ("HOME_ELO", 0.244), ("AWAY_ELO", 0.183), ("AWAY_roll_TOV", 0.078),
+    ("HOME_roll_REB", 0.072), ("HOME_roll_PTS", 0.012), ("HOME_roll_FG_PCT", 0.012),
+    ("HOME_roll_AST", 0.012), ("HOME_roll_TOV", 0.012), ("HOME_roll_STOCKS", 0.012),
+    ("AWAY_roll_PTS", 0.012), ("AWAY_roll_FG_PCT", 0.012), ("AWAY_roll_REB", 0.012),
+    ("AWAY_roll_AST", 0.012), ("AWAY_roll_STOCKS", 0.012), ("rest_diff", 0.007)]]
+# B2 training block (the repo's verified values: 7,979 = 6,383 + 1,596, split Feb 25 2025).
+TRAINING = {
+    "first_game_date": "2019-11-22", "cutoff_date": "2025-02-25", "last_game_date": "2026-04-12",
+    "games_total": 7979, "train_games": 6383, "test_games": 1596, "home_win_rate": 0.5501,
+    "rolling_window": 10,
+    "seasons": [{"season": s, "games": g, "train": tr, "test": te} for s, g, tr, te in [
+        ("2019-20", 759, 759, 0), ("2020-21", 1080, 1080, 0), ("2021-22", 1230, 1230, 0),
+        ("2022-23", 1230, 1230, 0), ("2023-24", 1230, 1230, 0), ("2024-25", 1225, 854, 371),
+        ("2025-26", 1225, 0, 1225)]],
+}
+MODEL_RUN = {
+    "trained_at": "2026-10-06T02:05:00Z", "production_model": PRODUCTION,
+    "cutoff_date": "2025-02-25", "test_games": 1596, "training": TRAINING,
+    "leaderboard": [
+        {"rank": i, "model": key, "test_games": 1596, "accuracy": acc, "log_loss": ll,
+         "brier_score": brier, "roc_auc": auc, "calibration_ece": ece,
+         "baseline_home_win_rate": 0.5501,
+         **({"feature_signal": FEATURE_SIGNAL} if key == PRODUCTION else {})}
+        for i, (key, acc, brier, ll, auc, ece) in enumerate(LEADERBOARD, start=1)],
+}
+# B4: the featured pick is the settled game the Model page walks through, and the settled
+# fixture below is that game (GSW @ SAC, tonight's SAC -105 bet, a hit).
+FEATURED_GAME = {"away": "GSW", "home": "SAC", "away_score": 110, "home_score": 118}
+
+
 # ---------------------------------------------------------------------------- tables
 class Tables:
     def __init__(self):
@@ -519,16 +577,7 @@ def build_tables(history, targets, tonight_variant="base"):
         "SAC": {"elo": 1561.0, "PTS": 117.8, "FG_PCT": 0.483, "REB": 44.6, "AST": 26.4, "TOV": 13.1, "STOCKS": 13.9},
     })
     tonight = tonight_games(tables, tonight_variant)
-    tables.model_runs.append({
-        "trained_at": "2026-11-17T11:04:00Z", "production_model": "legacy-calibrated-logistic",
-        "cutoff_date": "2025-02-25", "test_games": 1596,
-        "leaderboard": [
-            {"rank": 1, "model": "current-xgboost", "test_games": 1596, "accuracy": 0.6704,
-             "log_loss": 0.6082, "brier_score": 0.2100, "roc_auc": 0.7241, "baseline_home_win_rate": 0.5501},
-            {"rank": 5, "model": "legacy-calibrated-logistic", "test_games": 1596, "accuracy": 0.6817,
-             "log_loss": 0.6194, "brier_score": 0.2089, "roc_auc": 0.7295, "baseline_home_win_rate": 0.5501},
-        ],
-    })
+    tables.model_runs.append(copy.deepcopy(MODEL_RUN))
     tables.workflow_log.extend([
         {"run_date": "2026-11-17", "kind": "predict", "trigger": "schedule", "started_at": "2026-11-17T23:30:05Z",
          "finished_at": "2026-11-17T23:31:40Z", "status": "success", "pipeline_ok": None, "predict_ok": True,
@@ -640,6 +689,38 @@ def all_predictions(tables, today=TONIGHT):
     return first
 
 
+# ---------------------------------------------------------------------------- Hardwood stubs
+def shorten_production_model(body):
+    """The page matches the production row to production_model by suffix, so the sample's
+    leaderboard key for it is shortened to "logistic" (rank-bump-chart.md sec1). Everything
+    else in /api/model (B1-B3) comes straight from the route; this only sanity-checks it."""
+    board = body["leaderboard"]
+    assert len(board) == len(MODEL_RUN["leaderboard"])
+    for row in board:
+        if row["is_production"]:
+            row["model"] = "logistic"
+    assert sum(row["is_production"] for row in board) == 1
+    assert abs(sum(r["share"] for r in body["feature_importance"]) - 1.0) < 1e-9
+    assert body["training"] == TRAINING and body["elo"]["k"] == 20
+    return body
+
+
+def settled_featured_game(tables):
+    """Tonight's GSW @ SAC drawer, settled (SAC 118-110, the -105 bet hit) for the Model page's
+    walkthrough. The Nov 17 slate keeps the game scheduled: only this drawer file is settled.
+    It still comes from the real /api/game route, over a copy of the tables whose prediction
+    row is final, so the shape is exactly a settled game's."""
+    settled = copy.deepcopy(tables)
+    f = FEATURED_GAME
+    row = next(r for r in settled.predictions
+               if r["game_date"] == TONIGHT.isoformat() and r["home_team"] == f["home"])
+    assert row["bet_amount"] == 55.58 and row["odds"] == -105
+    row.update(status="final", home_score=f["home_score"], away_score=f["away_score"],
+               actual_winner=f["home"], correct=1, profit_loss=profit(row["bet_amount"], row["odds"]))
+    assert row["profit_loss"] == 52.93
+    return row["game_id"], fetch(settled, f"/api/game/{row['game_id']}"), fetch(settled, "/api/featured-pick")
+
+
 # ---------------------------------------------------------------------------- live scores
 def live(fetched_at, games):
     return {"generated_at": fetched_at, "fetched_at": fetched_at, "stale": False, "source": "sample",
@@ -655,35 +736,51 @@ def live_files(ids):
     mia, nyk, min_, cle, phx, sac = ids
     pre = lambda gid: lg(gid, "scheduled")  # noqa: E731
     fin = lambda gid, a, h, ot=False: lg(gid, "final", 5 if ot else 4, "Final/OT" if ot else "Final", a, h)  # noqa: E731
+    # Games as they stand at 9:05 PM ET (live-feed.md sec3.8 "the prototype live block"); every
+    # replay file is a cumulative snapshot built from this and the scripted steps below. Scores
+    # are (away, home) as lg() takes them; the handoff script lists home first.
+    state = {
+        mia: fin(mia, 112, 104),
+        nyk: lg(nyk, "live", 3, "Q3 4:40", 71, 76),
+        min_: lg(min_, "live", 2, "Q2 1:05", 48, 44),
+        cle: lg(cle, "live", 2, "Q2 3:30", 45, 47),
+        phx: pre(phx),
+        sac: pre(sac),
+    }
+    final_tally = {  # the end of the night: MIA, NYK, CLE and SAC hit, MIN misses, LAL passes
+        mia: fin(mia, 112, 104), nyk: fin(nyk, 101, 109), min_: fin(min_, 110, 103),
+        cle: fin(cle, 118, 109), phx: fin(phx, 115, 121, ot=True), sac: fin(sac, 110, 118)}
+    steps = [  # (fetched_at, changes) after the handoff's SCRIPT steps; see live-feed.md sec3.8
+        ("2026-11-18T02:31:00Z", [lg(nyk, "live", 3, "Q3 1:12", 73, 81), lg(min_, "live", 3, "Q3 2:05", 71, 70),
+                                  lg(cle, "live", 3, "Q3 0:40", 74, 66)]),
+        ("2026-11-18T02:52:00Z", [fin(nyk, 101, 109)]),
+        ("2026-11-18T03:16:00Z", [lg(phx, "live", 1, "Q1 11:21", 0, 2), fin(min_, 110, 103), fin(cle, 118, 109)]),
+        ("2026-11-18T03:33:00Z", [lg(sac, "live", 1, "Q1 11:02", 3, 0), lg(phx, "live", 1, "Q1 0:48", 26, 30)]),
+        ("2026-11-18T04:58:00Z", [lg(phx, "live", 5, "OT 1:30", 113, 115), lg(sac, "live", 3, "Q3 5:10", 84, 88)]),
+        ("2026-11-18T05:41:00Z", [final_tally[phx], final_tally[sac]]),
+    ]
+    snapshots = [("2026-11-18T02:05:00Z", [state[i] for i in ids])]
+    for at, changes in steps:
+        for change in changes:
+            state[change["game_id"]] = change
+        snapshots.append((at, [state[i] for i in ids]))
+    assert all(g["status"] == "final" for g in snapshots[-1][1])
+    assert snapshots[-1][1] == [final_tally[i] for i in ids]
+
     files = {
         "live-pre": live("2026-11-17T23:59:00Z", [pre(i) for i in ids]),
-        "live-live": live("2026-11-18T02:05:00Z", [
-            fin(mia, 112, 104), lg(nyk, "live", 3, "Q3 4:40", 71, 76), lg(min_, "live", 2, "Q2 1:05", 48, 44),
-            lg(cle, "live", 2, "Q2 3:30", 45, 47), pre(phx), pre(sac)]),
+        "live-live": live("2026-11-18T02:05:00Z", snapshots[0][1]),
+        # 3:40 AM UTC: the night so far. NYK and CLE are final, MIN is in the 4th (script step 4),
+        # PHX and SAC just tipped.
         "live-sofar": live("2026-11-18T03:40:00Z", [
-            fin(mia, 112, 104), fin(nyk, 101, 108), lg(min_, "live", 4, "Q4 3:10", 98, 96),
-            fin(cle, 99, 105), lg(phx, "live", 2, "Q2 5:20", 52, 49), lg(sac, "live", 1, "Q1 4:12", 11, 14)]),
-        "live-final": live("2026-11-18T06:05:00Z", [
-            fin(mia, 112, 104), fin(nyk, 101, 108), fin(min_, 110, 104), fin(cle, 99, 105),
-            fin(phx, 115, 109), fin(sac, 110, 118)]),
+            fin(mia, 112, 104), fin(nyk, 101, 109), lg(min_, "live", 4, "Q4 3:12", 101, 96),
+            fin(cle, 118, 109), lg(phx, "live", 1, "Q1 0:48", 26, 30), lg(sac, "live", 1, "Q1 11:02", 3, 0)]),
+        # The end of the night (the last replay snapshot, a little later).
+        "live-final": live("2026-11-18T06:05:00Z", [final_tally[i] for i in ids]),
         "live-failed": live("2026-11-18T00:12:00Z", [
             lg(mia, "live", 1, "Q1 6:12", 9, 7), pre(nyk), pre(min_), pre(cle), pre(phx), pre(sac)]),
     }
-    replay = [
-        ("2026-11-17T23:59:00Z", [pre(i) for i in ids]),
-        ("2026-11-18T00:00:30Z", [lg(mia, "live", 1, "Q1 11:48", 2, 0), pre(nyk), pre(min_), pre(cle), pre(phx), pre(sac)]),
-        ("2026-11-18T00:31:00Z", [lg(mia, "live", 2, "Q2 8:10", 30, 26), lg(nyk, "live", 1, "Q1 11:20", 3, 2),
-                                  pre(min_), pre(cle), pre(phx), pre(sac)]),
-        ("2026-11-18T01:02:00Z", [lg(mia, "live", 3, "Q3 10:02", 64, 60), lg(nyk, "live", 2, "Q2 9:31", 30, 33),
-                                  lg(min_, "live", 1, "Q1 11:40", 2, 0), lg(cle, "live", 1, "Q1 11:35", 0, 3), pre(phx), pre(sac)]),
-        ("2026-11-18T02:20:00Z", [fin(mia, 112, 104), lg(nyk, "live", 4, "Q4 6:12", 88, 92),
-                                  lg(min_, "live", 3, "Q3 2:40", 76, 72), lg(cle, "live", 3, "Q3 1:15", 74, 80), pre(phx), pre(sac)]),
-        ("2026-11-18T03:31:00Z", [fin(mia, 112, 104), fin(nyk, 101, 108), lg(min_, "live", 4, "Q4 4:02", 96, 94),
-                                  fin(cle, 99, 105), lg(phx, "live", 2, "Q2 7:30", 44, 43), lg(sac, "live", 1, "Q1 11:50", 0, 2)]),
-        ("2026-11-18T05:55:00Z", [fin(mia, 112, 104), fin(nyk, 101, 108), fin(min_, 110, 104), fin(cle, 99, 105),
-                                  fin(phx, 115, 109), fin(sac, 110, 118)]),
-    ]
-    for i, (at, games) in enumerate(replay):
+    for i, (at, games) in enumerate(snapshots):
         files[f"live-replay-{i}"] = live(at, games)
     return files
 
@@ -757,7 +854,17 @@ def main():
     write("days", fetch(tables, f"/api/days?end={TONIGHT}&n=31"))
     write("performance", fetch(tables, f"/api/performance?season={SEASON}"))
     write("predictions", all_predictions(tables))
-    write("model", fetch(tables, f"/api/model?season={SEASON}"))
+    # The Model page: B1-B4 all come from the real routes.
+    write("model", shorten_production_model(fetch(tables, f"/api/model?season={SEASON}")))
+    featured_id, featured_detail, featured_pick = settled_featured_game(tables)
+    assert featured_pick["game_id"] == featured_id
+    write(f"game-{featured_id}", featured_detail)
+    write("featured-pick", featured_pick)
+    # Season switcher: "all time" plus one file per season the API lists.
+    all_time = fetch(tables, "/api/performance?season=all")
+    write("performance-all", all_time)
+    for season in all_time["seasons"]:
+        write(f"performance-{season}", fetch(tables, f"/api/performance?season={season}"))
     write("workflow-status", fetch(tables, "/api/workflow-status"))
     failed_tables = Tables()
     failed_tables.workflow_log = [
