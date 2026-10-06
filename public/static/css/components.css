@@ -261,3 +261,7 @@ html[data-feed="delayed"] .band .st.live::before,html[data-feed="down"] .band .s
   .stamp .ink{padding:7px 12px 5px;border-width:4px}
   .stamp small{font-size:12px}
 }
+
+/* the status pill and sample tag arrive after first paint; on narrow screens they wrap to their own row,
+   so reserve it to keep the page from jumping (layout shift) */
+@media (max-width:700px){.top__r{min-height:24px}}

@@ -193,8 +193,8 @@ class SecurityHeadersTests(unittest.TestCase):
         response.close()
 
     def test_dashboard_assets_have_all_headers(self):
-        for path in ("/static/dashboard.css", "/static/js/main.js", "/static/favicon.svg",
-                     "/static/fonts/barlow-latin-400-normal.woff2", "/sample/days.json"):
+        for path in ("/static/css/components.css", "/static/js/tonight.js", "/static/logos/SAC.svg",
+                     "/static/fonts/graduate-latin-400-normal.woff2", "/sample/days.json"):
             with self.subTest(path=path):
                 response = self.client.get(path)
                 self.assertEqual(response.status_code, 200)

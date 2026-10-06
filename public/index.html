@@ -18,6 +18,24 @@
 <link rel="stylesheet" href="/static/css/tonight.css">
 <link rel="stylesheet" href="/static/css/ambient.css">
 <script src="/static/js/gate.js"></script>
+<link rel="modulepreload" href="/static/js/tonight.js">
+<link rel="modulepreload" href="/static/js/shell.js">
+<link rel="modulepreload" href="/static/js/api.js">
+<link rel="modulepreload" href="/static/js/format.js">
+<link rel="modulepreload" href="/static/js/ambient.js">
+<link rel="modulepreload" href="/static/js/state.js">
+<link rel="modulepreload" href="/static/js/tonight/glance.js">
+<link rel="modulepreload" href="/static/js/board.js">
+<link rel="modulepreload" href="/static/js/court.js">
+<link rel="modulepreload" href="/static/js/logo.js">
+<link rel="modulepreload" href="/static/js/reveal.js">
+<link rel="modulepreload" href="/static/js/tonight/tickets.js">
+<link rel="modulepreload" href="/static/js/tonight/toolbar.js">
+<link rel="modulepreload" href="/static/js/tonight/drawer.js">
+<link rel="modulepreload" href="/static/js/tonight/toasts.js">
+<link rel="modulepreload" href="/static/js/tonight/ribbon.js">
+<link rel="modulepreload" href="/static/js/tonight/season.js">
+<link rel="modulepreload" href="/static/js/calibration-chart.js">
 </head>
 <body class="page-tonight">
 <div class="ambient" aria-hidden="true">
@@ -62,14 +80,14 @@
     <div class="ribbon__in"><span class="ribbon__t" data-ribbon-title>Tonight</span><dl data-ribbon-cells></dl><span class="ribbon__live" data-ribbon-live></span></div>
   </div>
 
-  <main id="tonight">
+  <main id="tonight" class="loading">
     <section class="lede" aria-labelledby="h1">
       <p class="kick" data-lede-kick><span data-testid="date-eyebrow"></span><span data-kick-sep hidden> · </span><span data-testid="counts"></span></p>
       <h1 id="h1" data-testid="hero">Loading tonight's slate…</h1>
       <p class="lede__links" data-lede-links hidden></p>
       <button class="btn" type="button" data-retry hidden>Retry</button>
       <dl class="board" data-testid="tape"></dl>
-      <div class="courts" data-testid="chart" role="group" aria-label="Every game tonight, model vs market" hidden>
+      <div class="courts" data-testid="chart" role="group" aria-label="Every game tonight, model vs market">
         <div class="courts__key" aria-hidden="true"><span><i class="k-paint"></i>Model's chance, painted from the pick's baseline</span><span><i class="k-mkt"></i>Market's chance</span><span><i class="k-edge"></i>The edge: model beyond the market</span></div>
       </div>
     </section>

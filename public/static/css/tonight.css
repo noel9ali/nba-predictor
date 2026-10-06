@@ -211,3 +211,12 @@ html.drawer-open{overflow:hidden}
   font:500 14px/1.45 var(--body);box-shadow:var(--shadow);animation:up .3s cubic-bezier(.2,.9,.3,1.2)}
 .toast--out{opacity:0;transition:opacity .4s}
 @keyframes up{from{transform:translateY(14px);opacity:0}}
+
+/* Reserve the courts and tickets while the slate loads, so the season section doesn't paint high
+   and then jump down (layout shift). tonight.js removes .loading after the first slate render. */
+#tonight.loading .courts{min-height:calc(6 * (84px + clamp(18px,2.4vw,26px)) + 64px)}
+#tonight.loading [data-testid=grid]{min-height:110vh}
+@media (max-width:760px){#tonight.loading .courts{min-height:900px}}
+#tonight.loading .lede h1{min-height:calc(3 * 1.14em)}
+.lede .kick{min-height:12px}
+@media (max-width:600px){.lede .kick{min-height:24px}}

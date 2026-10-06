@@ -22,7 +22,8 @@
 .pin[data-state="model"] .scroll-cue{opacity:0}
 .swap{animation:swap .45s cubic-bezier(.2,.8,.2,1)}
 @keyframes swap{from{opacity:0;transform:translateY(10px)}}
-.court-slot:empty{display:none}
+.court-slot:empty{height:clamp(96px,12vw,132px)}
+.scrolly.flat .court-slot:empty{display:none}
 
 /* chapter heads (no 3px rule on this page: ruling 12) */
 body.page-model section.chapter{padding-block:clamp(64px,8vw,104px) 0}

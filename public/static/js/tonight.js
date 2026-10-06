@@ -58,6 +58,7 @@ function onSlate() {
   seasonOnBatch([{ type: 'slate' }]);
   if (firstSlate) {
     firstSlate = false;
+    $('main#tonight').classList.remove('loading');
     openFromHash();
     if (!toastsOn) { initToasts(); toastsOn = true; }
     slateSettled();
@@ -73,6 +74,8 @@ function flush() {
   if (err) {
     renderLede(null, { error: true });
     renderPageStates();
+    $('main#tonight').classList.remove('loading');
+    $('[data-testid=chart]').hidden = true;
     if (firstSlate) slateSettled();
     return;
   }

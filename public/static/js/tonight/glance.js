@@ -82,7 +82,7 @@ export function renderLede(s, { error = false } = {}) {
   if (!store.slate) {                       // loading
     kick.hidden = false; setText(eyebrow, ''); setText(counts, ''); sep.hidden = true;
     setHTML(h1, esc("Loading tonight's slate…"));
-    renderBoard(board, Array.from({ length: 6 }, () => ({ label: '', value: '—' })));
+    renderBoard(board, ['At risk', 'Settled', 'If it ended now', 'Live picks ahead', 'Bets W–L', 'Picks W–L'].map(label => ({ label, value: '—' })));
     return;
   }
   const phase = phaseOf();
