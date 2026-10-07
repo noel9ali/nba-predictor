@@ -1,7 +1,7 @@
 """
 daily_workflow.py — NBA Predictor daily automation orchestrator.
 
-Runs the morning pipeline (collect → features → elo → model → track) and
+Runs the morning pipeline (collect → elo → features → model → track) and
 evening predictions, then sends a Twilio SMS summary and logs the run.
 
 Can be invoked directly:
