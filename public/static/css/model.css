@@ -114,7 +114,7 @@ body.page-model section.chapter{padding-block:clamp(64px,8vw,104px) 0}
 .bump svg{display:block;width:100%;height:auto;overflow:visible}
 .bump .gl{stroke:var(--edge)}
 .bump .col{font:600 11px/1 var(--mono);fill:var(--ink);text-transform:uppercase;letter-spacing:.06em}
-.bump .colsub{font:400 10px/1 var(--mono);fill:var(--ink-2)}
+.bump .colsub{font:400 11px/1 var(--mono);fill:var(--ink-2)}
 .bump .rk{font:400 13px/1 var(--jersey);fill:var(--ink-2)}
 .bump .ln{fill:none;stroke:var(--paint);stroke-width:2;opacity:.45}
 .bump .nd{fill:var(--panel);stroke:var(--paint);stroke-width:2}
