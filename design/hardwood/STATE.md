@@ -1,31 +1,20 @@
-# State (updated Oct 6, 2026, end of Checkpoint D)
+# State (updated Oct 7, 2026, after the live-scores + model release)
 
-## Release Oct 7, 2026 (branch `release-2026-10-07` → main)
-`live-scores` + `production-model-gb` merged after sonnet security reviews (no confirmed findings) and a Playwright-CLI frontend
-check. Release log and resume checklist: memory `release-run-2026-10-07.md`.
+## Release Oct 7, 2026: DONE
+- Merged to main (`8b86839`) after sonnet `/security-review` of both branches (no confirmed findings) and a Playwright-CLI check
+  (7 checks, 1440 + 400 px). Production deployment `dpl_9SciBvJPCh6byYm9HPPudMh4xK9v` (READY, https://nba-predictor-tau.vercel.app);
+  prod re-check passed, no runtime errors. Pushes to main do NOT auto-deploy: create the production deployment from the main SHA.
+- Model: gradient boosting is the default production model; retrained Oct 7 (log loss 0.6075, #1 of 6), artifacts committed in
+  `9e0e647`. Old `.pkl` files and Noel's earlier uncommitted retrain files are in `data/pre_gb_backup/` (untracked).
+- Production is behind Vercel login for all deployments (project SSO protection "all"), pending the logo sign-off.
 
-## Done: `/api/live-scores` (branch `live-scores`, Oct 7, 2026)
-Worktree `C:\Users\noel9\Desktop\nba-predictor\.claude\worktrees\live-scores`, off main `b8fe54d`. Noel approved building it.
-- Upstream: `todaysScoreboard_00.json`. `cdn.nba.com` answers 403 (Akamai) from the laptop; the S3 origin
-  `nba-prod-us-east-1-mediaops-stats.s3.amazonaws.com/NBA/liveData/scoreboard/…` answers 200 with the same JSON. The proxy tries the CDN,
-  then the origin, and remembers which one worked. The feed's `scoreboard.gameDate` rolls over in the ET morning.
-- Code: `src/live_scores.py` (fetch, mapping, 15 s single-flight cache; not in vercel.json excludeFiles) + the route in `app.py`.
-- Behaviour: `?date=` validated (400 otherwise); default today ET. Today/yesterday ask the feed; a date the feed isn't on answers from
-  `predictions` (finals with scores, postponed/void as postponed, `source:"slate"`) or `games:[]`, never an error (a DB failure there
-  also gives `games:[]`). Upstream down: last good snapshot with `stale:true`; nothing cached and the date is today: 503
-  `{"error":"live_scores_unavailable"}` (no-store). Failures are cached for the 15 s window too. Clock: "Q3 4:40", "Half", "OT 1:30",
-  "2OT 0:05", "Final", "Final/OT"; an unparseable clock gives the period only. The envelope has no `migration_pending` (contract).
-- `scripts/xss_harness.py` now patches `LIVE_SCOREBOARD` with a fake upstream whose status/clock text is hostile (stays offline).
-- Results (Oct 7): `run_offline_tests.py` 284 OK (+17 live-scores tests); JS 5/5; e2e `validate.mjs` 39/39; XSS harness 0 fired
-  with the live layer merged (ticket 1 "Live · Q3", ticket 2 "Final"), all 6 drawers, a past night, /model; no CSP errors.
-  Real feed via local Flask: CDN 403 → origin 200 in 1.8 s cold, 0.08 s cached; LAL@GSW mapped to "Q4 4:15".
-- Steps: [x] module + route  [x] tests  [x] offline suite, xss harness, e2e  [x] push + preview check
-- Preview (Vercel login required): https://nba-predictor-git-live-scores-nubber.vercel.app (deployment `nba-predictor-deue8k4pb-nubber`,
-  commit `75e4ccf`). Checked Oct 7 04:35 UTC: `?date=2026-10-06` 200 with the live feed (`source:"nba-origin"`, so Vercel pdx1 is
-  refused by cdn.nba.com too and the origin fallback is what makes it work; LAL@GSW "Q4 0:44"); default date 200 `games:[]` from
-  the slate; `?date=2026-02-30` 400 no-store; CSP + security headers on all; repeat hit served by the CDN (`x-vercel-cache: STALE`,
-  age 17). Vercel shows browsers `cache-control: public` because its CDN consumes s-maxage/stale-while-revalidate.
-- NEXT: Noel's go-ahead to merge `live-scores` into main and deploy production. Nothing merged or deployed to production.
+## `/api/live-scores` (shipped)
+- Upstream `todaysScoreboard_00.json`: `cdn.nba.com` answers 403 (Akamai) from the laptop and from Vercel; the S3 origin
+  `nba-prod-us-east-1-mediaops-stats.s3.amazonaws.com/NBA/liveData/scoreboard/…` serves the same JSON. The proxy tries the CDN, then
+  the origin, and remembers which answered. The origin is undocumented, so watch for `stale:true` / 503s if it moves.
+- Code: `src/live_scores.py` (fetch, mapping, 15 s single-flight cache) + the route in `app.py`; tests in `tests/test_api_v2.py`.
+- Behaviour: `?date=` validated (400); today/yesterday from the feed; other dates from `predictions` or `games:[]`; upstream down →
+  last good snapshot `stale:true`, or 503 when nothing is cached. No `migration_pending` in this envelope (contract).
 
 ## Checkpoints
 | Checkpoint | Scope | Status |
@@ -60,11 +49,14 @@ Preview (Vercel login required): https://nba-predictor-git-hardwood-build-nubber
 - Old dashboard files deleted (`dashboard.css`, `favicon.svg`, 13 old js modules, barlow fonts). `/legacy` still uses `static/app.js`
   and `static/style.css`; KEEP both.
 
-## Findings to raise with Noel (in the D report)
-- `/api/live-scores`: approved and being built on branch `live-scores` (see the top of this file).
-- The `model_runs.training` migration still needs his yes/no (the file is in supabase/migrations).
-- NBA logo trademark sign-off before anything goes public.
-- Merging to main / production deploy: only on his explicit approval.
+## Open items for Noel
+- **Turn on `NBA_SCHEMA_V2`** (Vercel production + preview, and the laptop `.env`), then `venv\Scripts\python src\model.py --publish-only`.
+  The database is already migrated (`public.predictions.game_id` is text, `model_runs` exists but is empty), but the app runs in
+  v2-off mode, so: the Model page shows no production model, and `/api/game/<id>` 404s (it filters a text column with an int),
+  which breaks the Model walkthrough's featured pick. One switch fixes both. `gate_m_backup` schema holds the pre-migration copy.
+- NBA logo trademark sign-off before production goes public.
+- Pipeline risks (from the pipeline-engineer audit, not built): predict-time rest-days/rolling-stat mismatch with training,
+  no season-start Elo reversion at predict time, silent failures in `collect.py`/`odds.py`/`scheduler\run_daily.bat`.
 
 ## If Noel asks for more
-Follow-ups that aren't built: a date picker for Past nights (ruling 10), B5 factor build (optional), `/api/live-scores` (above).
+Follow-ups that aren't built: a date picker for Past nights (ruling 10), B5 factor build (optional).
