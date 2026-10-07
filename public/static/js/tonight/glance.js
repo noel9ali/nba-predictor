@@ -26,14 +26,20 @@ function isOfficial() {
 }
 
 export function boardCells(s) {
-  return [
+  if (s.bets === 0) {
+    return [{ label: 'Tonight', value: 'No bets tonight' }];
+  }
+  const cells = [
     { label: 'At risk', value: fmt.money(s.staked) },
     { label: 'Settled', value: fmt.money(s.settled, true), cls: signCls(s.settled), testid: 'settled' },
     { label: 'If it ended now', value: fmt.money(s.ifEnded, true), cls: signCls(s.ifEnded) },
-    { label: 'Live picks ahead', value: s.ahead + ' of ' + s.liveBets },
     { label: 'Bets W–L', value: s.betW + '–' + s.betL },
     { label: 'Picks W–L', value: s.pickW + '–' + s.pickL }
   ];
+  if (s.liveBets > 0) {
+    cells.splice(3, 0, { label: 'Live picks ahead', value: s.ahead + ' of ' + s.liveBets });
+  }
+  return cells;
 }
 
 function sentence(s) {

@@ -42,6 +42,9 @@ section{padding-block:clamp(48px,7vw,88px) 0}
 /* ---------- scorer's board ---------- */
 .board{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));border:3px solid var(--line);background:var(--panel);
   transition:opacity .4s,transform .4s}
+.board[data-cells="1"]{grid-template-columns:minmax(0,1fr)}
+.board[data-cells="4"]{grid-template-columns:repeat(4,minmax(0,1fr))}
+.board[data-cells="5"]{grid-template-columns:repeat(5,minmax(0,1fr))}
 .board div{padding:16px 18px;border-right:2px solid var(--edge);display:flex;flex-direction:column-reverse;gap:8px}
 .board div:last-child{border-right:0}
 .board dt{font:600 11px/1.2 var(--body);text-transform:uppercase;letter-spacing:.12em;color:var(--ink-2)}
@@ -50,14 +53,33 @@ section{padding-block:clamp(48px,7vw,88px) 0}
 .board.docked{opacity:.35;transform:scale(.985)}
 @media (max-width:960px){
   .board{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .board[data-cells="1"]{grid-template-columns:minmax(0,1fr)}
+  .board[data-cells="4"]{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .board[data-cells="5"]{grid-template-columns:repeat(3,minmax(0,1fr))}
   .board div:nth-child(3){border-right:0}
   .board div:nth-child(-n+3){border-bottom:2px solid var(--edge)}
+  .board[data-cells="1"] div{border-bottom:0}
+  .board[data-cells="4"] div:nth-child(-n+3){border-bottom:2px solid var(--edge)}
+  .board[data-cells="4"] div:nth-child(n+4){border-bottom:0}
+  .board[data-cells="5"] div:nth-child(-n+3){border-bottom:2px solid var(--edge)}
+  .board[data-cells="5"] div:nth-child(n+4){border-bottom:0}
 }
 @media (max-width:520px){
   .board{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .board[data-cells="1"]{grid-template-columns:minmax(0,1fr)}
+  .board[data-cells="4"]{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .board[data-cells="5"]{grid-template-columns:repeat(2,minmax(0,1fr))}
   .board div{border-right:2px solid var(--edge)!important;border-bottom:2px solid var(--edge)}
   .board div:nth-child(2n){border-right:0!important}
   .board div:nth-last-child(-n+2){border-bottom:0}
+  .board[data-cells="1"] div{border-right:0!important;border-bottom:0}
+  .board[data-cells="4"] div:nth-child(odd){border-right:2px solid var(--edge)!important}
+  .board[data-cells="4"] div:nth-child(even){border-right:0!important}
+  .board[data-cells="4"] div:nth-last-child(-n+2){border-bottom:0}
+  .board[data-cells="5"] div:nth-child(odd){border-right:2px solid var(--edge)!important}
+  .board[data-cells="5"] div:nth-child(even){border-right:0!important}
+  .board[data-cells="5"] div:nth-child(-n+4){border-bottom:2px solid var(--edge)}
+  .board[data-cells="5"] div:last-child{grid-column:1/-1;border-right:0!important;border-bottom:0}
   .board dd small{display:block;margin:4px 0 0}
 }
 

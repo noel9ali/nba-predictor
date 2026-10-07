@@ -5,10 +5,11 @@
 export function renderBoard(dl, cells) {
   if (!dl) return;
   const list = cells.slice(0, 6);
-  while (list.length < 6) list.push({ label: '', value: '—' });
-  if (dl.children.length !== 6) {
+  const n = list.length;
+  dl.dataset.cells = String(n);
+  if (dl.children.length !== n) {
     dl.textContent = '';
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < n; i++) {
       const div = document.createElement('div');
       div.append(document.createElement('dt'), document.createElement('dd'));
       dl.append(div);
