@@ -11,4 +11,5 @@ button{font:inherit;color:inherit}
 .wrap{max-width:1200px;margin-inline:auto}
 .wrap--model{max-width:1160px}
 .pos{color:var(--win)}.neg{color:var(--loss)}
+.nw{white-space:nowrap}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}

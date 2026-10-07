@@ -2,7 +2,7 @@
 
 /* ---------- 1 · the night at a glance ---------- */
 .lede h1{margin:0;font:600 clamp(28px,4.4vw,50px)/1.14 var(--body);letter-spacing:-.02em;text-wrap:balance;max-width:24ch}
-.lede h1 .n{font:400 1em/1 var(--jersey);letter-spacing:0}
+.lede h1 .n{font:400 1em/1 var(--jersey);letter-spacing:0;white-space:nowrap}
 .lede h1 .n.e{color:var(--ball)}
 .lede .board{margin:clamp(28px,4vw,40px) 0 0}
 .lede > .btn{margin-top:18px}

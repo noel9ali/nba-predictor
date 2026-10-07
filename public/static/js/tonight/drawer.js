@@ -61,6 +61,47 @@ function stateText(g) {
 function metaText(g) {
   return nameOf(g.away) + ' at ' + nameOf(g.home) + ' · ' + fmt.time(g.tip_time_utc) + ' ET · ' + stateText(g);
 }
+function setMeta(p, g) {
+  p.textContent = '';
+  const add = (text) => p.append(document.createTextNode(text));
+  const addNW = (text) => p.append(el('span', 'nw', text));
+
+  // Away team name
+  const awayName = (g.away && (g.away.name || g.away.tricode)) || '';
+  add(awayName);
+  if (g.away && g.away.record) addNW(' (' + g.away.record + ')');
+  add(' at ');
+
+  // Home team name
+  const homeName = (g.home && (g.home.name || g.home.tricode)) || '';
+  add(homeName);
+  if (g.home && g.home.record) addNW(' (' + g.home.record + ')');
+  add(' · ');
+
+  // Time
+  addNW(fmt.time(g.tip_time_utc) + ' ET');
+  add(' · ');
+
+  // State and score
+  const A = g.away.tricode, H = g.home.tricode, sc = () => dash(g.as) + NDASH + dash(g.hs);
+  if (g.state === 'live') {
+    add('Live' + (g.clock ? ' ' + g.clock : '') + ', ');
+    add(A + ' ');
+    addNW(sc());
+    add(' ' + H);
+  } else if (g.state === 'final') {
+    add('Final ');
+    add(A + ' ');
+    addNW(sc());
+    add(' ' + H);
+  } else if (g.state === 'postponed') {
+    add('Postponed');
+  } else if (g.state === 'void') {
+    add('Void');
+  } else {
+    add('Not started');
+  }
+}
 function fineText(d) {
   const model = d && d.model_name, at = d && d.predicted_at;
   const modelDisplay = model ? modelLabel(model) : null;
@@ -264,8 +305,9 @@ function buildPanel(g) {
   const prices = el('div');
   prices.setAttribute('data-prices', '');
   prices.append(...pricesNodes(g, g.book_grid));
-  const meta = el('p', 'meta', metaText(g));
+  const meta = el('p', 'meta');
   meta.setAttribute('data-meta', '');
+  setMeta(meta, g);
   const key = el('p', 'd-legend', 'Teal marks the better side. Fewer turnovers is better.');
   key.setAttribute('data-key', '');
   const fine = el('p', 'fine', 'Paper money only.');
@@ -361,7 +403,7 @@ function onBatch(changes) {
   for (const c of changes) {
     if (c.id === active.id && (c.type === 'tip' || c.type === 'score' || c.type === 'final' || c.type === 'clock')) {
       const g = game(active.id), m = document.querySelector('.drawer [data-meta]');
-      if (g && m) m.textContent = metaText(g);
+      if (g && m) setMeta(m, g);
       return;
     }
   }
