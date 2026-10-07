@@ -71,7 +71,7 @@ function fineText(d) {
 // ---------- sections ----------
 function header(g) {
   const ph = el('div', 'ph'), left = el('div');
-  const kk = el('p', 'kk', 'Back of ticket · № ' + String(g.game_id).slice(-4));
+  const kk = el('p', 'kk', 'Back of ticket · No. ' + String(g.game_id).slice(-4));
   const h2 = el('h2', 'd-title');
   h2.id = 'd-title';
   append(h2, logo(g.away.tricode, 'd-logo', 42), document.createTextNode(g.away.tricode + ' '), el('span', null, 'at'),

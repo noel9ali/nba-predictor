@@ -143,7 +143,7 @@ function stubHTML(g, no) {
     win = b ? money(payoutOf(g)) : '—';
   }
   return '<div class="stub"><span class="who">' + who + '<b class="stub-pick">' + pick + '</b></span><span>Odds<b>' + esc(odds) +
-    '</b></span><span>Stake<b>' + esc(stake) + '</b></span><span>To win<b>' + esc(win) + '</b></span><span class="no">Ticket № ' + no + '</span></div>';
+    '</b></span><span>Stake<b>' + esc(stake) + '</b></span><span>To win<b>' + esc(win) + '</b></span><span class="no">Ticket No. ' + no + '</span></div>';
 }
 
 function linesHTML(g) {
@@ -190,7 +190,7 @@ function footHTML(g) {
 
 function ticketInner(g, info) {
   const no = esc(String(g.game_id).slice(-4));
-  return stubHTML(g, no) + '<div class="ticket__body"><div class="band"><span>Paper ticket · № ' + no + '</span>' + statusHTML(g) +
+  return stubHTML(g, no) + '<div class="ticket__body"><div class="band"><span>Paper ticket · No. ' + no + '</span>' + statusHTML(g) +
     '</div><div class="match">' + teamRow(g, 'away') + teamRow(g, 'home') + '</div>' + linesHTML(g) + footHTML(g) + '</div>' + stampHTML(g, info);
 }
 
