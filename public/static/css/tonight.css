@@ -145,6 +145,7 @@
 .js .wl i{transition:transform .3s cubic-bezier(.2,.9,.3,1.4) calc(var(--k) * 28ms)}
 
 /* calibration card (T17) and model facts */
+[data-testid=calib] .calib-svg{max-width:420px;margin-inline:auto}
 .calib .dot{transform-box:fill-box;transform-origin:center}
 .js .calib.pre .dot{opacity:0;transform:scale(.3)}
 .js .calib .dot{transition:opacity .4s calc(var(--k) * 90ms),transform .4s cubic-bezier(.2,.9,.3,1.4) calc(var(--k) * 90ms)}
