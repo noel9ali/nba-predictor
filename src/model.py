@@ -5,6 +5,7 @@ import os
 import joblib
 import numpy as np
 import pandas as pd
+from dotenv import load_dotenv
 from console import force_utf8_stdio
 from database import schema_v2_enabled, select_rows, upsert_rows
 from features import ROLLING_WINDOW
@@ -551,6 +552,8 @@ def main():
         ),
     )
     args = parser.parse_args()
+    # The NBA_SCHEMA_V2 checks below run before any Supabase client loads .env.
+    load_dotenv()
 
     if args.publish_only:
         if not schema_v2_enabled():

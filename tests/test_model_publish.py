@@ -179,9 +179,8 @@ class ModelPublishTests(unittest.TestCase):
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
         import database
 
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, {}, clear=True),                 patch.object(database, "upsert_rows") as fake_upsert:
             self.assertFalse(database.schema_v2_enabled())
-        with patch.object(database, "upsert_rows") as fake_upsert:
             if database.schema_v2_enabled():
                 database.upsert_rows("model_runs", [{}], conflict_columns=["trained_at"])
             fake_upsert.assert_not_called()
