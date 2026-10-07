@@ -309,18 +309,21 @@ body.page-model section.chapter{padding-block:clamp(64px,8vw,104px) 0}
 /* step 7: mini ticket */
 .walk .mini-ticket{background:var(--stock);color:var(--t-ink);box-shadow:var(--shadow);display:grid;grid-template-columns:96px minmax(0,1fr);position:relative;max-width:520px}
 .walk .mini-ticket .stub{background:var(--stub);border-right:2px dashed var(--t-rule);padding:16px 12px;font:500 11px/1.3 var(--mono);text-transform:uppercase;color:var(--t-ink-2);display:grid;gap:10px;align-content:start;overflow-wrap:anywhere;min-width:0}
-.walk .mini-ticket .stub b{display:block;font:400 28px/1 var(--jersey);color:var(--t-print);margin-top:4px}
+.walk .mini-ticket .stub b{display:block;font:400 clamp(22px,6vw,28px)/1 var(--jersey);color:var(--t-print);margin-top:4px;white-space:nowrap}
+.walk .mini-ticket .stub span:nth-child(n+2){white-space:nowrap}
 .walk .mini-ticket .body{padding:16px 20px;display:grid;gap:8px;min-width:0}
-.walk .mini-ticket .tm{display:flex;justify-content:space-between;align-items:center;font:400 30px/1 var(--jersey)}
+.walk .mini-ticket .tm{display:flex;justify-content:space-between;align-items:center;gap:10px;font:400 clamp(22px,5.5vw,30px)/1 var(--jersey)}
+.walk .mini-ticket .tm > span:nth-child(2){flex-shrink:1;min-width:0}
 .walk .mini-ticket .tm.lo{color:var(--t-ink-2)}
 .walk .mini-ticket .sp{height:74px}
-.walk .mini-ticket .mt-note{font:500 12px/1 var(--mono);color:var(--t-ink-2)}
-.walk .mini-stamp{position:absolute;right:22px;bottom:30px;transform:rotate(-9deg);color:var(--t-cash);border:5px double currentColor;padding:8px 14px 6px;font:400 30px/1 var(--jersey);text-align:center;background:var(--stock);box-shadow:0 0 0 6px var(--stock)}
+.walk .mini-ticket .mt-note{font:500 12px/1 var(--mono);color:var(--t-ink-2);white-space:normal;min-width:0;justify-self:start}
+.walk .mini-stamp{position:absolute;right:22px;bottom:30px;transform:rotate(-9deg);color:var(--t-cash);border:5px double currentColor;padding:8px 14px 6px;font:400 clamp(20px,5.5vw,30px)/1 var(--jersey);text-align:center;background:var(--stock);box-shadow:0 0 0 6px var(--stock);white-space:normal;max-width:calc(100% - 24px)}
 .walk .mini-stamp.lost{color:var(--t-lost)}
 .walk .mini-stamp.void{color:var(--t-ink-2)}
-.walk .mini-stamp small{display:block;font:600 12px/1.2 var(--mono);margin-top:4px}
+.walk .mini-stamp small{display:block;font:600 12px/1.2 var(--mono);margin-top:4px;white-space:nowrap}
 @media (max-width:420px){
   .walk .mini-ticket{grid-template-columns:80px minmax(0,1fr)}
   .walk .mini-ticket .body{padding:16px 14px}
-  .walk .mini-stamp{right:12px;font-size:24px}
+  .walk .mini-ticket .sp{height:110px}
+  .walk .mini-stamp{right:12px;bottom:48px}
 }

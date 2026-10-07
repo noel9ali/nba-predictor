@@ -6,6 +6,7 @@ import { fmt, pct1, monthDay, MINUS, fractionWord, kellyNoun, teamParts, joinAnd
   FEATURE_COUNT, ELO_DEFAULTS, KELLY_FRACTION, MAX_STAKE } from '../format.js';
 import { stepCourt } from '../court.js';
 import { SAMPLE } from '../api.js';
+import { logo } from '../logo.js';
 
 const has = v => typeof v === 'number' && Number.isFinite(v);
 const one = v => (has(v) ? v.toFixed(1) : '—');
@@ -384,10 +385,20 @@ function gfxTicket(t) {
   const s1 = el('span', null, t.stubLabel + ' ');
   s1.append(el('b', null, t.stubTri));
   stub.append(s1);
-  if (t.stubMeta) stub.append(el('span', null, t.stubMeta));
+  if (t.stubMeta) {
+    // Split meta line at ' · ' boundary: first part (odds) on one span, second part (book) on another
+    const parts = t.stubMeta.split(' · ');
+    if (parts.length === 2) {
+      stub.append(el('span', null, parts[0]));
+      stub.append(el('span', null, parts[1]));
+    } else {
+      stub.append(el('span', null, t.stubMeta));
+    }
+  }
   const body = el('div', 'body');
   t.rows.forEach(r => {
     const row = el('div', 'tm' + (r.lo ? ' lo' : ''));
+    row.append(logo(r.tri, 'mt-logo', 28));
     row.append(el('span', null, r.tri), el('span', null, r.score));
     body.append(row);
   });
