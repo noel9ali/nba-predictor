@@ -37,11 +37,11 @@
 .js .gl.pre .edge-line{opacity:0}
 .js .gl.pre .mk{transform:scaleY(0)}
 .js .gl.pre .tag{opacity:0}
-.js .gl .seg.paint{transition:transform .8s cubic-bezier(.2,.75,.2,1) calc(var(--i) * 90ms)}
-.js .gl .edge-line{transition:opacity .2s calc(var(--i) * 90ms + .7s)}
-.js .gl .seg.hat,.js .gl .seg.short{transition:transform .5s cubic-bezier(.2,.75,.2,1) calc(var(--i) * 90ms + .75s)}
-.js .gl .mk{transition:transform .45s cubic-bezier(.3,.7,.2,1) calc(var(--i) * 90ms + .45s)}
-.js .gl .tag{transition:opacity .35s calc(var(--i) * 90ms + .9s)}
+.js .gl .seg.paint{transition:transform .8s cubic-bezier(.2,.75,.2,1) calc(min(var(--i),3)*50ms)}
+.js .gl .edge-line{transition:opacity .2s calc(min(var(--i),3)*50ms + .6s)}
+.js .gl .seg.hat,.js .gl .seg.short{transition:transform .45s cubic-bezier(.2,.75,.2,1) calc(min(var(--i),3)*50ms + .6s)}
+.js .gl .mk{transition:transform .45s cubic-bezier(.3,.7,.2,1) calc(min(var(--i),3)*50ms + .4s)}
+.js .gl .tag{transition:opacity .3s calc(min(var(--i),3)*50ms + .7s)}
 
 /* banners (feed down; prediction failed) */
 .banner{background:var(--stock);color:var(--t-ink);padding:13px 16px;border-left:6px solid var(--t-lost);font:500 14px/1.45 var(--body);
