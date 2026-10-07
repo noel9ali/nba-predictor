@@ -289,3 +289,23 @@ html[data-feed="delayed"] .band .st.live::before,html[data-feed="down"] .band .s
 /* the status pill and sample tag arrive after first paint; on narrow screens they wrap to their own row,
    so reserve it to keep the page from jumping (layout shift) */
 @media (max-width:700px){.top__r{min-height:24px}}
+@media (max-width:480px){
+  .top{display:grid;grid-template-columns:minmax(0,auto) 1fr;grid-template-rows:minmax(0,auto) 44px;gap:0 14px;row-gap:6px;padding-block:9px;align-items:center;margin:0;width:100%;min-width:0}
+  .brand{margin:0;min-width:0;white-space:nowrap}
+  .brand small{display:none}
+  .tabs{grid-column:1/-1;grid-row:2;flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x proximity;scrollbar-width:none;overflow-y:hidden;padding-block:4px;gap:0;padding:0 14px;margin:0;width:100%;min-width:0}
+  .tabs::-webkit-scrollbar{display:none}
+  .tabs a{flex:none;padding:0 12px;scroll-snap-align:start;min-height:44px}
+  .top__r{grid-column:2;grid-row:1;align-items:baseline;margin:0;min-height:0;height:auto;min-width:0;overflow:hidden;display:flex;gap:8px;flex-wrap:nowrap;justify-content:flex-end}
+  .status{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1;padding-block:5px;min-width:0;flex:0 1 auto}
+  .sample-tag{white-space:nowrap;line-height:1;flex:none}
+  [data-status-text]{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  .status i{margin-right:0}
+}
+@media (max-width:360px){
+  .brand{gap:8px}
+  .brand b{font-size:18px}
+  .top{column-gap:6px}
+  .top__r{gap:6px}
+  .sample-tag{letter-spacing:.06em;padding:4px 5px}
+}
