@@ -18,6 +18,27 @@ const phaseOf = () => (store.slate && (store.slate.offseason ? 'offseason' : sto
 function setHTML(el, html) { if (el && el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; } }
 function setText(el, t) { if (el && el.textContent !== t) el.textContent = t; }
 
+// Render kicker parts with span.kp elements (no wrapping, bullets attached to parts).
+function renderKickerSpan(el, text) {
+  if (!el || el.dataset.k === text) return;
+  el.dataset.k = text;
+  const parts = text.split(' · ');
+  el.innerHTML = '';
+  parts.forEach((part, i) => {
+    const span = document.createElement('span');
+    span.className = 'kp';
+    if (i < parts.length - 1) {
+      span.textContent = part + ' ·';  // NBSP + bullet for all but last
+    } else {
+      span.textContent = part;  // Last part, no separator
+    }
+    el.appendChild(span);
+    if (i < parts.length - 1) {
+      el.appendChild(document.createTextNode(' '));  // Space between parts
+    }
+  });
+}
+
 // Server-settled night: every bet carries bet.result, or a past night with a recap.
 function isOfficial() {
   if (store.isPast && store.slate && store.slate.recap) return true;
@@ -95,10 +116,14 @@ export function renderLede(s, { error = false } = {}) {
   const date = fmt.date(store.slate.date, { weekday: 'long', month: 'long', day: 'numeric' });
   kick.hidden = false;
   if (phase === 'no_games' || phase === 'offseason') {
-    setText(eyebrow, date); setText(counts, phase === 'offseason' ? 'offseason' : 'no games'); sep.hidden = false;
+    renderKickerSpan(eyebrow, date);
+    renderKickerSpan(counts, phase === 'offseason' ? 'offseason' : 'no games');
+    sep.innerHTML = '<span class="kp"> · </span>';
+    sep.hidden = false;
   } else {
-    setText(eyebrow, date + ' · ' + plural(s.games, 'game'));
-    setText(counts, s.final + ' final · ' + s.live + ' live · ' + s.upcoming + ' to come' + (s.postponed > 0 ? ' · ' + s.postponed + ' postponed' : ''));
+    renderKickerSpan(eyebrow, date + ' · ' + plural(s.games, 'game'));
+    renderKickerSpan(counts, s.final + ' final · ' + s.live + ' live · ' + s.upcoming + ' to come' + (s.postponed > 0 ? ' · ' + s.postponed + ' postponed' : ''));
+    sep.innerHTML = '<span class="kp"> · </span>';
     sep.hidden = false;
   }
   setHTML(h1, sentence(s));

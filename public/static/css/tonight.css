@@ -220,4 +220,5 @@ html.drawer-open{overflow:hidden}
 @media (max-width:760px){#tonight.loading .courts{min-height:900px}}
 #tonight.loading .lede h1{min-height:calc(3 * 1.14em)}
 .lede .kick{min-height:12px}
+.lede .kick .kp{white-space:nowrap}
 @media (max-width:600px){.lede .kick{min-height:24px}}
