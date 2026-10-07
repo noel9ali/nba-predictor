@@ -1,6 +1,10 @@
 # State (updated Oct 6, 2026, end of Checkpoint D)
 
-## In progress: `/api/live-scores` (branch `live-scores`, Oct 7, 2026)
+## Release Oct 7, 2026 (branch `release-2026-10-07` → main)
+`live-scores` + `production-model-gb` merged after sonnet security reviews (no confirmed findings) and a Playwright-CLI frontend
+check. Release log and resume checklist: memory `release-run-2026-10-07.md`.
+
+## Done: `/api/live-scores` (branch `live-scores`, Oct 7, 2026)
 Worktree `C:\Users\noel9\Desktop\nba-predictor\.claude\worktrees\live-scores`, off main `b8fe54d`. Noel approved building it.
 - Upstream: `todaysScoreboard_00.json`. `cdn.nba.com` answers 403 (Akamai) from the laptop; the S3 origin
   `nba-prod-us-east-1-mediaops-stats.s3.amazonaws.com/NBA/liveData/scoreboard/…` answers 200 with the same JSON. The proxy tries the CDN,
