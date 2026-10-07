@@ -33,7 +33,7 @@ SCALER_PATH = "data/scaler.pkl"
 METADATA_PATH = "data/model_metadata.json"
 LEADERBOARD_PATH = "data/model_leaderboard.csv"
 RANDOM_STATE = 42
-DEFAULT_PRODUCTION_MODEL = "legacy-calibrated-logistic"
+DEFAULT_PRODUCTION_MODEL = "gradient-boosting-gridsearch"
 
 FEATURES = [
     "HOME_roll_PTS",
