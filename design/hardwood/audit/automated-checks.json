@@ -1,0 +1,600 @@
+{
+ "tonight-live-1440": {
+  "height": 5883,
+  "overflowMax": 0,
+  "offscreen": [],
+  "svgText": [
+   "{\"svg\":\"\",\"parent\":\"chart pre\",\"a\":\"−$91.67\",\"b\":\"Tonight $1,106.26\",\"overlap\":true,\"gap\":-11}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"60%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"70%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"\",\"parent\":\"chart\",\"a\":\"−$91.67\",\"b\":\"Tonight $1,106.26\",\"overlap\":true,\"gap\":-11}",
+   "{\"svg\":\"\",\"parent\":\"chart pop\",\"a\":\"−$91.67\",\"b\":\"Tonight $1,106.26\",\"overlap\":true,\"gap\":-11}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib\",\"a\":\"60%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib\",\"a\":\"70%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}"
+  ],
+  "htmlLabels": [],
+  "clipped": [],
+  "ellipsized": [
+   "\"Minnesota Timberwolves · 7–8\""
+  ],
+  "smallTargets": [],
+  "brokenImgs": [],
+  "badText": [],
+  "h1": [
+   "The model found 5 bets in 6 games. Next up: SAC −105 at 10:30 PM, edge +9.8."
+  ],
+  "errors": [],
+  "csp": []
+ },
+ "tonight-live-768": {
+  "height": 7479,
+  "overflowMax": 0,
+  "offscreen": [
+   "article.ticket.pre.is-final L-41 R665",
+   "button.ticket__hit L-41 R665",
+   "div.stub L-41 R55",
+   "span.who L-29 R41",
+   "b.stub-pick L-29 R41",
+   "span. L-29 R41",
+   "b. L-29 R41",
+   "span.no L-29 R41",
+   "article.ticket.pre L-41 R665"
+  ],
+  "svgText": [
+   "{\"svg\":\"\",\"parent\":\"chart pre\",\"a\":\"−$91.67\",\"b\":\"Tonight $1,106.26\",\"overlap\":true,\"gap\":-11}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":true,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"70%\",\"b\":\"Model said · dot size = picks\",\"overlap\":true,\"gap\":0}",
+   "{\"svg\":\"\",\"parent\":\"chart\",\"a\":\"−$91.67\",\"b\":\"Tonight $1,106.26\",\"overlap\":true,\"gap\":-11}",
+   "{\"svg\":\"\",\"parent\":\"chart pop\",\"a\":\"−$91.67\",\"b\":\"Tonight $1,106.26\",\"overlap\":true,\"gap\":-11}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":true,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib\",\"a\":\"70%\",\"b\":\"Model said · dot size = picks\",\"overlap\":true,\"gap\":0}"
+  ],
+  "htmlLabels": [],
+  "clipped": [],
+  "ellipsized": [],
+  "smallTargets": [],
+  "brokenImgs": [],
+  "badText": [],
+  "h1": [
+   "The model found 5 bets in 6 games. Next up: SAC −105 at 10:30 PM, edge +9.8."
+  ],
+  "errors": [],
+  "csp": []
+ },
+ "tonight-live-400": {
+  "height": 7738,
+  "overflowMax": 0,
+  "offscreen": [
+   "article.ticket.pre.is-final L-56 R312",
+   "button.ticket__hit L-56 R312",
+   "div.stub L-56 R312",
+   "span.who L-38 R58",
+   "span. L-38 R61",
+   "div.ticket__body L-56 R312",
+   "div.band L-56 R312",
+   "span. L-40 R126",
+   "div.match L-40 R296",
+   "div.team.is-pick L-40 R220",
+   "img.logo.t-logo L-40 R-8",
+   "div.team.not-pick L-40 R220",
+   "div.foot L-40 R296",
+   "span. L-40 R39",
+   "article.ticket.pre L-56 R312",
+   "span.who L-38 R61",
+   "div.team.not-pick L-40 R234",
+   "div.team.is-pick L-40 R234",
+   "dl.lines L-40 R296",
+   "dt. L-40 R65",
+   "span.who L-38 R54",
+   "span.who L-38 R55",
+   "div.team.not-pick L-40 R257",
+   "div.team.is-pick L-40 R257"
+  ],
+  "svgText": [
+   "{\"svg\":\"\",\"parent\":\"chart pre\",\"a\":\"−$91.67\",\"b\":\"Tonight $1,106.26\",\"overlap\":true,\"gap\":-9}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"60%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"70%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"80%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"\",\"parent\":\"chart\",\"a\":\"−$91.67\",\"b\":\"Tonight $1,106.26\",\"overlap\":true,\"gap\":-9}",
+   "{\"svg\":\"\",\"parent\":\"chart pop\",\"a\":\"−$91.67\",\"b\":\"Tonight $1,106.26\",\"overlap\":true,\"gap\":-9}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib\",\"a\":\"60%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib\",\"a\":\"70%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib\",\"a\":\"80%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}"
+  ],
+  "htmlLabels": [],
+  "clipped": [],
+  "ellipsized": [
+   "\"Miami Heat · 5–7\"",
+   "\"New York Knicks · 6–3\"",
+   "\"Minnesota Timberwolves · 7–8\"",
+   "\"Cleveland Cavaliers · 5–6\"",
+   "\"Los Angeles Lakers · 8–9\"",
+   "\"Sacramento Kings · 6–9\""
+  ],
+  "smallTargets": [],
+  "brokenImgs": [],
+  "badText": [],
+  "h1": [
+   "The model found 5 bets in 6 games. Next up: SAC −105 at 10:30 PM, edge +9.8."
+  ],
+  "errors": [],
+  "csp": []
+ },
+ "past-1440": {
+  "height": 5209,
+  "overflowMax": 0,
+  "offscreen": [],
+  "svgText": [
+   "{\"svg\":\"\",\"parent\":\"chart pre\",\"a\":\"−$91.67\",\"b\":\"Nov 16 +$25.47\",\"overlap\":true,\"gap\":-12}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"60%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"70%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"\",\"parent\":\"chart\",\"a\":\"−$91.67\",\"b\":\"Nov 16 +$25.47\",\"overlap\":true,\"gap\":-12}",
+   "{\"svg\":\"\",\"parent\":\"chart pop\",\"a\":\"−$91.67\",\"b\":\"Nov 16 +$25.47\",\"overlap\":true,\"gap\":-12}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib\",\"a\":\"60%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib\",\"a\":\"70%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}"
+  ],
+  "htmlLabels": [],
+  "clipped": [],
+  "ellipsized": [
+   "\"Oklahoma City Thunder · 5–5\""
+  ],
+  "smallTargets": [],
+  "brokenImgs": [],
+  "badText": [],
+  "h1": [
+   "Night over. Bets went 2–1 for +$25.47."
+  ],
+  "errors": [],
+  "csp": []
+ },
+ "past-400": {
+  "height": 6652,
+  "overflowMax": 0,
+  "offscreen": [
+   "article.ticket.pre.is-final L-56 R312",
+   "button.ticket__hit L-56 R312",
+   "div.stub L-56 R312",
+   "span.who L-38 R108",
+   "span. L-38 R45",
+   "div.ticket__body L-56 R312",
+   "div.band L-56 R312",
+   "span. L-40 R126",
+   "div.match L-40 R296",
+   "div.team.is-pick L-40 R234",
+   "img.logo.t-logo L-40 R-8",
+   "div.team.not-pick L-40 R234",
+   "div.foot L-40 R296",
+   "span. L-40 R39",
+   "span.who L-38 R57",
+   "span. L-38 R61",
+   "div.team.not-pick L-40 R220",
+   "div.team.is-pick L-40 R220"
+  ],
+  "svgText": [
+   "{\"svg\":\"\",\"parent\":\"chart pre\",\"a\":\"−$91.67\",\"b\":\"Nov 16 +$25.47\",\"overlap\":true,\"gap\":-9}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"60%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"70%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"80%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"\",\"parent\":\"chart\",\"a\":\"−$91.67\",\"b\":\"Nov 16 +$25.47\",\"overlap\":true,\"gap\":-9}",
+   "{\"svg\":\"\",\"parent\":\"chart pop\",\"a\":\"−$91.67\",\"b\":\"Nov 16 +$25.47\",\"overlap\":true,\"gap\":-9}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib\",\"a\":\"60%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib\",\"a\":\"70%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib\",\"a\":\"80%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}"
+  ],
+  "htmlLabels": [],
+  "clipped": [],
+  "ellipsized": [
+   "\"Toronto Raptors · 7–6\"",
+   "\"Washington Wizards · 5–10\"",
+   "\"Atlanta Hawks · 4–9\"",
+   "\"Oklahoma City Thunder · 5–5\"",
+   "\"Philadelphia 76ers · 8–7\""
+  ],
+  "smallTargets": [],
+  "brokenImgs": [],
+  "badText": [],
+  "h1": [
+   "Night over. Bets went 2–1 for +$25.47."
+  ],
+  "errors": [],
+  "csp": []
+ },
+ "model-1440": {
+  "height": 11554,
+  "overflowMax": 0,
+  "offscreen": [],
+  "svgText": [
+   "{\"svg\":\"cal-svg\",\"parent\":\"\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":true,\"gap\":0}",
+   "{\"svg\":\"\",\"parent\":\"bump rv in\",\"a\":\"lower is better\",\"b\":\"0.209\",\"overlap\":true,\"gap\":-3}"
+  ],
+  "htmlLabels": [],
+  "clipped": [
+   "p.sr \"Showing All time: 124–65 picks, 65.6% ri\"",
+   "caption.sr \"The 16 inputs the model sees for Golden \"",
+   "span.sr \"Step 1.\"",
+   "span.sr \"Step 2.\"",
+   "span.sr \"Step 3.\"",
+   "span.sr \"Step 4.\"",
+   "span.sr \"Step 5.\"",
+   "span.sr \"Step 6.\"",
+   "span.sr \"Step 7.\"",
+   "caption.sr \"Test-set scores for each model\""
+  ],
+  "ellipsized": [],
+  "smallTargets": [],
+  "brokenImgs": [],
+  "badText": [],
+  "h1": [
+   "Home-team rule"
+  ],
+  "errors": [],
+  "csp": []
+ },
+ "model-768": {
+  "height": 11281,
+  "overflowMax": 0,
+  "offscreen": [],
+  "svgText": [
+   "{\"svg\":\"cal-svg\",\"parent\":\"\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":true,\"gap\":0}",
+   "{\"svg\":\"\",\"parent\":\"bump rv in\",\"a\":\"lower is better\",\"b\":\"0.209\",\"overlap\":true,\"gap\":-3}",
+   "{\"svg\":\"\",\"parent\":\"bump rv in\",\"a\":\"68.1%\",\"b\":\"Calibrated logistic\",\"overlap\":false,\"gap\":2}",
+   "{\"svg\":\"\",\"parent\":\"bump rv in\",\"a\":\"0.729\",\"b\":\"Calibrated logistic\",\"overlap\":false,\"gap\":2}"
+  ],
+  "htmlLabels": [],
+  "clipped": [
+   "p.sr \"Showing All time: 124–65 picks, 65.6% ri\"",
+   "caption.sr \"The 16 inputs the model sees for Golden \"",
+   "span.sr \"Step 1.\"",
+   "span.sr \"Step 2.\"",
+   "span.sr \"Step 3.\"",
+   "span.sr \"Step 4.\"",
+   "span.sr \"Step 5.\"",
+   "span.sr \"Step 6.\"",
+   "span.sr \"Step 7.\"",
+   "caption.sr \"Test-set scores for each model\""
+  ],
+  "ellipsized": [
+   "\"2019–20\""
+  ],
+  "smallTargets": [],
+  "brokenImgs": [],
+  "badText": [],
+  "h1": [
+   "Home-team rule"
+  ],
+  "errors": [],
+  "csp": []
+ },
+ "model-400": {
+  "height": 12639,
+  "overflowMax": 0,
+  "offscreen": [],
+  "svgText": [
+   "{\"svg\":\"cal-svg\",\"parent\":\"\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":true,\"gap\":-1}",
+   "{\"svg\":\"cal-svg\",\"parent\":\"\",\"a\":\"perfect\",\"b\":\"7\",\"overlap\":false,\"gap\":2}"
+  ],
+  "htmlLabels": [],
+  "clipped": [
+   "p.sr \"Showing All time: 124–65 picks, 65.6% ri\"",
+   "caption.sr \"The 16 inputs the model sees for Golden \"",
+   "span.sr \"Step 1.\"",
+   "span.sr \"Step 2.\"",
+   "span.sr \"Step 3.\"",
+   "span.sr \"Step 4.\"",
+   "span.sr \"Step 5.\"",
+   "span.sr \"Step 6.\"",
+   "span.sr \"Step 7.\"",
+   "caption.sr \"Test-set scores for each model\""
+  ],
+  "ellipsized": [
+   "\"2019–20\"",
+   "\"2020–21\"",
+   "\"2021–22\"",
+   "\"2022–23\"",
+   "\"2023–24\"",
+   "\"2024–25\"",
+   "\"2025–26\"",
+   "\"854 + 371\""
+  ],
+  "smallTargets": [],
+  "brokenImgs": [],
+  "badText": [],
+  "h1": [
+   "Home-team rule"
+  ],
+  "errors": [],
+  "csp": []
+ },
+ "sc-nextup-1440": {
+  "height": 5883,
+  "overflowMax": 0,
+  "offscreen": [],
+  "svgText": [
+   "{\"svg\":\"\",\"parent\":\"chart pre\",\"a\":\"−$91.67\",\"b\":\"Tonight $1,111.67\",\"overlap\":true,\"gap\":-6}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"60%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"70%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}"
+  ],
+  "htmlLabels": [],
+  "clipped": [],
+  "ellipsized": [],
+  "smallTargets": [],
+  "brokenImgs": [],
+  "badText": [],
+  "h1": [
+   "The model found 5 bets in 6 games. Next up: MIA +105 at 7:00 PM, edge +12.2."
+  ],
+  "errors": [],
+  "csp": []
+ },
+ "sc-sofar-1440": {
+  "height": 5826,
+  "overflowMax": 0,
+  "offscreen": [],
+  "svgText": [
+   "{\"svg\":\"\",\"parent\":\"chart pre\",\"a\":\"−$91.67\",\"b\":\"Tonight $1,120.16\",\"overlap\":true,\"gap\":-5}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"60%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"70%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}"
+  ],
+  "htmlLabels": [],
+  "clipped": [],
+  "ellipsized": [
+   "\"Minnesota Timberwolves · 7–8\""
+  ],
+  "smallTargets": [],
+  "brokenImgs": [],
+  "badText": [],
+  "h1": [
+   "Every bet has tipped. If it ended now: +$8.49."
+  ],
+  "errors": [],
+  "csp": []
+ },
+ "sc-final-1440": {
+  "height": 5883,
+  "overflowMax": 0,
+  "offscreen": [],
+  "svgText": [
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"60%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"70%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}"
+  ],
+  "htmlLabels": [],
+  "clipped": [],
+  "ellipsized": [
+   "\"Minnesota Timberwolves · 7–8\""
+  ],
+  "smallTargets": [],
+  "brokenImgs": [],
+  "badText": [],
+  "h1": [
+   "Night over. Bets went 4–1 for +$117.01, unofficial until the 6 AM settle."
+  ],
+  "errors": [],
+  "csp": []
+ },
+ "sc-nobets-1440": {
+  "height": 5854,
+  "overflowMax": 0,
+  "offscreen": [],
+  "svgText": [
+   "{\"svg\":\"\",\"parent\":\"chart pre\",\"a\":\"−$91.67\",\"b\":\"Tonight $1,111.67\",\"overlap\":true,\"gap\":-13}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"60%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"70%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}"
+  ],
+  "htmlLabels": [],
+  "clipped": [],
+  "ellipsized": [],
+  "smallTargets": [],
+  "brokenImgs": [],
+  "badText": [],
+  "h1": [
+   "The model found no bets in 6 games tonight."
+  ],
+  "errors": [],
+  "csp": []
+ },
+ "sc-before-1440": {
+  "height": 5727,
+  "overflowMax": 0,
+  "offscreen": [],
+  "svgText": [
+   "{\"svg\":\"\",\"parent\":\"chart pre\",\"a\":\"−$91.67\",\"b\":\"Tonight $1,111.67\",\"overlap\":true,\"gap\":-13}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"60%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"70%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}"
+  ],
+  "htmlLabels": [],
+  "clipped": [],
+  "ellipsized": [],
+  "smallTargets": [],
+  "brokenImgs": [],
+  "badText": [],
+  "h1": [
+   "Picks post about an hour before the first tip."
+  ],
+  "errors": [],
+  "csp": []
+ },
+ "sc-before-400": {
+  "height": 7411,
+  "overflowMax": 0,
+  "offscreen": [
+   "article.ticket.pre L-56 R312",
+   "button.ticket__hit L-56 R312",
+   "div.stub L-56 R312",
+   "span.who L-38 R71",
+   "div.ticket__body L-56 R312",
+   "div.band L-56 R312",
+   "span. L-40 R126",
+   "div.match L-40 R296",
+   "div.team.not-pick L-40 R263",
+   "img.logo.t-logo L-40 R-8",
+   "dl.lines L-40 R296",
+   "dt. L-40 R5"
+  ],
+  "svgText": [
+   "{\"svg\":\"\",\"parent\":\"chart pre\",\"a\":\"−$91.67\",\"b\":\"Tonight $1,111.67\",\"overlap\":true,\"gap\":-11}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"60%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"70%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"80%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}"
+  ],
+  "htmlLabels": [],
+  "clipped": [],
+  "ellipsized": [],
+  "smallTargets": [],
+  "brokenImgs": [],
+  "badText": [],
+  "h1": [
+   "Picks post about an hour before the first tip."
+  ],
+  "errors": [],
+  "csp": []
+ },
+ "sc-failed-1440": {
+  "height": 5742,
+  "overflowMax": 0,
+  "offscreen": [],
+  "svgText": [
+   "{\"svg\":\"\",\"parent\":\"chart pre\",\"a\":\"−$91.67\",\"b\":\"Tonight $1,111.67\",\"overlap\":true,\"gap\":-13}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"60%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"70%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}"
+  ],
+  "htmlLabels": [],
+  "clipped": [],
+  "ellipsized": [],
+  "smallTargets": [],
+  "brokenImgs": [],
+  "badText": [],
+  "h1": [
+   "Tonight's picks didn't post."
+  ],
+  "errors": [],
+  "csp": []
+ },
+ "sc-offseason-1440": {
+  "height": 3631,
+  "overflowMax": 0,
+  "offscreen": [],
+  "svgText": [
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"60%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"70%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}"
+  ],
+  "htmlLabels": [],
+  "clipped": [],
+  "ellipsized": [],
+  "smallTargets": [],
+  "brokenImgs": [],
+  "badText": [],
+  "h1": [
+   "Offseason"
+  ],
+  "errors": [],
+  "csp": []
+ },
+ "sc-offseason-400": {
+  "height": 4058,
+  "overflowMax": 0,
+  "offscreen": [],
+  "svgText": [
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"60%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"70%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"80%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}"
+  ],
+  "htmlLabels": [],
+  "clipped": [],
+  "ellipsized": [],
+  "smallTargets": [],
+  "brokenImgs": [],
+  "badText": [],
+  "h1": [
+   "Offseason"
+  ],
+  "errors": [],
+  "csp": []
+ },
+ "sc-edges-1440": {
+  "height": 6404,
+  "overflowMax": 0,
+  "offscreen": [],
+  "svgText": [
+   "{\"svg\":\"\",\"parent\":\"chart pre\",\"a\":\"−$91.67\",\"b\":\"Tonight $1,122.64\",\"overlap\":true,\"gap\":-4}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"60%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"70%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}"
+  ],
+  "htmlLabels": [],
+  "clipped": [],
+  "ellipsized": [
+   "\"Minnesota Timberwolves · 7–8\""
+  ],
+  "smallTargets": [],
+  "brokenImgs": [],
+  "badText": [],
+  "h1": [
+   "The model found 4 bets in 7 games. Next up: NYK −118 at 8:30 PM, edge +3.9."
+  ],
+  "errors": [],
+  "csp": []
+ },
+ "sc-stale-1440": {
+  "height": 5883,
+  "overflowMax": 0,
+  "offscreen": [],
+  "svgText": [
+   "{\"svg\":\"\",\"parent\":\"chart pre\",\"a\":\"−$91.67\",\"b\":\"Tonight $1,106.26\",\"overlap\":true,\"gap\":-11}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"60%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"70%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}"
+  ],
+  "htmlLabels": [],
+  "clipped": [],
+  "ellipsized": [
+   "\"Minnesota Timberwolves · 7–8\""
+  ],
+  "smallTargets": [],
+  "brokenImgs": [],
+  "badText": [],
+  "h1": [
+   "The model found 5 bets in 6 games. Next up: SAC −105 at 10:30 PM, edge +9.8."
+  ],
+  "errors": [],
+  "csp": []
+ },
+ "sc-feeddown-1440": {
+  "height": 5955,
+  "overflowMax": 0,
+  "offscreen": [],
+  "svgText": [
+   "{\"svg\":\"\",\"parent\":\"chart pre\",\"a\":\"−$91.67\",\"b\":\"Tonight $1,111.67\",\"overlap\":true,\"gap\":-6}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"40%\",\"b\":\"50%\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"60%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}",
+   "{\"svg\":\"calib-svg\",\"parent\":\"chart calib pre\",\"a\":\"70%\",\"b\":\"Model said · dot size = picks\",\"overlap\":false,\"gap\":0}"
+  ],
+  "htmlLabels": [],
+  "clipped": [],
+  "ellipsized": [],
+  "smallTargets": [],
+  "brokenImgs": [],
+  "badText": [],
+  "h1": [
+   "The model found 5 bets in 6 games. Next up: MIA +105 at 7:00 PM, edge +12.2."
+  ],
+  "errors": [],
+  "csp": []
+ }
+}
