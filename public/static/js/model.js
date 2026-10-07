@@ -26,7 +26,6 @@ function show(section, ok) { section.hidden = !ok; numberChapters(); }
 export function numberChapters() {
   let n = 0;
   document.querySelectorAll('section.chapter').forEach(s => {
-    if (s.hidden) return;
     n++;
     const k = s.querySelector('.ch .k');
     if (k) k.textContent = 'Chapter ' + n;
@@ -116,11 +115,42 @@ modelP.then(m => { if (m) { renderModelChapters(m); observeReveals(); } });
 
 Promise.all([detailP, first]).then(([d, m]) => {
   detail = d;
-  const ok = !!d && !!safe(() => initWalkthrough(ch(3), d, m || {}), ch(3), 'chapter 3');
-  show(ch(3), ok);
+  const walkthrough = ch(3);
+  const body = walkthrough && walkthrough.querySelector('[data-body]');
+  const lede = walkthrough && walkthrough.querySelector('[data-lede]');
+
+  let walkthroughOk = false;
+  if (d && safe(() => initWalkthrough(walkthrough, d, m || {}), walkthrough, 'chapter 3')) {
+    walkthroughOk = true;
+  } else if (body) {
+    // Show fallback card when walkthrough fails
+    body.textContent = '';
+    const card = document.createElement('div');
+    card.className = 'card walk-fallback';
+    card.setAttribute('role', 'status');
+    const p = document.createElement('p');
+    p.textContent = 'Walkthrough unavailable: the featured game couldn\'t load.';
+    card.append(p);
+    body.append(card);
+    if (lede) lede.textContent = '';
+    walkthroughOk = true;  // Keep ch3 visible with fallback
+  }
+  show(ch(3), walkthroughOk);
+
   if (d && seasons && seasons.rowCardMount) {
     safe(() => renderRowCard(seasons.rowCardMount, { detail: d, rollingWindow: (m && m.training && m.training.rolling_window) || 10 }), null, 'row card');
+  } else if (seasons && seasons.rowCardMount && seasons.rowCardMount.parentElement) {
+    // Show fallback row card when detail is missing
+    seasons.rowCardMount.textContent = '';
+    const card = document.createElement('div');
+    card.className = 'card rowcard-fallback';
+    card.setAttribute('role', 'status');
+    const p = document.createElement('p');
+    p.textContent = '"One game, one row" is unavailable: the featured game couldn\'t load.';
+    card.append(p);
+    seasons.rowCardMount.append(card);
   }
+
   observeReveals();
 });
 
