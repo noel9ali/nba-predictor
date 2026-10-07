@@ -149,10 +149,30 @@ function show(i, announce) {
   cross.setAttribute('x1', p[0]); cross.setAttribute('x2', p[0]); cross.setAttribute('visibility', 'visible');
   const sc = host.clientWidth / geo.W;
   tip.hidden = false;
-  tip.style.left = Math.min(Math.max(p[0] * sc, 90), host.clientWidth - 90) + 'px';
-  tip.style.top = (p[1] * sc) + 'px';
   const parts = tipContent(x);
   tip.innerHTML = parts.join('<br>');
+  // Measure tooltip after setting content
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  const PAD = 8;
+  // X positioning: clamp with padding, or center if tooltip wider than available space
+  const hostW = host.clientWidth;
+  const px = p[0] * sc;
+  let left;
+  if (tw > hostW - 2 * PAD) {
+    left = hostW / 2;
+  } else {
+    left = Math.max(PAD + tw / 2, Math.min(px, hostW - PAD - tw / 2));
+  }
+  // Y positioning: above by default (12px gap), below if would go above top
+  const py = p[1] * sc;
+  let top;
+  if (py - 12 - th < 0) {
+    top = py + 14;
+  } else {
+    top = py - 12 - th;
+  }
+  tip.style.setProperty('left', left + 'px');
+  tip.style.setProperty('top', top + 'px');
   if (announce) $('[data-chart-live]').textContent = parts.map(t => t.replace(/<[^>]+>/g, '')).join('. ');
 }
 function hide() {

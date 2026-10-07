@@ -112,7 +112,7 @@
 .chart .pk{fill:var(--ball);stroke:var(--panel);stroke-width:2}
 .chart .lbl{font:600 12px/1 var(--mono);fill:var(--ink)}
 .chart .cross{stroke:var(--ink-2);stroke-width:1;stroke-dasharray:3 3}
-.chart .tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--panel);font:500 12px/1.45 var(--mono);padding:8px 10px;white-space:nowrap;z-index:5;transform:translate(-50%,-110%)}
+.chart .tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--panel);font:500 12px/1.45 var(--mono);padding:8px 10px;white-space:nowrap;z-index:5;transform:translateX(-50%)}
 .chart .tip b{font-weight:600}
 .chart[data-testid="bankroll"]{touch-action:pan-y}
 .js .chart.pre .ln{stroke-dashoffset:var(--len)}
