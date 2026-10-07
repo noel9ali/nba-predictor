@@ -300,9 +300,24 @@ export function mountModelCard(m) {
     ['Always pick home', T.baseline_home_win_rate != null ? fmt.pct(T.baseline_home_win_rate) : '—'],
     ['Brier score', T.brier != null ? T.brier.toFixed(3) : '—']
   ];
+  // Filter out empty rows: "Live model" when production_model is null, "Retrained" when trained_at is null/invalid
+  const filteredRows = rows.filter((row, i) => {
+    const label = row[0];
+    if (label === 'Live model' && !m.production_model) return false;
+    if (label === 'Retrained' && (!m.trained_at || Number.isNaN(Date.parse(m.trained_at)))) return false;
+    return true;
+  });
+  // If any rows precede "This season", apply sep class to the first "This season" row
+  const thisSeasonIdx = filteredRows.findIndex(r => r[0] === 'This season');
+  if (thisSeasonIdx > 0 && !filteredRows[thisSeasonIdx][2]) {
+    filteredRows[thisSeasonIdx] = [filteredRows[thisSeasonIdx][0], filteredRows[thisSeasonIdx][1], 'sep'];
+  } else if (thisSeasonIdx === 0 && filteredRows[thisSeasonIdx][2] === 'sep') {
+    // Remove sep class if it's the first row
+    filteredRows[thisSeasonIdx] = [filteredRows[thisSeasonIdx][0], filteredRows[thisSeasonIdx][1]];
+  }
   const dl = $('[data-testid=mfacts]');
   dl.textContent = '';
-  rows.forEach(([a, b, cls]) => {
+  filteredRows.forEach(([a, b, cls]) => {
     const dt = document.createElement('dt'), dd = document.createElement('dd');
     dt.textContent = a; dd.textContent = b;
     if (cls) { dt.className = cls; dd.className = cls; }

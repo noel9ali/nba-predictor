@@ -66,7 +66,11 @@ export function initClaim(model) {
   pin = $('.claim .pin'); head = $('.pin__head', pin); scrolly = $('[data-scrolly]');
   const kick = $('[data-kicker]');
   const parts = ['The model'];
-  if (model && model.production_model) parts.push(model.production_model);
+  if (model && model.production_model) {
+    parts.push(model.production_model);
+  } else if (model) {
+    parts.push('Production model unavailable');
+  }
   if (model && model.trained_at && !Number.isNaN(Date.parse(model.trained_at))) parts.push('retrained ' + etDate(model.trained_at));
   kick.textContent = parts.join(' · ');
   const T = model && model.test;
