@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import app as dashboard  # noqa: E402
 import daily_workflow  # noqa: E402
 from contract_shapes import (  # noqa: E402
-    DAYS, FEATURED_PICK, GAME_DETAIL, MODEL, PERFORMANCE, PREDICTIONS, SLATE,
+    DAYS, FEATURED_PICK, GAME_DETAIL, LIVE_SCORES, MODEL, PERFORMANCE, PREDICTIONS, SLATE,
     WORKFLOW_STATUS, check,
 )
 from database import DatabaseError, MissingColumnError, MissingTableError  # noqa: E402
@@ -786,6 +786,235 @@ class PostMigrationHostileTests(ApiTestCase):
         self.assertEqual(self.get("/api/model").get_json()["production_model"], HOSTILE)
         latest = self.get("/api/workflow-status").get_json()["latest"]
         self.assertEqual(latest["morning"]["notes"], HOSTILE)
+
+
+# ---------------------------------------------------------------------------
+# /api/live-scores: the cached proxy to the NBA live scoreboard (src/live_scores.py)
+# ---------------------------------------------------------------------------
+
+LIVE_TODAY = date(2026, 4, 12)  # v2_tables has two unsettled games that night
+
+
+def upstream_game(game_id, status, text, period=0, clock="", home=0, away=0):
+    return {"gameId": game_id, "gameStatus": status, "gameStatusText": text, "period": period,
+            "gameClock": clock, "gameTimeUTC": "2026-04-12T23:30:00Z",
+            "homeTeam": {"teamTricode": "CLE", "score": home},
+            "awayTeam": {"teamTricode": "MIL", "score": away}}
+
+
+def scoreboard(game_date="2026-04-12", games=None):
+    if games is None:
+        games = [
+            upstream_game("0022501190", 3, "Final", 4, "", 112, 104),
+            upstream_game("0022501191", 1, "7:30 pm ET"),
+            upstream_game("0022501192", 2, "3rd Qtr", 3, "PT04M40.00S", 70, 65),
+            upstream_game("0022501193", 2, "Half", 2, "PT00M00.00S", 51, 49),
+            upstream_game("0022501194", 2, "OT", 5, "PT01M30.00S", 110, 108),
+            upstream_game("0022501195", 2, "2OT", 6, "PT00M05.40S", 121, 121),
+            upstream_game("0022501196", 3, "Final/OT", 5, "", 118, 117),
+            upstream_game("0022501197", 1, "PPD"),
+            upstream_game("0022501198", 2, HOSTILE, 1, HOSTILE, 2, 0),
+            upstream_game("not-an-id", 2, "1st Qtr", 1, "PT11M00.00S"),
+        ]
+    return {"meta": {"code": 200}, "scoreboard": {"gameDate": game_date, "games": games}}
+
+
+class FakeHTTPResponse:
+    def __init__(self, status_code=200, body=None):
+        self.status_code = status_code
+        self.body = body
+
+    def json(self):
+        if isinstance(self.body, Exception):
+            raise self.body
+        return self.body
+
+
+class FakeUpstream:
+    """Stands in for requests.get: a response (or exception) per source label."""
+
+    def __init__(self, **by_source):
+        self.by_source = by_source
+        self.calls = []
+
+    def __call__(self, url, headers=None, timeout=None):
+        source = next(s for s, u in dashboard.live_scores.UPSTREAMS if u == url)
+        self.calls.append((source, timeout))
+        result = self.by_source[source]
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+
+class LiveScoresTests(ApiTestCase):
+    env = V2_ON
+
+    def tables(self):
+        return v2_tables()
+
+    def setUp(self):
+        super().setUp()
+        self.clock = [1000.0]
+        self.upstream = FakeUpstream(**{"nba-cdn": FakeHTTPResponse(200, scoreboard()),
+                                        "nba-origin": FakeHTTPResponse(200, scoreboard())})
+        self.board = dashboard.live_scores.LiveScoreboard(http_get=self.upstream,
+                                                          clock=lambda: self.clock[0])
+        for target, value in (("LIVE_SCOREBOARD", self.board), ("today_et", lambda: LIVE_TODAY)):
+            patcher = patch.object(dashboard, target, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def live(self, query="", status=200):
+        return self.get("/api/live-scores" + query, status)
+
+    def test_contract_shape_and_status_mapping(self):
+        response = self.live()
+        body = response.get_json()
+        self.assert_shape(body, LIVE_SCORES)
+        self.assertEqual((body["stale"], body["source"]), (False, "nba-cdn"))
+        games = {g["game_id"]: g for g in body["games"]}
+        self.assertNotIn("not-an-id", games)
+        expected = {
+            "0022501190": ("final", 4, "Final", 112, 104, False),
+            "0022501191": ("scheduled", None, None, None, None, False),
+            "0022501192": ("live", 3, "Q3 4:40", 70, 65, False),
+            "0022501193": ("live", 2, "Half", 51, 49, False),
+            "0022501194": ("live", 5, "OT 1:30", 110, 108, False),
+            "0022501195": ("live", 6, "2OT 0:05", 121, 121, False),
+            "0022501196": ("final", 5, "Final/OT", 118, 117, False),
+            "0022501197": ("postponed", None, None, None, None, True),
+        }
+        for game_id, (status, period, clock, home, away, postponed) in expected.items():
+            with self.subTest(game_id):
+                g = games[game_id]
+                self.assertEqual((g["status"], g["period"], g["clock"], g["home_score"],
+                                  g["away_score"], g["postponed"]),
+                                 (status, period, clock, home, away, postponed))
+
+    def test_upstream_text_never_reaches_the_response(self):
+        response = self.live()
+        self.assertNotIn("onerror", response.get_data(as_text=True))
+        hostile = next(g for g in response.get_json()["games"] if g["game_id"] == "0022501198")
+        self.assertEqual(hostile["clock"], "Q1")  # unparseable clock: the period only
+
+    def test_headers_cdn_cache_and_csp(self):
+        response = self.live()
+        self.assertEqual(response.headers["Cache-Control"],
+                         "public, s-maxage=15, stale-while-revalidate=30")
+        self.assertIn("connect-src 'self'", response.headers["Content-Security-Policy"])
+        self.assertEqual(response.mimetype, "application/json")
+
+    def test_cache_hit_within_15_seconds(self):
+        first = self.live().get_json()
+        self.clock[0] += 14
+        second = self.live().get_json()
+        self.assertEqual(len(self.upstream.calls), 1)
+        self.assertEqual(first["fetched_at"], second["fetched_at"])
+        self.clock[0] += 2
+        self.live()
+        self.assertEqual(len(self.upstream.calls), 2)
+
+    def test_short_timeout(self):
+        self.live()
+        self.assertEqual(self.upstream.calls, [("nba-cdn", 4)])
+
+    def test_refused_cdn_falls_back_to_origin_and_remembers_it(self):
+        self.upstream.by_source["nba-cdn"] = FakeHTTPResponse(403, ValueError("html"))
+        self.assertEqual(self.live().get_json()["source"], "nba-origin")
+        self.clock[0] += 20
+        self.live()
+        self.assertEqual([s for s, _ in self.upstream.calls], ["nba-cdn", "nba-origin", "nba-origin"])
+
+    def test_upstream_failure_serves_last_good_payload_as_stale(self):
+        good = self.live().get_json()
+        self.upstream.by_source["nba-cdn"] = dashboard.live_scores.requests.Timeout("slow")
+        self.upstream.by_source["nba-origin"] = FakeHTTPResponse(200, ValueError("not json"))
+        self.clock[0] += 20
+        stale = self.live().get_json()
+        self.assert_shape(stale, LIVE_SCORES)
+        self.assertTrue(stale["stale"])
+        self.assertEqual((stale["fetched_at"], stale["games"]), (good["fetched_at"], good["games"]))
+        # The failure is cached too: no second round of timeouts inside the window.
+        calls = len(self.upstream.calls)
+        self.live()
+        self.assertEqual(len(self.upstream.calls), calls)
+        # Recovery clears the flag.
+        self.upstream.by_source["nba-cdn"] = FakeHTTPResponse(200, scoreboard())
+        self.clock[0] += 20
+        self.assertFalse(self.live().get_json()["stale"])
+
+    def test_nothing_cached_and_upstream_down_is_503_json(self):
+        for source in ("nba-cdn", "nba-origin"):
+            self.upstream.by_source[source] = dashboard.live_scores.requests.ConnectionError()
+        response = self.live(status=503)
+        self.assertEqual(response.get_json(), {"error": "live_scores_unavailable"})
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
+
+    def test_malformed_scoreboard_counts_as_a_failure(self):
+        for source in ("nba-cdn", "nba-origin"):
+            self.upstream.by_source[source] = FakeHTTPResponse(200, {"scoreboard": {"games": "x"}})
+        self.live(status=503)
+
+    def test_date_validation(self):
+        for bad in ("2026-13-01", "2026-02-30", "tonight", "2026-4-12", "2026-04-12T00:00"):
+            with self.subTest(bad):
+                response = self.client.get("/api/live-scores?date=" + bad)
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.get_json()["error"], "bad_request")
+        self.assertEqual(self.upstream.calls, [])
+        self.live("?date=2026-04-12")
+
+    def test_past_night_answers_from_the_slate_without_upstream(self):
+        response = self.live("?date=2026-04-10")
+        body = response.get_json()
+        self.assert_shape(body, LIVE_SCORES)
+        self.assertEqual((body["stale"], body["source"]), (False, "slate"))
+        self.assertEqual(self.upstream.calls, [])
+        self.assertEqual({g["game_id"] for g in body["games"]},
+                         {"0022501100", "0022501101", "0022501102"})
+        for g in body["games"]:
+            self.assertEqual((g["status"], g["clock"], g["home_score"], g["away_score"]),
+                             ("final", "Final", 110, 100))
+        self.assertEqual(response.headers["Cache-Control"], dashboard.CACHE_PAST)
+
+    def test_future_night_is_empty_not_an_error(self):
+        body = self.live("?date=2026-05-01").get_json()
+        self.assertEqual((body["games"], body["stale"]), ([], False))
+        self.assertEqual(self.upstream.calls, [])
+
+    def test_today_before_the_feed_rolls_over_uses_the_slate(self):
+        self.upstream.by_source["nba-cdn"] = FakeHTTPResponse(200, scoreboard("2026-04-11"))
+        body = self.live().get_json()
+        self.assertEqual(body["source"], "slate")
+        self.assertEqual({(g["game_id"], g["status"]) for g in body["games"]},
+                         {("0022501190", "scheduled"), ("0022501191", "scheduled")})
+
+    def test_yesterday_on_the_feed_is_live(self):
+        self.upstream.by_source["nba-cdn"] = FakeHTTPResponse(200, scoreboard("2026-04-11"))
+        self.assertEqual(self.live("?date=2026-04-11").get_json()["source"], "nba-cdn")
+
+    def test_yesterday_with_upstream_down_falls_back_to_the_slate(self):
+        for source in ("nba-cdn", "nba-origin"):
+            self.upstream.by_source[source] = dashboard.live_scores.requests.ConnectionError()
+        body = self.live("?date=2026-04-11").get_json()
+        self.assertEqual((body["source"], body["stale"]), ("slate", False))
+
+    def test_database_down_on_a_slate_night_is_empty_not_an_error(self):
+        self.db.errors["predictions"] = DatabaseError("down")
+        body = self.live("?date=2026-04-10").get_json()
+        self.assertEqual(body["games"], [])
+
+
+class LiveScoresSlateFallbackPreMigrationTests(ApiTestCase):
+    env = V2_OFF
+
+    def test_old_schema_finals_have_no_scores(self):
+        with patch.object(dashboard, "today_et", lambda: LIVE_TODAY):
+            body = self.get("/api/live-scores?date=2026-04-10").get_json()
+        self.assert_shape(body, LIVE_SCORES)
+        self.assertTrue(body["games"])
+        for g in body["games"]:
+            self.assertEqual((g["status"], g["home_score"]), ("final", None))
 
 
 if __name__ == "__main__":
