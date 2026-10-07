@@ -2,7 +2,7 @@
 // The panel is built with DOM APIs and textContent: no API string is ever parsed as HTML. Spec: components/ticket-drawer.md.
 import { on, game, pickSide } from '../state.js';
 import { api } from '../api.js';
-import { fmt, NDASH } from '../format.js';
+import { fmt, NDASH, modelLabel } from '../format.js';
 import { logo } from '../logo.js';
 import { reduceMotion } from '../reveal.js';
 
@@ -63,8 +63,9 @@ function metaText(g) {
 }
 function fineText(d) {
   const model = d && d.model_name, at = d && d.predicted_at;
-  if (at) return 'Predicted ' + fmt.time(at) + ' ET' + (model ? ' by ' + model : '') + '. Paper money only.';
-  return model ? 'Predicted by ' + model + '. Paper money only.' : 'Paper money only.';
+  const modelDisplay = model ? modelLabel(model) : null;
+  if (at) return 'Predicted ' + fmt.time(at) + ' ET' + (modelDisplay ? ' by ' + modelDisplay : '') + '. Paper money only.';
+  return modelDisplay ? 'Predicted by ' + modelDisplay + '. Paper money only.' : 'Paper money only.';
 }
 
 // ---------- sections ----------

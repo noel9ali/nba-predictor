@@ -3,7 +3,7 @@
 import { initShell } from './shell.js';
 import { initAmbient } from './ambient.js';
 import { api, SAMPLE, SCENE } from './api.js';
-import { fmtDate, TZ } from './format.js';
+import { fmtDate, TZ, modelLabel } from './format.js';
 import { observeReveals } from './reveal.js';
 import { initClaim } from './model/claim.js';
 import { initAlltime } from './model/alltime.js';
@@ -39,7 +39,7 @@ function safe(fn, section, what) {
 // ---------- footer ----------
 function footer(model) {
   const parts = [];
-  if (model.production_model) parts.push('Model ' + model.production_model);
+  if (model.production_model) parts.push('Model ' + modelLabel(model.production_model));
   if (model.trained_at && !Number.isNaN(Date.parse(model.trained_at))) {
     const d = new Date(model.trained_at);
     const t = d.toLocaleTimeString('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit' }).replace(/[  ]/g, ' ');

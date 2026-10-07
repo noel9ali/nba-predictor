@@ -62,17 +62,25 @@ export function whyCopy(rows, cols, ranks, prodIdx, model) {
   if (ib < 0 || ia < 0) return '';
   const prod = rows[prodIdx];
   const rBrier = ranks[prodIdx][ib];
+  const out = [];
+
+  // Check if production ranks 1st on log loss
+  const rLL = il >= 0 ? ranks[prodIdx][il] : 0;
+  if (rLL === 1) {
+    out.push('It has the best log loss of the ' + word(N) + ', the score the training run ranks models by.');
+  }
+
   const brierPart = rBrier === 1 ? 'It has the best Brier score of the ' + word(N) : 'Its Brier score ranks ' + ord(rBrier) + ' of the ' + word(N);
   const bestAcc = Math.max.apply(null, rows.map(r => r.accuracy));
   const gap = (bestAcc - prod.accuracy) * 100;
   const accPart = gap < 1e-9 ? 'and has the best accuracy'
     : gap <= 1 ? 'and sits within ' + ceil1(gap) + ' points of the best accuracy'
       : 'but trails the best accuracy by ' + gap.toFixed(1) + ' points';
-  const out = [brierPart + ' ' + accPart + '.'];
+  out.push(brierPart + ' ' + accPart + '.');
+
   if (/logistic/i.test(model.production_model || prod.model)) {
     out.push("It's also the one whose answer can be explained input by input, which this page depends on.");
   }
-  const rLL = il >= 0 ? ranks[prodIdx][il] : 0;
   if (rLL > rBrier) {
     out.push('It ranks ' + (rLL === N ? 'last' : ord(rLL)) + " on log loss because it's occasionally more confident than it should be.");
   }

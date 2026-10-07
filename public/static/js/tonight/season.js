@@ -1,6 +1,6 @@
 // "How the model is doing": season board, pinned bankroll chart with three scroll steps
 // (T13–T15), the last-33 W/L strip (T16) and the calibration card with model facts (T17).
-import { fmt, esc, wl, MINUS, word, seasonLabel } from '../format.js';
+import { fmt, esc, wl, MINUS, word, seasonLabel, modelLabel } from '../format.js';
 import { renderBoard, signCls } from '../board.js';
 import { renderCalibration } from '../calibration-chart.js';
 import { watch, motionOn, replay } from '../reveal.js';
@@ -293,7 +293,7 @@ export function mountModelCard(m) {
   }
   const T = m.test || {}, live = m.season_live || {};
   const rows = [
-    ['Live model', m.production_model || '—'],
+    ['Live model', m.production_model ? modelLabel(m.production_model) : '—'],
     ['Retrained', m.trained_at ? new Date(m.trained_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' }) : '—'],
     ['This season', live.accuracy != null ? fmt.pct(live.accuracy) + ' of ' + (live.picks ?? 0) : '—', 'sep'],
     ['Test set', T.accuracy != null ? fmt.pct(T.accuracy) + ' of ' + (T.games != null ? T.games.toLocaleString('en-US') : '—') : '—'],

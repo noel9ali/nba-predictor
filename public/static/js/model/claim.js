@@ -1,6 +1,6 @@
 // Model hero (M1/M2): one pinned court. At 30% of the pinned range the hatched gain pops out of the
 // home-team baseline and the h1 swaps to the claim. Reversible; reduced motion switches instantly.
-import { fmtDate, fmtInt, TZ } from '../format.js';
+import { fmtDate, fmtInt, TZ, modelLabel } from '../format.js';
 import { claimCourt, updateClaimCourt } from '../court.js';
 import { onScrollFrame, replay } from '../reveal.js';
 
@@ -67,7 +67,7 @@ export function initClaim(model) {
   const kick = $('[data-kicker]');
   const parts = ['The model'];
   if (model && model.production_model) {
-    parts.push(model.production_model);
+    parts.push(modelLabel(model.production_model));
   } else if (model) {
     parts.push('Production model unavailable');
   }

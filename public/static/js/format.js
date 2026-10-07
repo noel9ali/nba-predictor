@@ -113,11 +113,15 @@ export function teamParts(t) {
 
 export const MODEL_LABELS = {
   'gradient-boosting': 'Gradient boosting',
+  'gradient-boosting-gridsearch': 'Gradient boosting',
   'calibrated-xgboost': 'Calibrated XGBoost',
   'current-xgboost': 'XGBoost',
-  lstm: 'LSTM',
+  'lstm': 'LSTM',
+  'lstm-gridsearch': 'LSTM',
   'random-forest': 'Random forest',
-  logistic: 'Calibrated logistic'
+  'random-forest-gridsearch': 'Random forest',
+  'logistic': 'Calibrated logistic',
+  'legacy-calibrated-logistic': 'Calibrated logistic'
 };
 export function modelLabel(key) {
   if (key == null) return '';
