@@ -49,11 +49,15 @@ Preview (Vercel login required): https://nba-predictor-git-hardwood-build-nubber
 - Old dashboard files deleted (`dashboard.css`, `favicon.svg`, 13 old js modules, barlow fonts). `/legacy` still uses `static/app.js`
   and `static/style.css`; KEEP both.
 
+## Gate M: v2 schema ON (Oct 7, 2026)
+- `NBA_SCHEMA_V2=true` in Vercel production + preview (redeployed `dpl_7domr23jUbVDkbtLWqYyicA1yUsx`) and the laptop `.env`.
+  `model_runs` holds the Oct 7 GB run (published with `--publish-only`). `/api/model` now shows gradient boosting, the training
+  block and the leaderboard (`migration_pending:false`); `/api/game/<id>` works again (it had filtered the text `game_id` with an int).
+- Rollback: set both Vercel vars to `false`, redeploy production from the main SHA, remove the `.env` line.
+- Settled 2025-26 rows predate v2, so their v2-only fields (tip time, book grid, bankroll at bet, scores) stay null; new nights
+  fill them. `gate_m_backup` schema holds the pre-migration copy of the tables.
+
 ## Open items for Noel
-- **Turn on `NBA_SCHEMA_V2`** (Vercel production + preview, and the laptop `.env`), then `venv\Scripts\python src\model.py --publish-only`.
-  The database is already migrated (`public.predictions.game_id` is text, `model_runs` exists but is empty), but the app runs in
-  v2-off mode, so: the Model page shows no production model, and `/api/game/<id>` 404s (it filters a text column with an int),
-  which breaks the Model walkthrough's featured pick. One switch fixes both. `gate_m_backup` schema holds the pre-migration copy.
 - NBA logo trademark sign-off before production goes public.
 - Pipeline risks (from the pipeline-engineer audit, not built): predict-time rest-days/rolling-stat mismatch with training,
   no season-start Elo reversion at predict time, silent failures in `collect.py`/`odds.py`/`scheduler\run_daily.bat`.
