@@ -7,9 +7,9 @@ import { logo } from '../logo.js';
 import { reduceMotion } from '../reveal.js';
 
 const HASH_RE = /^#g(\d{10})$/;
-const TAPE = [   // [label, field, decimals]
-  ['Elo', 'elo', 0], ['Rest days', 'rest_days', 0], ['Points', 'roll_pts', 1], ['FG%', 'roll_fg_pct', 'pct'],
-  ['Rebounds', 'roll_reb', 1], ['Assists', 'roll_ast', 1], ['Turnovers', 'roll_tov', 1], ['Stl+blk', 'roll_stocks', 1]
+const TAPE = [   // [label, field, decimals, [lo, hi]]
+  ['Elo', 'elo', 0, [1300, 1750]], ['Rest days', 'rest_days', 0, [0, 4]], ['Points', 'roll_pts', 1, [100, 125]], ['FG%', 'roll_fg_pct', 'pct', [0.42, 0.52]],
+  ['Rebounds', 'roll_reb', 1, [38, 52]], ['Assists', 'roll_ast', 1, [20, 32]], ['Turnovers', 'roll_tov', 1, [10, 18]], ['Stl+blk', 'roll_stocks', 1, [10, 20]]
 ];
 const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
@@ -162,6 +162,17 @@ function pricesNodes(g, grid) {
 }
 
 // ---------- tale of the tape ----------
+export function tapeWidth(field, v) {
+  // Find the domain for this field
+  const tapeEntry = TAPE.find(t => t[1] === field);
+  if (!tapeEntry || !tapeEntry[3]) return 0;
+  const [lo, hi] = tapeEntry[3];
+  // Clamp the value to the domain and normalize to [0, 1]
+  const clamped = Math.min(Math.max(v, lo), hi);
+  const normalized = (clamped - lo) / (hi - lo);
+  return normalized * 100;
+}
+
 function betterSide(field, a, h, better) {
   const given = better && better[field];
   if (given === 'home' || given === 'away') return given;
@@ -178,8 +189,7 @@ function tapeRows(tape) {
     if (a == null || h == null) continue;
     const better = betterSide(field, a, h, tape.better);
     const show = v => (dec === 'pct' ? (v * 100).toFixed(1) + '%' : Number(v).toFixed(dec));
-    const max = Math.max(a, h) || 1;
-    const width = v => Number((v / max * 100).toFixed(1)) + '%';
+    const width = v => Number(tapeWidth(field, v).toFixed(1)) + '%';
     const value = (v, side, cls) => {
       const s = el('span', cls);
       if (better === side) s.append(el('b', null, show(v))); else s.textContent = show(v);
