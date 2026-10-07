@@ -46,21 +46,7 @@ function focusables(root) {
 }
 
 // ---------- text pieces ----------
-function nameOf(t) {
-  const name = (t && (t.name || t.tricode)) || '';
-  return t && t.record ? name + ' (' + t.record + ')' : name;
-}
-function stateText(g) {
-  const A = g.away.tricode, H = g.home.tricode, sc = () => dash(g.as) + NDASH + dash(g.hs);
-  if (g.state === 'live') return 'Live' + (g.clock ? ' ' + g.clock : '') + ', ' + A + ' ' + sc() + ' ' + H;
-  if (g.state === 'final') return 'Final ' + A + ' ' + sc() + ' ' + H;
-  if (g.state === 'postponed') return 'Postponed';
-  if (g.state === 'void') return 'Void';
-  return 'Not started';
-}
-function metaText(g) {
-  return nameOf(g.away) + ' at ' + nameOf(g.home) + ' · ' + fmt.time(g.tip_time_utc) + ' ET · ' + stateText(g);
-}
+// The meta line, built from nodes so records, the time and the score never break mid-number.
 function setMeta(p, g) {
   p.textContent = '';
   const add = (text) => p.append(document.createTextNode(text));
