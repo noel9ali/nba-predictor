@@ -15,7 +15,13 @@ Worktree `C:\Users\noel9\Desktop\nba-predictor\.claude\worktrees\live-scores`, o
 - Results (Oct 7): `run_offline_tests.py` 284 OK (+17 live-scores tests); JS 5/5; e2e `validate.mjs` 39/39; XSS harness 0 fired
   with the live layer merged (ticket 1 "Live · Q3", ticket 2 "Final"), all 6 drawers, a past night, /model; no CSP errors.
   Real feed via local Flask: CDN 403 → origin 200 in 1.8 s cold, 0.08 s cached; LAL@GSW mapped to "Q4 4:15".
-- Steps: [x] module + route  [x] tests  [x] offline suite, xss harness, e2e  [ ] push + preview check (Vercel IPs vs Akamai)
+- Steps: [x] module + route  [x] tests  [x] offline suite, xss harness, e2e  [x] push + preview check
+- Preview (Vercel login required): https://nba-predictor-git-live-scores-nubber.vercel.app (deployment `nba-predictor-deue8k4pb-nubber`,
+  commit `75e4ccf`). Checked Oct 7 04:35 UTC: `?date=2026-10-06` 200 with the live feed (`source:"nba-origin"`, so Vercel pdx1 is
+  refused by cdn.nba.com too and the origin fallback is what makes it work; LAL@GSW "Q4 0:44"); default date 200 `games:[]` from
+  the slate; `?date=2026-02-30` 400 no-store; CSP + security headers on all; repeat hit served by the CDN (`x-vercel-cache: STALE`,
+  age 17). Vercel shows browsers `cache-control: public` because its CDN consumes s-maxage/stale-while-revalidate.
+- NEXT: Noel's go-ahead to merge `live-scores` into main and deploy production. Nothing merged or deployed to production.
 
 ## Checkpoints
 | Checkpoint | Scope | Status |
