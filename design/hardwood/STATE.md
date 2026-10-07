@@ -1,4 +1,20 @@
-# State (updated Oct 6, 2026, end of Checkpoint D)
+# State (updated Oct 7, 2026, after the live-scores + model release)
+
+## Release Oct 7, 2026: DONE
+- Merged to main (`8b86839`) after sonnet `/security-review` of both branches (no confirmed findings) and a Playwright-CLI check
+  (7 checks, 1440 + 400 px). Production deployment `dpl_9SciBvJPCh6byYm9HPPudMh4xK9v` (READY, https://nba-predictor-tau.vercel.app);
+  prod re-check passed, no runtime errors. Pushes to main do NOT auto-deploy: create the production deployment from the main SHA.
+- Model: gradient boosting is the default production model; retrained Oct 7 (log loss 0.6075, #1 of 6), artifacts committed in
+  `9e0e647`. Old `.pkl` files and Noel's earlier uncommitted retrain files are in `data/pre_gb_backup/` (untracked).
+- Production is behind Vercel login for all deployments (project SSO protection "all"), pending the logo sign-off.
+
+## `/api/live-scores` (shipped)
+- Upstream `todaysScoreboard_00.json`: `cdn.nba.com` answers 403 (Akamai) from the laptop and from Vercel; the S3 origin
+  `nba-prod-us-east-1-mediaops-stats.s3.amazonaws.com/NBA/liveData/scoreboard/…` serves the same JSON. The proxy tries the CDN, then
+  the origin, and remembers which answered. The origin is undocumented, so watch for `stale:true` / 503s if it moves.
+- Code: `src/live_scores.py` (fetch, mapping, 15 s single-flight cache) + the route in `app.py`; tests in `tests/test_api_v2.py`.
+- Behaviour: `?date=` validated (400); today/yesterday from the feed; other dates from `predictions` or `games:[]`; upstream down →
+  last good snapshot `stale:true`, or 503 when nothing is cached. No `migration_pending` in this envelope (contract).
 
 ## Checkpoints
 | Checkpoint | Scope | Status |
@@ -33,25 +49,18 @@ Preview (Vercel login required): https://nba-predictor-git-hardwood-build-nubber
 - Old dashboard files deleted (`dashboard.css`, `favicon.svg`, 13 old js modules, barlow fonts). `/legacy` still uses `static/app.js`
   and `static/style.css`; KEEP both.
 
-## After D (Oct 6): Noel approved migration, logos, merge and production deploy; live scores ON HOLD
-- DONE: applied `alter table public.model_runs add column if not exists training jsonb;` to Supabase project
-  `aopkwfeocvgkzejxjruw` (migration name `model_runs_training`). Verified the column exists.
-  Note: live `model_runs` has 0 rows, so the live Model page shows its no-data fallbacks until a training run is published.
-- SHIPPED (Oct 6): Noel added allow rules; merged `hardwood-build` into main (merge commit b8fe54d) and pushed. Pushes don't
-  auto-deploy, so production was created via the Vercel connector (dpl_GddcjKcnu7zvKkHPWUbSRtj3FKu2, target production) → READY on
-  https://nba-predictor-tau.vercel.app (/, /model, /api/model verified 200 + CSP).
-- Live notes: `migration_pending` is true on prod and was ALREADY true before this release (older v2 migrations / NBA_SCHEMA_V2), not from
-  `training`. `model_runs` has 0 rows, so the live Model page shows fallbacks until a training run is published. Main's local test
-  failure `test_build_model_run_row_from_committed_artifacts` (6 != 5) comes from Noel's uncommitted data/model_leaderboard.csv, not the merge.
-- Live scores: ON HOLD per Noel.
+## Gate M: v2 schema ON (Oct 7, 2026)
+- `NBA_SCHEMA_V2=true` in Vercel production + preview (redeployed `dpl_7domr23jUbVDkbtLWqYyicA1yUsx`) and the laptop `.env`.
+  `model_runs` holds the Oct 7 GB run (published with `--publish-only`). `/api/model` now shows gradient boosting, the training
+  block and the leaderboard (`migration_pending:false`); `/api/game/<id>` works again (it had filtered the text `game_id` with an int).
+- Rollback: set both Vercel vars to `false`, redeploy production from the main SHA, remove the `.env` line.
+- Settled 2025-26 rows predate v2, so their v2-only fields (tip time, book grid, bankroll at bet, scores) stay null; new nights
+  fill them. `gate_m_backup` schema holds the pre-migration copy of the tables.
 
-## Findings to raise with Noel (in the D report)
-- **`/api/live-scores` does not exist on any branch** (it's in the contract and design docs, and the old frontend called it too). On the live
-  site, scores only update from the slate's own status, and while games are live the "Live scores are down" banner appears after 5 minutes.
-  Building it (a cached proxy to the NBA scoreboard) is a new backend item; it needs his OK.
-- The `model_runs.training` migration still needs his yes/no (the file is in supabase/migrations).
-- NBA logo trademark sign-off before anything goes public.
-- Merging to main / production deploy: only on his explicit approval.
+## Open items for Noel
+- NBA logo trademark sign-off before production goes public.
+- Pipeline risks (from the pipeline-engineer audit, not built): predict-time rest-days/rolling-stat mismatch with training,
+  no season-start Elo reversion at predict time, silent failures in `collect.py`/`odds.py`/`scheduler\run_daily.bat`.
 
 ## If Noel asks for more
-Follow-ups that aren't built: a date picker for Past nights (ruling 10), B5 factor build (optional), `/api/live-scores` (above).
+Follow-ups that aren't built: a date picker for Past nights (ruling 10), B5 factor build (optional).

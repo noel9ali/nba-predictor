@@ -5,6 +5,7 @@ import os
 import joblib
 import numpy as np
 import pandas as pd
+from dotenv import load_dotenv
 from console import force_utf8_stdio
 from database import schema_v2_enabled, select_rows, upsert_rows
 from features import ROLLING_WINDOW
@@ -33,7 +34,7 @@ SCALER_PATH = "data/scaler.pkl"
 METADATA_PATH = "data/model_metadata.json"
 LEADERBOARD_PATH = "data/model_leaderboard.csv"
 RANDOM_STATE = 42
-DEFAULT_PRODUCTION_MODEL = "legacy-calibrated-logistic"
+DEFAULT_PRODUCTION_MODEL = "gradient-boosting-gridsearch"
 
 FEATURES = [
     "HOME_roll_PTS",
@@ -551,6 +552,8 @@ def main():
         ),
     )
     args = parser.parse_args()
+    # The NBA_SCHEMA_V2 checks below run before any Supabase client loads .env.
+    load_dotenv()
 
     if args.publish_only:
         if not schema_v2_enabled():
