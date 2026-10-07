@@ -1,5 +1,22 @@
 # State (updated Oct 6, 2026, end of Checkpoint D)
 
+## In progress: `/api/live-scores` (branch `live-scores`, Oct 7, 2026)
+Worktree `C:\Users\noel9\Desktop\nba-predictor\.claude\worktrees\live-scores`, off main `b8fe54d`. Noel approved building it.
+- Upstream: `todaysScoreboard_00.json`. `cdn.nba.com` answers 403 (Akamai) from the laptop; the S3 origin
+  `nba-prod-us-east-1-mediaops-stats.s3.amazonaws.com/NBA/liveData/scoreboard/…` answers 200 with the same JSON. The proxy tries the CDN,
+  then the origin, and remembers which one worked. The feed's `scoreboard.gameDate` rolls over in the ET morning.
+- Code: `src/live_scores.py` (fetch, mapping, 15 s single-flight cache; not in vercel.json excludeFiles) + the route in `app.py`.
+- Behaviour: `?date=` validated (400 otherwise); default today ET. Today/yesterday ask the feed; a date the feed isn't on answers from
+  `predictions` (finals with scores, postponed/void as postponed, `source:"slate"`) or `games:[]`, never an error (a DB failure there
+  also gives `games:[]`). Upstream down: last good snapshot with `stale:true`; nothing cached and the date is today: 503
+  `{"error":"live_scores_unavailable"}` (no-store). Failures are cached for the 15 s window too. Clock: "Q3 4:40", "Half", "OT 1:30",
+  "2OT 0:05", "Final", "Final/OT"; an unparseable clock gives the period only. The envelope has no `migration_pending` (contract).
+- `scripts/xss_harness.py` now patches `LIVE_SCOREBOARD` with a fake upstream whose status/clock text is hostile (stays offline).
+- Results (Oct 7): `run_offline_tests.py` 284 OK (+17 live-scores tests); JS 5/5; e2e `validate.mjs` 39/39; XSS harness 0 fired
+  with the live layer merged (ticket 1 "Live · Q3", ticket 2 "Final"), all 6 drawers, a past night, /model; no CSP errors.
+  Real feed via local Flask: CDN 403 → origin 200 in 1.8 s cold, 0.08 s cached; LAL@GSW mapped to "Q4 4:15".
+- Steps: [x] module + route  [x] tests  [x] offline suite, xss harness, e2e  [ ] push + preview check (Vercel IPs vs Akamai)
+
 ## Checkpoints
 | Checkpoint | Scope | Status |
 |---|---|---|
@@ -34,9 +51,7 @@ Preview (Vercel login required): https://nba-predictor-git-hardwood-build-nubber
   and `static/style.css`; KEEP both.
 
 ## Findings to raise with Noel (in the D report)
-- **`/api/live-scores` does not exist on any branch** (it's in the contract and design docs, and the old frontend called it too). On the live
-  site, scores only update from the slate's own status, and while games are live the "Live scores are down" banner appears after 5 minutes.
-  Building it (a cached proxy to the NBA scoreboard) is a new backend item; it needs his OK.
+- `/api/live-scores`: approved and being built on branch `live-scores` (see the top of this file).
 - The `model_runs.training` migration still needs his yes/no (the file is in supabase/migrations).
 - NBA logo trademark sign-off before anything goes public.
 - Merging to main / production deploy: only on his explicit approval.

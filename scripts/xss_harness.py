@@ -53,18 +53,40 @@ def hostile_tables():
     tables.model_runs[0]["leaderboard"][1]["model"] = P[1]
     tables.workflow_log[0]["notes"] = P[3]
     tables.workflow_log[1]["notes"] = P[5]
-    return tables, t0
+    return tables, t0, [g.game_id for g in tonight]
+
+
+def hostile_live_board(game_ids):
+    """/api/live-scores without the network: a fake upstream whose status and clock text is
+    hostile. The proxy builds every clock itself, so none of it may reach the page."""
+    raw = []
+    for i, game_id in enumerate(game_ids):
+        status = 2 if i == 0 else 3 if i == 1 else 1
+        raw.append({"gameId": game_id, "gameStatus": status, "gameStatusText": P[i % 6 + 1],
+                    "period": 3 if status == 2 else 4 if status == 3 else 0,
+                    "gameClock": P[2] if status == 2 else "",
+                    "homeTeam": {"teamTricode": P[1], "score": 88 if status > 1 else 0},
+                    "awayTeam": {"teamTricode": P[3], "score": 80 if status > 1 else 0}})
+    body = {"scoreboard": {"gameDate": "2026-11-17", "games": raw}}
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return body
+
+    return sample.dashboard.live_scores.LiveScoreboard(http_get=lambda *a, **k: Response())
 
 
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5058
-    tables, first_game = hostile_tables()
+    tables, first_game, tonight_ids = hostile_tables()
     print(f"hostile game id: {first_game}")
     fake = sample.FakeSelect(tables.as_dict())
     now = datetime(2026, 11, 18, 2, 5, tzinfo=timezone.utc)
     with patch.object(sample.dashboard, "select_rows", fake), \
             patch.object(sample.dashboard, "today_et", lambda: date(2026, 11, 17)), \
-            patch.object(sample.dashboard, "now_utc", lambda: now):
+            patch.object(sample.dashboard, "now_utc", lambda: now),             patch.object(sample.dashboard, "LIVE_SCOREBOARD", hostile_live_board(tonight_ids)):
         sample.dashboard.app.run(host="127.0.0.1", port=port, debug=False)
 
 

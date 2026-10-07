@@ -28,6 +28,7 @@ from database import (  # noqa: E402  (needs the src/ path above)
     schema_v2_enabled,
     select_rows,
 )
+import live_scores  # noqa: E402
 
 load_dotenv()
 
@@ -750,6 +751,7 @@ CACHE_GAME = "public, s-maxage=60, stale-while-revalidate=600"
 CACHE_MODEL = "public, s-maxage=600, stale-while-revalidate=86400"
 FEATURED_PICK_WINDOW = 200  # rows, newest first: far more than one night's games
 CACHE_WORKFLOW = "public, s-maxage=30, stale-while-revalidate=60"
+CACHE_LIVE = "public, s-maxage=15, stale-while-revalidate=30"
 
 TEAMS = {
     "ATL": "Atlanta Hawks", "BOS": "Boston Celtics", "BKN": "Brooklyn Nets",
@@ -1133,6 +1135,70 @@ def api_slate():
         "recap": night_recap(rows, day) if rows and (is_past or phase == "all_final") else None,
     }
     return api_response(payload, CACHE_PAST if is_past else CACHE_SLATE_TODAY)
+
+
+# One snapshot per process, shared by every request (src/live_scores.py caches for 15 s).
+LIVE_SCOREBOARD = live_scores.LiveScoreboard()
+
+
+def slate_live_game(row):
+    """A predictions row as a LIVE_SCORES game, for nights the live feed doesn't cover."""
+    status = prediction_status(row)
+    final = status == "final"
+    return {
+        "game_id": normalize_game_id(row.get("game_id")),
+        "status": "postponed" if status in ("postponed", "void") else status,
+        "period": None,
+        "clock": "Final" if final else None,
+        "home_score": as_int(row.get("home_score")) if final else None,
+        "away_score": as_int(row.get("away_score")) if final else None,
+        "postponed": status in ("postponed", "void"),
+    }
+
+
+def live_response(payload, cache_control):
+    # LIVE_SCORES is the one envelope without migration_pending (tests/contract_shapes.py).
+    response = jsonify({"generated_at": live_scores.utc_now_iso(), **payload})
+    response.headers["Cache-Control"] = cache_control
+    return response
+
+
+@app.route("/api/live-scores")
+def api_live_scores():
+    today = today_et()
+    raw = (request.args.get("date") or "").strip()
+    day = parse_iso_date(raw) if raw else today
+    if day is None:
+        return bad_request("date must look like 2026-04-12")
+
+    # The feed is "today" by the NBA's clock, which rolls over in the ET morning, so it can
+    # only ever cover today or yesterday. Other dates never touch the upstream.
+    if day in (today, today - timedelta(days=1)):
+        snapshot, stale = LIVE_SCOREBOARD.get()
+        if snapshot is not None and snapshot["game_date"] == day.isoformat():
+            return live_response({
+                "fetched_at": snapshot["fetched_at"],
+                "stale": stale,
+                "source": snapshot["source"],
+                "games": snapshot["games"],
+            }, CACHE_LIVE)
+        if snapshot is None and day == today:
+            return error_response(503, "live_scores_unavailable")
+
+    # Not on the feed: answer from the slate (finals and postponements), never an error.
+    try:
+        rows = records(read_predictions(filters=[("game_date", "eq", day.isoformat())],
+                                        order_by="game_id"))
+    except DatabaseError as exc:
+        app.logger.warning("live-scores slate fallback unavailable: %s", type(exc).__name__)
+        rows = []
+    payload = {
+        "fetched_at": live_scores.utc_now_iso(),
+        "stale": False,
+        "source": "slate",
+        "games": [slate_live_game(r) for r in rows if r.get("game_id") is not None],
+    }
+    return live_response(payload, CACHE_PAST if day < today else CACHE_LIVE)
 
 
 def tape_block(ctx, elo):
