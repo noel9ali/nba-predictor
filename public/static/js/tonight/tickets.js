@@ -61,10 +61,59 @@ function stampHTML(g, info) {
 }
 
 function ariaLabel(g, info) {
-  const base = g.away.tricode + ' at ' + g.home.tricode;
-  if (!info) return base + ', open details';
-  const score = (g.state === 'final' && g.as != null && g.hs != null) ? ', final ' + g.as + '–' + g.hs : '';
-  return base + score + ', ' + info.label + ', open details';
+  const parts = [];
+
+  // 1. Matchup + time/status
+  const matchup = g.away.tricode + ' at ' + g.home.tricode;
+  let timeStatus;
+  if (g.state === 'scheduled') {
+    timeStatus = g.tip_time_utc ? fmt.time(g.tip_time_utc) + ' ET' : 'Time TBD';
+  } else if (g.state === 'live') {
+    timeStatus = 'live' + (g.clock ? ', ' + g.clock : '');
+  } else if (g.state === 'final') {
+    timeStatus = (g.as != null && g.hs != null) ? 'final ' + g.as + '–' + g.hs : 'final';
+  } else if (g.state === 'postponed') {
+    timeStatus = 'postponed';
+  } else if (g.state === 'void') {
+    timeStatus = 'void';
+  }
+  parts.push(matchup + ', ' + timeStatus + '.');
+
+  // 2. Pick/bet
+  if (g.pick == null && !g.bet && !g.skip_reason) {
+    // Pick pending
+    parts.push('Pick pending.');
+  } else if (g.bet && g.odds != null && g.bet.amount != null) {
+    // Bet on [team], [amount] at [odds]
+    parts.push('Bet on ' + g.pick + ', ' + fmt.money(g.bet.amount) + ' at ' + fmt.odds(g.odds) + '.');
+  } else if (g.pick) {
+    // Pick [team], no bet
+    parts.push('Pick ' + g.pick + ', no bet.');
+  }
+
+  // 3. Model vs market when both known
+  if (g.pick_prob != null && g.implied_prob != null) {
+    parts.push('Model ' + fmt.pct(g.pick_prob) + ' vs market ' + fmt.pct(g.implied_prob) + '.');
+  }
+
+  // 4. Status/result when known
+  if (g.state === 'live' && g.pick) {
+    const m = pickMargin(g);
+    if (m != null) {
+      parts.push(marginLabel(g) + '.');
+    }
+  } else if (info) {
+    let label = info.label;
+    if (g.bet && !g.official) {
+      label += ', unofficial';
+    }
+    parts.push(label + '.');
+  }
+
+  // 5. Open details.
+  parts.push('Open details.');
+
+  return parts.join(' ');
 }
 
 const payoutOf = g => (g.bet && g.bet.amount != null && g.odds != null ? fmt.payout(g.bet.amount, g.odds) : null);
