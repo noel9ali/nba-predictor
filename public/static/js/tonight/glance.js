@@ -3,7 +3,7 @@ import { fmt, esc } from '../format.js';
 import { renderBoard, signCls } from '../board.js';
 import { glanceCourt, countUp } from '../court.js';
 import { watch, motionOn } from '../reveal.js';
-import { store, byTip, nextUp, pickSide, pickMargin, marginLabel, result, pl, now } from '../state.js';
+import { store, byTip, nextUp, pendingBets, pickSide, pickMargin, marginLabel, result, pl, now } from '../state.js';
 import { sampleQuery } from '../api.js';
 
 const $ = s => document.querySelector(s);
@@ -54,9 +54,9 @@ function sentence(s) {
     return 'Night over. No bets tonight. Picks went ' + n(s.pickW + '–' + s.pickL) + '.';
   }
   if (s.bets === 0) return 'The model found no bets in ' + n(String(s.games)) + ' ' + (s.games === 1 ? 'game' : 'games') + ' tonight.';
-  const nu = nextUp();
-  if (!nu) return 'Every bet has tipped. If it ended now: ' + n(fmt.money(s.ifEnded, true), signCls(s.ifEnded)) + '.';
   const found = 'The model found ' + n(String(s.bets)) + ' ' + (s.bets === 1 ? 'bet' : 'bets') + ' in ' + n(String(s.games)) + ' ' + (s.games === 1 ? 'game' : 'games') + '.';
+  const nu = nextUp();
+  if (!nu) return pendingBets() ? found : 'Every bet has tipped. If it ended now: ' + n(fmt.money(s.ifEnded, true), signCls(s.ifEnded)) + '.';
   if (nu.edge == null || nu.odds == null) return found;
   return found + ' Next up: ' + n(nu.pick + ' ' + fmt.odds(nu.odds)) + ' at ' + esc(fmt.time(nu.tip_time_utc)) + ', edge ' + n(fmt.pts(nu.edge), 'e') + '.';
 }
