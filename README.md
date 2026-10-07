@@ -47,21 +47,21 @@ Vercel runs `app.py` as a single Python function and installs only `requirements
 
 ## Results
 
-The production model is now gradient boosting (`gradient-boosting-gridsearch`), replacing the calibrated logistic regression (`legacy-calibrated-logistic`). Gradient boosting is near the top on log-loss, never makes extreme predictions (at or below 10%, or at or above 90%), and puts 74% of its feature importance on the Elo difference (`ELO_DIFF`). The logistic model ranked last on log-loss because some of its predictions were overconfident.
+The production model is gradient boosting (`gradient-boosting-gridsearch`), which replaced the calibrated logistic regression (`legacy-calibrated-logistic`) on 2026-10-07. It ranks first on log-loss, never makes extreme predictions (at or below 10%, or at or above 90%), and puts 72% of its feature importance on the Elo difference (`ELO_DIFF`). The logistic model ranks last on log-loss because some of its predictions are overconfident.
 
-From `data/model_leaderboard.csv` (trained 2026-09-18, 1,596 held-out test games, 55.0% home-win base rate):
+From `data/model_leaderboard.csv` (trained 2026-10-07, 1,596 held-out test games, 55.0% home-win base rate):
 
 | Metric | `gradient-boosting-gridsearch` (production) | `legacy-calibrated-logistic` (previous) |
 |---|---|---|
-| Log-loss rank (of 5) | 2 | 5 |
-| Log loss | 0.6086 | 0.6194 |
-| Test accuracy | 68.0% | 68.2% |
-| Brier score | 0.2099 | 0.2089 |
-| ROC AUC | 0.728 | 0.729 |
-| Calibration error (ECE) | 0.036 | 0.033 |
+| Log-loss rank (of 6) | 1 | 6 |
+| Log loss | 0.6075 | 0.6325 |
+| Test accuracy | 67.9% | 68.1% |
+| Brier score | 0.2094 | 0.2091 |
+| ROC AUC | 0.729 | 0.729 |
+| Calibration error (ECE) | 0.035 | 0.031 |
 | Extreme predictions | 0.0% | 4.1% |
 
-In that run, `current-xgboost` ranked first on log-loss by 0.0004 (0.6082). These numbers come from the 2026-09-18 run, which was trained while the logistic model was live, so the committed `data/model_metadata.json` still names the logistic model as production. The next `src/model.py` retrain rewrites both files, and this table should be updated from them then.
+The top five models are within 0.002 log-loss of each other, so gradient boosting was chosen as much for its lack of extreme predictions as for its rank.
 
 ## Tech stack
 

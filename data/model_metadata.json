@@ -1,14 +1,15 @@
 {
-  "best_model": "legacy-calibrated-logistic",
-  "production_model": "legacy-calibrated-logistic",
+  "best_model": "gradient-boosting-gridsearch",
+  "production_model": "gradient-boosting-gridsearch",
   "available_models": [
     "legacy-calibrated-logistic",
     "current-xgboost",
+    "calibrated-xgboost",
     "gradient-boosting-gridsearch",
     "random-forest-gridsearch",
     "lstm-gridsearch"
   ],
-  "trained_at": "2026-09-18T01:11:09.204958+00:00",
+  "trained_at": "2026-10-07T05:09:34.120013+00:00",
   "cutoff_date": "2025-02-25",
   "features": [
     "HOME_roll_PTS",
@@ -28,5 +29,59 @@
     "AWAY_ELO",
     "ELO_DIFF"
   ],
-  "leaderboard_path": "data/model_leaderboard.csv"
+  "leaderboard_path": "data/model_leaderboard.csv",
+  "training": {
+    "first_game_date": "2019-11-22",
+    "cutoff_date": "2025-02-25",
+    "last_game_date": "2026-04-12",
+    "games_total": 7979,
+    "train_games": 6383,
+    "test_games": 1596,
+    "home_win_rate": 0.5501,
+    "rolling_window": 10,
+    "seasons": [
+      {
+        "season": "2019-20",
+        "games": 759,
+        "train": 759,
+        "test": 0
+      },
+      {
+        "season": "2020-21",
+        "games": 1080,
+        "train": 1080,
+        "test": 0
+      },
+      {
+        "season": "2021-22",
+        "games": 1230,
+        "train": 1230,
+        "test": 0
+      },
+      {
+        "season": "2022-23",
+        "games": 1230,
+        "train": 1230,
+        "test": 0
+      },
+      {
+        "season": "2023-24",
+        "games": 1230,
+        "train": 1230,
+        "test": 0
+      },
+      {
+        "season": "2024-25",
+        "games": 1225,
+        "train": 854,
+        "test": 371
+      },
+      {
+        "season": "2025-26",
+        "games": 1225,
+        "train": 0,
+        "test": 1225
+      }
+    ]
+  }
 }
