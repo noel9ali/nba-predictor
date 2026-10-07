@@ -327,3 +327,4 @@ body.page-model section.chapter{padding-block:clamp(64px,8vw,104px) 0}
   .walk .mini-ticket .sp{height:110px}
   .walk .mini-stamp{right:12px;bottom:48px}
 }
+.cal .cal-svg{max-width:560px}
