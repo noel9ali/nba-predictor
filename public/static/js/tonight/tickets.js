@@ -125,10 +125,15 @@ function teamRow(g, side) {
   if (g.state === 'scheduled') score = '<span class="score pre-tip">' + esc(fmt.pct(t.win_prob, 0)) + '</span>';
   else score = '<span class="score' + (ld && ld !== side ? ' trail' : '') + '" data-score="' + esc(g.game_id + '-' + side) + '">' + (sc == null ? '—' : esc(sc)) + '</span>';
   const tag = isPick ? '<span class="bet-tag' + (g.bet ? '' : ' nobet') + '">' + (g.bet ? 'Bet on' : 'Pick') + '</span>' : '';
-  const name = [t.name, t.record ? wl(t.record) : null].filter(x => x != null && x !== '').map(esc).join(' · ');
+  let name = '';
+  if (t.name) {
+    name = '<span class="tname">';
+    name += '<span class="tn-n">' + esc(t.name) + '</span>';
+    if (t.record) name += '<span class="tn-r"> · ' + esc(wl(t.record)) + '</span>';
+    name += '</span>';
+  }
   const img = TRICODE.test(String(t.tricode || '')) ? '<i data-logo="' + esc(t.tricode) + '"></i>' : '';
-  return '<div class="team ' + (isPick ? 'is-pick' : 'not-pick') + '">' + img + '<span class="t-tri">' + esc(t.tricode) + '</span>' + tag +
-    (name ? '<span class="tname">' + name + '</span>' : '') + '</div>' + score;
+  return '<div class="team ' + (isPick ? 'is-pick' : 'not-pick') + '">' + img + '<span class="t-tri">' + esc(t.tricode) + '</span>' + tag + name + '</div>' + score;
 }
 
 function stubHTML(g, no) {
