@@ -27,7 +27,7 @@
 .gl__st{font:500 13px/1.35 var(--mono);text-align:right;font-variant-numeric:tabular-nums}
 .gl__st small{display:block;color:var(--ink-2);font-size:12px}
 .gl__st .live{color:var(--live)}
-@media (max-width:760px){
+@media (max-width:900px){
   .gl{grid-template-columns:minmax(0,1fr) auto;gap:10px 14px}
   .gl .court-strip{grid-column:1/-1;grid-row:2}
   .gl__lab{flex-direction:row;align-items:baseline;gap:10px;flex-wrap:wrap}
