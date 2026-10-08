@@ -136,7 +136,7 @@ function stubHTML(g, no) {
   let who, pick, odds, stake, win;
   if (pending) { who = 'Pick pending'; pick = '—'; odds = '—'; stake = '—'; win = '—'; }
   else {
-    who = b ? 'Bet on' : 'Pick · no bet';
+    who = b ? 'Bet on' : 'Pick<span class="who-sep"> · </span><span class="who-2">no bet</span>';
     pick = g.pick == null ? '—' : esc(g.pick);
     odds = fmt.odds(g.odds);
     stake = b ? money(b.amount) : '$0.00';
