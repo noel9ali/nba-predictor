@@ -7,8 +7,8 @@
 .scrolly.flat{height:auto}
 @media (max-width:600px){.scrolly{height:140vh}}
 .pin{position:sticky;top:max(24px,calc(50vh - 280px));display:grid;gap:22px}
-.pin__head{display:flex;flex-direction:column;justify-content:flex-end}
-.pin__k{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;font:600 11px/1 var(--mono);text-transform:uppercase;letter-spacing:.12em;color:var(--ink-2)}
+.pin__head{display:flex;flex-direction:column;justify-content:flex-start}
+.pin__k{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;font:600 11px/1 var(--mono);text-transform:uppercase;letter-spacing:.12em;color:var(--ink-2);margin-top:-4px}
 .pin__k i{display:block;width:22px;height:4px;background:var(--edge)}
 .pin__k i.on{background:var(--paint)}
 .pin__t{margin:14px 0;font:600 clamp(32px,5.4vw,62px)/1.08 var(--body);letter-spacing:-.025em;max-width:20ch;text-wrap:balance}
