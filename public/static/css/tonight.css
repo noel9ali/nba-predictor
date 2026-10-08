@@ -115,7 +115,7 @@
 .chart .ln{fill:none;stroke:var(--paint);stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
 .chart .ar{fill:var(--paint-wash);opacity:.6}
 .chart .pk{fill:var(--ball);stroke:var(--panel);stroke-width:2}
-.chart .lbl{font:600 12px/1 var(--mono);fill:var(--ink)}
+.chart .lbl{font:600 12px/1 var(--mono);fill:var(--ink);paint-order:stroke;stroke:var(--panel);stroke-width:4px;stroke-linejoin:round}
 .chart .cross{stroke:var(--ink-2);stroke-width:1;stroke-dasharray:3 3}
 .chart .tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--panel);font:500 12px/1.45 var(--mono);padding:8px 10px;white-space:nowrap;z-index:5;transform:translateX(-50%)}
 .chart .tip b{font-weight:600}
@@ -128,16 +128,16 @@
 .chart[data-step="2"] .ov.dd,.chart[data-step="3"] .ov.tn,.chart[data-step="3"] .ov.pn{opacity:1}
 .chart[data-step="2"] .ln{opacity:.45}
 .chart .endg{transition:opacity .3s}
-.chart[data-step="3"] .endg{opacity:0}
+.chart[data-step="3"] .endg{display:none}
 .chart .ddr{fill:rgba(255,141,132,.10)}
 .chart .ddl{fill:none;stroke:var(--loss);stroke-width:3;stroke-linejoin:round}
 .chart .ddb{stroke:var(--loss);stroke-width:1.5}
-.chart .ddt{font:600 12px/1 var(--mono);fill:var(--loss)}
+.chart .ddt{font:600 12px/1 var(--mono);fill:var(--loss);paint-order:stroke;stroke:var(--panel);stroke-width:4px;stroke-linejoin:round}
 .chart .tnl{fill:none;stroke:var(--ball);stroke-width:2.5;stroke-dasharray:6 5}
 .chart .tnr{stroke:var(--ball);stroke-width:8;stroke-linecap:butt;opacity:.35}
 .chart .tnp{fill:var(--ball);stroke:var(--panel);stroke-width:2}
-.chart .tnt{font:600 12px/1 var(--mono);fill:var(--ball)}
-.chart .tns{font:500 11px/1 var(--mono);fill:var(--ink-2)}
+.chart .tnt{font:600 12px/1 var(--mono);fill:var(--ball);paint-order:stroke;stroke:var(--panel);stroke-width:4px;stroke-linejoin:round}
+.chart .tns{font:500 11px/1 var(--mono);fill:var(--ink-2);paint-order:stroke;stroke:var(--panel);stroke-width:4px;stroke-linejoin:round}
 .chart.pop[data-step="3"] .ov.tn .tnl{animation:dashin .8s ease-out}
 @keyframes dashin{from{stroke-dashoffset:60;opacity:0}}
 

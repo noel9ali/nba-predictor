@@ -158,6 +158,8 @@ function renderBankroll(step) {
   host.style.setProperty('--len', String(Math.ceil(ln.getTotalLength())));
   host.setAttribute('aria-label', 'Bankroll from ' + fmt.money(start) + ' on ' + md(S[0].date) + ' to ' + fmt.money(base) + ', peak ' + fmt.money(ys[peakI]) + ' on ' + md(S[peakI].date));
   geo = { S, pts, W, N, pad, lo, hi };
+  const svg = host.querySelector('svg');
+  placeLabels(svg, step);
   if (cur >= 0 && document.activeElement === host) show(cur, false);
   stepText(S, base);
   measureStage();
@@ -202,6 +204,64 @@ function show(i, announce) {
   tip.style.setProperty('top', top + 'px');
   if (announce) $('[data-chart-live]').textContent = parts.map(t => t.replace(/<[^>]+>/g, '')).join('. ');
 }
+// Label placement for the bankroll chart (C4, designer ruling 9). Works in SVG units. Which labels and
+// which obstacles count depends on the step, not on live opacity (the overlays fade, so opacity lags):
+// base labels (peak, end) show at every step except the end label at step 3, the drawdown label at
+// step 2, the tonight/that-night labels at step 3. Each label tries a few positions around its default
+// and keeps the first whose box (+2px) touches no placed label, line, bar or plot edge; if none fits,
+// the lower-priority label is hidden (Tonight > drawdown > peak > end > range labels).
+const LABEL_TRIES = [[0, 0], [0, -14], [0, 18], [0, -28], [0, 30], [-12, 0], [12, 0], [-12, -14], [-12, 18], [12, -14], [12, 18]];
+function placeLabels(svg, step) {
+  if (!svg || !geo) return;
+  const W = geo.W, H = Number(svg.getAttribute('height')) || 0, P = geo.pad;
+  const stepOf = el => (el.closest('.ov.dd') ? [2] : el.closest('.ov.tn, .ov.pn') ? [3] : el.closest('.endg') ? [1, 2] : [1, 2, 3]);
+  const segs = [];
+  const addPath = d => {
+    const pts = (String(d).match(/-?\d+(\.\d+)?,-?\d+(\.\d+)?/g) || []).map(s => s.split(',').map(Number));
+    for (let i = 1; i < pts.length; i++) segs.push([pts[i - 1], pts[i]]);
+  };
+  const line = el => [[+el.getAttribute('x1'), +el.getAttribute('y1')], [+el.getAttribute('x2'), +el.getAttribute('y2')]];
+  svg.querySelectorAll('.ln').forEach(el => addPath(el.getAttribute('d')));
+  svg.querySelectorAll('.base').forEach(el => segs.push(line(el)));
+  if (step === 2) svg.querySelectorAll('.ddl').forEach(el => addPath(el.getAttribute('d')));
+  const bars = [];
+  if (step === 3) {
+    svg.querySelectorAll('.tnl').forEach(el => addPath(el.getAttribute('d')));
+    svg.querySelectorAll('.tnr').forEach(el => { const [a, b] = line(el); bars.push({ l: a[0] - 3, r: a[0] + 3, t: Math.min(a[1], b[1]), b: Math.max(a[1], b[1]) }); });
+  }
+  const dots = [...svg.querySelectorAll('circle.pk, circle.tnp')].filter(c => stepOf(c).includes(step))
+    .map(c => { const x = +c.getAttribute('cx'), y = +c.getAttribute('cy'), r = +c.getAttribute('r'); return { l: x - r, r: x + r, t: y - r, b: y + r }; });
+  const rank = el => (el.classList.contains('tnt') ? 0 : el.classList.contains('ddt') ? 1 : el.closest('.endg') ? 3 : el.classList.contains('lbl') ? 2 : 4);
+  const labels = [...svg.querySelectorAll('text.lbl, text.ddt, text.tnt, text.tns')];
+  labels.forEach(el => {                            // back to the default spot before every pass
+    if (!el.dataset.x0) { el.dataset.x0 = el.getAttribute('x'); el.dataset.y0 = el.getAttribute('y'); }
+    el.setAttribute('x', el.dataset.x0); el.setAttribute('y', el.dataset.y0); el.removeAttribute('visibility');
+  });
+  const hitRect = (a, b) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
+  const ccw = (a, b, c) => (c[1] - a[1]) * (b[0] - a[0]) > (b[1] - a[1]) * (c[0] - a[0]);
+  const cross = (a, b, c, d) => ccw(a, c, d) !== ccw(b, c, d) && ccw(a, b, c) !== ccw(a, b, d);
+  const segHit = ([a, b], r) => {
+    const inside = q => q[0] >= r.l && q[0] <= r.r && q[1] >= r.t && q[1] <= r.b;
+    if (inside(a) || inside(b)) return true;
+    const c = [[r.l, r.t], [r.r, r.t], [r.r, r.b], [r.l, r.b]];
+    return c.some((q, i) => cross(a, b, q, c[(i + 1) % 4]));
+  };
+  const placed = [...dots];
+  labels.filter(el => stepOf(el).includes(step)).sort((a, b) => rank(a) - rank(b)).forEach(el => {
+    const x0 = +el.dataset.x0, y0 = +el.dataset.y0, bb = el.getBBox();
+    for (const [dx, dy] of LABEL_TRIES) {
+      const r = { l: bb.x + dx - 2, r: bb.x + bb.width + dx + 2, t: bb.y + dy - 2, b: bb.y + bb.height + dy + 2 };
+      const inPlot = r.l >= P.l - 4 && r.r <= W - 2 && r.t >= 2 && r.b <= H - P.b + 2;
+      if (inPlot && !placed.some(o => hitRect(r, o)) && !bars.some(o => hitRect(r, o)) && !segs.some(s => segHit(s, r))) {
+        el.setAttribute('x', r1(x0 + dx)); el.setAttribute('y', r1(y0 + dy));
+        placed.push(r);
+        return;
+      }
+    }
+    el.setAttribute('visibility', 'hidden');          // ruling 9: the bar stays, the label goes
+  });
+}
+
 function hide() {
   if (!host) return;
   const cross = host.querySelector('.cross'), tip = host.querySelector('.tip');
@@ -254,6 +314,10 @@ function setStep(n) {
   // Re-render chart if domain group changes
   if (oldGroup !== newGroup && geo) {
     renderBankroll(n);
+  } else {
+    // Just reposition labels for the current step (no re-render)
+    const svg = host.querySelector('svg');
+    if (svg) placeLabels(svg, n);
   }
 
   host.classList.remove('pop');
