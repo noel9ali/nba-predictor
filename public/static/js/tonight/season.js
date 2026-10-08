@@ -64,7 +64,7 @@ function stepText(S, base) {
 }
 
 // ---------- the chart ----------
-function renderBankroll() {
+function renderBankroll(step) {
   if (!perf || !host) return;
   const S = (perf.series || []).filter(x => !x.pending || x.bets !== '0-0');
   if (S.length < 2) {
@@ -81,14 +81,41 @@ function renderBankroll() {
   const W = Math.max(300, host.clientWidth || 700), H = Math.round(Math.min(300, Math.max(200, W * 0.36)));
   const pad = { l: 58, r: 16, t: 22, b: 28 };
   const ys = S.map(x => x.bankroll);
-  const lo = Math.floor(Math.min(start, tnLo, ...ys) / 50) * 50 - 25, hi = Math.ceil(Math.max(tnHi, ...ys) / 50) * 50 + 25;
+  const plotH = H - pad.t - pad.b;
+
+  // Domain per step: 1-2 use series only (+start), 3 also includes tonight's range
+  let domainValues;
+  if (step === 3 && tonightOn) {
+    domainValues = [start, ...ys, tnLo, tnHi, tnNow];
+  } else {
+    domainValues = [start, ...ys];
+  }
+
+  const minVal = Math.min(...domainValues), maxVal = Math.max(...domainValues);
+  const pad_val = Math.max(10, 0.06 * (maxVal - minVal));
+  let lo = minVal - pad_val, hi = maxVal + pad_val;
+
+  // Find tick step: smallest of [10, 20, 25, 50, 100, 200, 250, 500] where step × plotH / (hi - lo) ≥ 28
+  const tickSteps = [10, 20, 25, 50, 100, 200, 250, 500];
+  let tickStep = 50; // default
+  for (const ts of tickSteps) {
+    if (ts * plotH / (hi - lo) >= 28) {
+      tickStep = ts;
+      break;
+    }
+  }
+
+  // Snap domain to tick boundaries
+  lo = Math.floor(lo / tickStep) * tickStep;
+  hi = Math.ceil(hi / tickStep) * tickStep;
+
   const xs = i => pad.l + i * (W - pad.l - pad.r - 14) / N;
   const yv = v => pad.t + (hi - v) * (H - pad.t - pad.b) / (hi - lo);
   const pts = S.map((x, i) => [xs(i), yv(x.bankroll)]);
   const path = p => 'M' + p.map(q => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join('L');
   const d = path(pts), last = pts[N - 1], peakI = ys.indexOf(Math.max(...ys));
   let s = '';
-  for (let v = Math.ceil(lo / 50) * 50; v <= hi; v += 50) {
+  for (let v = lo; v <= hi; v += tickStep) {
     s += '<line class="gridl" x1="' + pad.l + '" x2="' + (W - pad.r) + '" y1="' + r1(yv(v)) + '" y2="' + r1(yv(v)) + '"/>' +
       '<text class="ax" x="' + (pad.l - 8) + '" y="' + r1(yv(v) + 4) + '" text-anchor="end">$' + v.toLocaleString('en-US') + '</text>';
   }
@@ -130,7 +157,7 @@ function renderBankroll() {
   const ln = host.querySelector('.ln');
   host.style.setProperty('--len', String(Math.ceil(ln.getTotalLength())));
   host.setAttribute('aria-label', 'Bankroll from ' + fmt.money(start) + ' on ' + md(S[0].date) + ' to ' + fmt.money(base) + ', peak ' + fmt.money(ys[peakI]) + ' on ' + md(S[peakI].date));
-  geo = { S, pts, W, N, pad };
+  geo = { S, pts, W, N, pad, lo, hi };
   if (cur >= 0 && document.activeElement === host) show(cur, false);
   stepText(S, base);
   measureStage();
@@ -204,7 +231,7 @@ function wireChart() {
   if ('ResizeObserver' in window) {
     new ResizeObserver(() => {
       clearTimeout(t);
-      t = setTimeout(() => { if (geo && Math.abs(host.clientWidth - geo.W) > 8 && host.clientWidth !== lastW) { lastW = host.clientWidth; renderBankroll(); } measureStage(); }, 100);
+      t = setTimeout(() => { if (geo && Math.abs(host.clientWidth - geo.W) > 8 && host.clientWidth !== lastW) { lastW = host.clientWidth; const step = Number(host.dataset.step) || 1; renderBankroll(step); } measureStage(); }, 100);
     }).observe(host);
   }
 }
@@ -215,10 +242,20 @@ function measureStage() {
 }
 
 function setStep(n) {
+  // Check if domain group changes (1-2 ↔ 3)
+  const oldGroup = host.dataset.step ? (Number(host.dataset.step) === 3 ? 3 : 1) : 1;
+  const newGroup = n === 3 ? 3 : 1;
+
   host.dataset.step = String(n);
   document.querySelectorAll('.bstep').forEach(s => s.classList.toggle('act', s.dataset.bs === String(n)));
   $('[data-bstep-k]').textContent = n + ' of 3';
   $('[data-bstep-t]').textContent = n === 3 && store.isPast ? 'Bankroll · that night' : TITLES[n - 1];
+
+  // Re-render chart if domain group changes
+  if (oldGroup !== newGroup && geo) {
+    renderBankroll(n);
+  }
+
   host.classList.remove('pop');
   if (n === 3) { void host.offsetWidth; host.classList.add('pop'); }
 }
@@ -262,7 +299,7 @@ export function mountSeason(p) {
   $('[data-bscrolly]').hidden = false;
   renderSeasonBoard();
   wireChart();
-  renderBankroll();
+  renderBankroll(1);
   wireSteps();
   renderWL();
 }
@@ -270,9 +307,8 @@ export function mountSeason(p) {
 export function seasonOnBatch(batch) {
   if (!perf) return;
   if (batch.some(c => ['slate', 'tip', 'score', 'final', 'clock'].includes(c.type))) {
-    const step = host.dataset.step;
-    renderBankroll();
-    host.dataset.step = step;
+    const step = Number(host.dataset.step) || 1;
+    renderBankroll(step);
   }
 }
 
