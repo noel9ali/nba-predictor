@@ -25,7 +25,7 @@ function renderSeasonBoard() {
     { label: 'ROI', value: k.roi == null ? '—' : (k.roi >= 0 ? '+' : MINUS) + Math.abs(k.roi * 100).toFixed(1) + '%', cls: k.roi == null ? '' : signCls(k.roi) },
     { label: 'Bets W–L', value: wl(k.bets) || '—' },
     { label: 'Pick accuracy', value: fmt.pct(k.accuracy) },
-    { label: 'Max drawdown', value: dd ? MINUS + fmt.money(dd) : '$0.00' }
+    { label: 'Max drawdown', value: dd ? MINUS + fmt.money(dd) : fmt.money(0) }
   ]);
 }
 
