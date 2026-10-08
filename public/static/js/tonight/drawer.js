@@ -2,7 +2,7 @@
 // The panel is built with DOM APIs and textContent: no API string is ever parsed as HTML. Spec: components/ticket-drawer.md.
 import { on, game, pickSide } from '../state.js';
 import { api } from '../api.js';
-import { fmt, NDASH, modelLabel } from '../format.js';
+import { fmt, NDASH, wl, modelLabel } from '../format.js';
 import { logo } from '../logo.js';
 import { reduceMotion } from '../reveal.js';
 
@@ -55,13 +55,13 @@ function setMeta(p, g) {
   // Away team name
   const awayName = (g.away && (g.away.name || g.away.tricode)) || '';
   add(awayName);
-  if (g.away && g.away.record) addNW(' (' + g.away.record + ')');
+  if (g.away && g.away.record) addNW(' (' + wl(g.away.record) + ')');
   add(' at ');
 
   // Home team name
   const homeName = (g.home && (g.home.name || g.home.tricode)) || '';
   add(homeName);
-  if (g.home && g.home.record) addNW(' (' + g.home.record + ')');
+  if (g.home && g.home.record) addNW(' (' + wl(g.home.record) + ')');
   add(' · ');
 
   // Time

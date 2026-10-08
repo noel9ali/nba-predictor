@@ -53,7 +53,7 @@ function stepText(S, base) {
   const sm = summary(), phase = store.slate && (store.slate.offseason ? 'offseason' : store.slate.phase);
   if (store.isPast && store.slate) {
     const night = S.find(x => x.date === store.slate.date);
-    set(3, 'That night', night ? 'On ' + md(night.date) + ' the bankroll moved ' + fmt.money(night.nightly_pl, true) + ' (bets ' + night.bets + ', picks ' + night.picks + ').' : 'No bankroll change recorded for that night.');
+    set(3, 'That night', night ? 'On ' + md(night.date) + ' the bankroll moved ' + fmt.money(night.nightly_pl, true) + ' (bets ' + wl(night.bets) + ', picks ' + wl(night.picks) + ').' : 'No bankroll change recorded for that night.');
   } else if (!store.slate || sm.bets === 0 || ['no_games', 'offseason'].includes(phase)) {
     set(3, 'Nothing on the line tonight', 'No bets tonight, so the bankroll holds at ' + fmt.money(base) + '.');
   } else if (sm.open === 0) {
@@ -169,7 +169,7 @@ function renderBankroll(step) {
 function tipContent(x) {
   return ['<b>' + esc(fmt.date(x.date, { weekday: 'short', month: 'short', day: 'numeric' })) + '</b>',
     'Bankroll ' + esc(fmt.money(x.bankroll)),
-    'Night ' + esc(fmt.money(x.nightly_pl, true)) + ' · bets ' + esc(x.bets) + ' · picks ' + esc(x.picks)];
+    'Night ' + esc(fmt.money(x.nightly_pl, true)) + ' · bets ' + esc(wl(x.bets)) + ' · picks ' + esc(wl(x.picks))];
 }
 function show(i, announce) {
   if (!geo) return;
