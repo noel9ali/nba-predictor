@@ -28,3 +28,13 @@
 | D3 | 7 | 0 | Accepted. 124/124 (+B4/D11/D2 still green). |
 | C8 | 6 | 0 | Accepted. 122/122. |
 | D9 | 8 | – | NOT accepted (uncommitted): 'SORT' label lifted above its row at 1440 (align-self:start) and clipped at 400. Needs a correction. |
+| D5 | 6 | lead | Subagent's stamp move covered 'Back of ticket' (its test used a 15px tolerance). Lead: final-ticket .lines min-height 98px + stamp bottom 56px; test back to 0 tolerance. Dead space 94px → 18px. 107/107, B5 155/155. |
+| D12 | 7 | 0 | Accepted. Gap kicker→step kicker 206px → 40px at 1440 (30/36 at 400/768); court position unchanged between states. 12/12. Lead took the base-state after shots. |
+| C3 | 4 | 0 | Accepted. 33/33 (+B2 117/117). Step 1 domain $950–$1,200 at 400 (was to ~$1,350); step 3 extends to tonight's range. Lead restored committed screenshots that regression runs had overwritten. |
+| D9 | 8 | 1 + lead | Retry 1: SORT label lifted above its row at 1440 (align-self:start). Lead: label indented 12px on the two-row layout so it lines up with ALL. 36/36. |
+| C5 | 6 | 0 | Accepted. One hand-written '$0.00' → fmt.money(0); everything else already used cents via fmt.money. 25/25. |
+| C4 | 5 | lead | Subagent 190/208: read overlay opacity mid-fade, treated hidden step-3 bar/line as obstacles, base-line check only for x<200. Lead rewrote placeLabels (step-based visibility, per-step obstacles, getBBox boxes, ruling-9 hide) and fixed the test's step-2 false positives. 196/196, C3 33/33, B2 117/117. |
+| D6 | 7 | 0 | Accepted. 45/45. Lead retook the screenshots (the subagent's were taken before the tickets slid in). |
+| D10 | 9 | 0 | Accepted. 399/399. |
+| D4 | 8 | 0 | Accepted. wl()/seasonLabel() now replace every digit-hyphen; drawer records, tooltip and past-night copy use wl(). Sweep across scenes, drawers, tooltips and Model seasons: 126/126. |
+| D7 | 9 | 0 | Accepted. 96/96. Lead took the after shots. |
