@@ -12,3 +12,7 @@ table_init/*.csv
 .vercel/
 .env*
 !.env.example
+# player-data-work: raw API/PDF caches and local sinks (never committed)
+data/raw/
+data/injuries/
+data/player_cache/
