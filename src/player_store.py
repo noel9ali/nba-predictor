@@ -189,7 +189,10 @@ def count(table: str, *, conn: sqlite3.Connection | None = None) -> int:
 
 def query(sql: str, params: Iterable[Any] = (), *, conn: sqlite3.Connection | None = None) -> pd.DataFrame:
     """Local-only SQL for heavy batch jobs (backfills); the Supabase backend uses read()."""
-    return pd.read_sql_query(sql, conn or connect(), params=list(params))
+    conn = conn or connect()
+    for table in SCHEMAS:
+        _ensure(conn, table)
+    return pd.read_sql_query(sql, conn, params=list(params))
 
 
 def push_local_to_supabase(table: str, *, dry_run: bool = True, conn: sqlite3.Connection | None = None) -> int:

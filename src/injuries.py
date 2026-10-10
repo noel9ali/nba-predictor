@@ -244,8 +244,20 @@ class Matchers:
 
 
 def default_matchers() -> Matchers:
+    """Names resolve against players + player_aliases (phase 1 tables, local store or Supabase); if those are
+    empty or unavailable, against the cached nba_api CommonAllPlayers list. Manual fixes for names that stay
+    unmatched go into player_aliases (provider 'nba_injury_report' or 'manual')."""
     by_nick, by_tri = team_lookup()
-    return Matchers(NameResolver.from_rows(load_player_candidates()), by_nick, by_tri)
+    rows: list[dict] = []
+    try:
+        from collect_players import resolver_rows
+
+        rows = resolver_rows()
+    except Exception as exc:
+        print(f"  player_aliases unavailable ({type(exc).__name__}); using the nba_api player list")
+    if not rows:
+        rows = load_player_candidates()
+    return Matchers(NameResolver.from_rows(rows), by_nick, by_tri)
 
 
 # ---------------------------------------------------------------------------
