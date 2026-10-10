@@ -136,7 +136,11 @@ def availability_by_game(read, game_ids: list[str], sides: dict, *, with_ratings
         if gid not in out or side is None:
             continue
         pid = _int(r.get("player_id"))
-        entry = player_entry(r, proj_by.get((gid, pid)) if pid is not None else None, ratings.get(pid))
+        proj_row = proj_by.get((gid, pid)) if pid is not None else None
+        entry = player_entry(r, proj_row, ratings.get(pid))
+        # Private marker for summaries ("key" = would play KEY_MINUTES); strip with public() before output.
+        entry["_key"] = bool(proj_row and (_num(proj_row.get("min_if_play")) or 0) >= KEY_MINUTES) or (
+            entry["impact_pts"] is not None and abs(entry["impact_pts"]) >= 1.0)
         out[gid][side].append(entry)
     for gid in out:
         for side in ("home", "away"):
@@ -144,17 +148,17 @@ def availability_by_game(read, game_ids: list[str], sides: dict, *, with_ratings
     return out
 
 
+def public(players: list[dict]) -> list[dict]:
+    return [{k: v for k, v in p.items() if not k.startswith("_")} for p in players]
+
+
 def summary(avail: dict, *, status_changed: bool) -> dict:
     """availability_summary for a slate game."""
     def outs(players):
         return [p for p in players if p["status"] == "out"]
 
-    def key(p):
-        return (p["impact_pts"] is not None and abs(p["impact_pts"]) >= 1.0) or \
-            (p["exp_min"] is not None and p["exp_min"] >= KEY_MINUTES)
-
     home, away = avail.get("home", []), avail.get("away", [])
-    key_out = [p["name"] for p in outs(home) + outs(away) if key(p)]
+    key_out = [p["name"] for p in outs(home) + outs(away) if p.get("_key")]
     uncertain = any(config.SCENARIO_P_LOW < p["p_play"] < config.SCENARIO_P_HIGH for p in home + away)
     return {"home_out": len(outs(home)), "away_out": len(outs(away)), "key_out": key_out,
             "uncertain": bool(uncertain), "status_changed": bool(status_changed)}

@@ -628,7 +628,8 @@ class ModelExtrasTests(ApiTestCase):
         self.assertNotIn("training", body)
         self.assertEqual(body["production_model"], "legacy-calibrated-logistic")
         self.assertEqual(len(body["leaderboard"]), 2)
-        self.assertEqual(len([c for c in calls if c[0] == "model_runs"]), 2)
+        # player data: +1 attempt for the optional candidates/feature_set_version columns (migration 0006)
+        self.assertEqual(len([c for c in calls if c[0] == "model_runs"]), 3)
 
 
 class FeaturedPickTests(ApiTestCase):
@@ -710,8 +711,11 @@ class QueryBudgetTests(unittest.TestCase):
                     "/api/model": 2, "/api/workflow-status": 0}
     # Post-M adds book_odds and games (slate, game) and bankroll (recap, performance); the
     # game drawer's 7 is the accepted API-F20 shape: constant, bounded and CDN-cached.
-    BUDGET_POST_M = {"/api/slate?date=2026-04-10": 5, "/api/game/0022501300": 7,
-                     "/api/days": 2, "/api/performance": 3, "/api/predictions": 2,
+    # Player data adds (constant, bounded) reads: slate +3 (injury_snapshots, player_minutes_projection,
+    # prediction_availability_inputs; +player_ratings when a report exists), game +4 (those three and
+    # team_availability_features; +ratings and scenarios/factors when they apply), performance +1.
+    BUDGET_POST_M = {"/api/slate?date=2026-04-10": 8, "/api/game/0022501300": 11,
+                     "/api/days": 2, "/api/performance": 4, "/api/predictions": 2,
                      "/api/model": 3, "/api/workflow-status": 1}
 
     def count(self, url, n_games, v2):

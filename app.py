@@ -29,6 +29,8 @@ from database import (  # noqa: E402  (needs the src/ path above)
     select_rows,
 )
 import live_scores  # noqa: E402
+import api_availability  # noqa: E402  (player data: injuries, rest, scenarios, factors)
+import config as player_config  # noqa: E402
 
 load_dotenv()
 
@@ -1087,6 +1089,23 @@ def slate_phase(games, day, today, latest_date):
     return "no_games"
 
 
+def add_availability_summaries(games):
+    """Player data: availability_summary per slate game (3-4 reads, constant in slate size); null when the
+    game has no injury data yet."""
+    if not games or not schema_v2_enabled():
+        return
+    ids = [x["game_id"] for x in games]
+    sides = {x["game_id"]: (x["home"]["tricode"], x["away"]["tricode"]) for x in games}
+    avail = api_availability.availability_by_game(availability_read, ids, sides)
+    inputs = api_availability.availability_inputs(availability_read, ids)
+    for x in games:
+        a = avail.get(x["game_id"], {"home": [], "away": []})
+        inp = inputs.get(x["game_id"])
+        has_data = bool(a["home"] or a["away"] or inp)
+        flag = bool(inp and safe_float(inp.get("status_changed_after_pred"), 0.0))
+        x["availability_summary"] = api_availability.summary(a, status_changed=flag) if has_data else None
+
+
 @app.route("/api/slate")
 def api_slate():
     today = today_et()
@@ -1104,6 +1123,7 @@ def api_slate():
         [t for r in rows for t in (r.get("home_team"), r.get("away_team"))], season, day
     ) if rows else {}
     games = sorted((build_game(r, grids, forms) for r in rows), key=tip_order_key)
+    add_availability_summaries(games)
 
     phase = slate_phase(games, day, today, latest_date)
     is_past = day < today.isoformat()
@@ -1267,8 +1287,69 @@ def api_game(game_id):
         "predicted_at": row.get("predicted_at"),
         "model_name": row.get("model_name"),
         "result": result,
+        **game_availability_block(game, row.get("model_name")),
     }
     return api_response(payload, CACHE_PAST if day < today_et().isoformat() else CACHE_GAME)
+
+
+@app.route("/api/injuries")
+def api_injuries():
+    """Latest injury-report status per game of a date, grouped by team (player-data spec sec10)."""
+    raw = (request.args.get("date") or "").strip()
+    day = parse_iso_date(raw) if raw else today_et()
+    if day is None:
+        return bad_request("date must look like 2026-04-12")
+    day = day.isoformat()
+    payload = {"date": day, "report_time": None, "games": []}
+    if not schema_v2_enabled():
+        pending_migration()
+        return api_response(payload, CACHE_SLATE_TODAY)
+    try:
+        heads = select_rows("injury_snapshots", columns="game_id,matchup,report_time",
+                            filters=[("game_date", "eq", day), ("game_id", "not_is", "null")],
+                            order_by=["report_time", "snapshot_id"])
+    except (MissingTableError, MissingColumnError):
+        pending_migration()
+        return api_response(payload, CACHE_SLATE_TODAY)
+    if heads.empty:
+        return api_response(payload, CACHE_PAST if day < today_et().isoformat() else CACHE_SLATE_TODAY)
+    sides = {}
+    for r in records(heads):
+        matchup = str(r.get("matchup") or "")
+        if "@" in matchup:
+            away, home = matchup.split("@", 1)
+            sides[normalize_game_id(r["game_id"])] = (home.strip(), away.strip())
+    ids = sorted(sides)
+    avail = api_availability.availability_by_game(availability_read, ids, sides)
+    payload["report_time"] = max(api_availability._iso(t) for t in heads["report_time"])
+    payload["games"] = [{
+        "game_id": gid,
+        "home": {"tricode": sides[gid][0], "players": api_availability.public(avail[gid]["home"])},
+        "away": {"tricode": sides[gid][1], "players": api_availability.public(avail[gid]["away"])},
+    } for gid in ids]
+    return api_response(payload, CACHE_PAST if day < today_et().isoformat() else CACHE_SLATE_TODAY)
+
+
+def game_availability_block(game, model_name):
+    """Player data for the game drawer: injury lists, rest, scenarios, probability range and factors.
+    Empty lists and nulls until the tables exist and hold data; never an error."""
+    block = {"availability": {"home": [], "away": []}, "rest": None, "scenarios": [], "prob_range": None,
+             "factors": []}
+    if not schema_v2_enabled():
+        return block
+    gid = game["game_id"]
+    sides = (game["home"]["tricode"], game["away"]["tricode"])
+    avail = api_availability.availability_by_game(availability_read, [gid], {gid: sides})[gid]
+    block["availability"] = {side: api_availability.public(avail[side]) for side in ("home", "away")}
+    block["rest"] = api_availability.rest_for_game(availability_read, gid, sides)
+    scenarios, factors = api_availability.scenarios_and_factors(availability_read, gid, model_name)
+    block["scenarios"], block["factors"] = scenarios, factors
+    inp = api_availability.availability_inputs(availability_read, [gid]).get(gid)
+    if inp and inp.get("model_name") == model_name:
+        low, high = safe_float(inp.get("prob_range_low")), safe_float(inp.get("prob_range_high"))
+        if low is not None and high is not None:
+            block["prob_range"] = {"low": low, "high": high}
+    return block
 
 
 @app.route("/api/days")
@@ -1444,6 +1525,13 @@ def api_performance():
         "edge": split_rows(bets, lambda r: edge_bucket(prediction_edge(r)),
                            ["<0", "0-3", "3-6", "6-10", "10+"]),
     }
+    if schema_v2_enabled():
+        # Player data: bets on nights a top-2 player (either team) was out at prediction time.
+        star = api_availability.star_out_by_game(availability_read)
+        splits["star_out"] = split_rows(
+            bets, lambda r: None if normalize_game_id(r["game_id"]) not in star else (
+                "star_out" if star[normalize_game_id(r["game_id"])] else "no_star_out"),
+            ["star_out", "no_star_out"])
     recent = ["W" if r.get("correct") == 1 else "L" for r in bets][-RECENT_BETS:]
     payload = {
         "season": season,
@@ -1596,7 +1684,12 @@ def latest_model_run():
         pending_migration()
         return None
     try:
-        df = select_rows("model_runs", columns=MODEL_RUN_COLUMNS + ",training", **kwargs)
+        try:
+            # Player data (migration 0006): candidates + feature_set_version, optional.
+            df = select_rows("model_runs", columns=MODEL_RUN_COLUMNS + ",training,candidates,feature_set_version",
+                             **kwargs)
+        except MissingColumnError:
+            df = select_rows("model_runs", columns=MODEL_RUN_COLUMNS + ",training", **kwargs)
     except MissingColumnError:
         pending_migration()
         df = read_rows("model_runs", columns=MODEL_RUN_COLUMNS, **kwargs)
@@ -1605,6 +1698,40 @@ def latest_model_run():
         return None
     rows = records(df)
     return rows[0] if rows else None
+
+
+def model_candidates(raw):
+    """model_runs.candidates (written by scripts/evaluate_availability.py --write-candidates) as API rows."""
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            return []
+    models = raw.get("rows") if isinstance(raw, dict) else raw
+    if not isinstance(models, list):
+        return []
+    return [{
+        "model": str(item.get("model")),
+        "feature_set": item.get("feature_set") if isinstance(item.get("feature_set"), str) else None,
+        "accuracy": safe_float(item.get("accuracy")),
+        "log_loss": safe_float(item.get("log_loss")),
+        "brier_score": safe_float(item.get("brier_score")),
+        "roc_auc": safe_float(item.get("roc_auc")),
+        "test_games": as_int(item.get("test_games")),
+        "promoted": False,
+    } for item in models if isinstance(item, dict) and item.get("model")]
+
+
+def availability_read(table, **kwargs):
+    """Read a player-data table for the additive availability fields. Before the v2 schema or the
+    player-data migrations exist this reads as empty WITHOUT flagging migration_pending, so existing
+    payloads look exactly as before; /api/injuries flags it instead."""
+    if not schema_v2_enabled():
+        return pd.DataFrame()
+    try:
+        return select_rows(table, **kwargs)
+    except (MissingTableError, MissingColumnError):
+        return pd.DataFrame()
 
 
 def feature_label(feature):
@@ -1703,6 +1830,11 @@ def api_model():
         "leaderboard": leaderboard,
         "elo": dict(ELO_PARAMS),
     }
+    # Player data: candidates are listed, never promoted automatically.
+    payload["feature_set_version"] = (run or {}).get("feature_set_version") if isinstance(
+        (run or {}).get("feature_set_version"), str) else None
+    payload["candidates"] = model_candidates((run or {}).get("candidates"))
+    payload["availability_gate"] = bool(player_config.AVAILABILITY_GATE)
     if mine_signal:
         payload["feature_importance"] = mine_signal
     if isinstance(training, dict):
