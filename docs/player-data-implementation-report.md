@@ -10,7 +10,7 @@ Spec: `docs/player-data-backend-spec.md`. Resume point: `docs/player-data-checkp
 | 0 | Recon and preconditions | done |
 | 1 | Player data foundation | done |
 | 2 | Injury snapshot ingestion | done (historical backfill running) |
-| 3 | Ratings and minutes projections | todo |
+| 3 | Ratings and minutes projections | done |
 | 4 | Availability features and rest days | todo |
 | 5 | Candidate model and walk-forward evaluation | todo |
 | 6 | Predict-time integration | todo |
@@ -239,3 +239,65 @@ This report, `docs/player-data-checkpoint.md` and the `player-data-work` branch 
 upsert idempotency, alias clash handling and resolver, absence fixture (30-minute player absent, 5-minute bench
 player not, traded player not absent for his old team, 5-appearance rule, no carry-over across seasons), rebuild
 idempotency. Full offline suite 325/325 OK.
+
+## Phase 3: ratings and minutes projections (done, Oct 10, 2026)
+
+### Built
+- `migrations/0003_player_ratings.sql` (file only): `player_ratings` (PK `player_id, as_of, rating_type`; `as_of` is a
+  date) and `player_minutes_projection` (PK `game_id, player_id, as_of`; `as_of` timestamptz).
+- `src/ratings.py`:
+  - `rapm_lite_v1`: one row per game, features = 5 x player minutes / team minutes (+ home, - away), target = margin
+    per 100 possessions (possessions = FGA - OREB + TOV + 0.44 FTA, averaged over both teams), trailing 730 days,
+    half-life 365 days, ridge toward a prior (last season's final rapm rating, else the player's `box_value_v1`, else 0),
+    intercept = home-court advantage.
+  - `box_value_v1`: Hollinger Game Score per minute, shrunk toward the league mean with 400 prior minutes, centred,
+    x48, then scaled to margin-per-100 units by one weighted regression of game margins on minutes-weighted team sums.
+  - Backfill: weekly refits during seasons (183 as_of dates, 2019-12-09 to 2026-04-13; the first refit needs 300 games
+    in the window, so games before Dec 9, 2019 have no ratings). Nightly refresh in `run_pipeline.bat` (non-fatal); it
+    skips when no game was played since the last refit. `ratings_as_of(day, type)` and `combined_ratings(day)`
+    (primary where `minutes_basis` >= 500, else fallback) are the point-in-time readers.
+- `src/minutes.py`: `p_play` via `STATUS_TO_P_PLAY`; base minutes = EWMA (half-life 10 games played); minutes-if-playing
+  = min(40, s x base) with one scale s per team so the expected total is 240; `exp_min = p_play x minutes-if-playing`;
+  p10/p90 from the last 30 games played x s (conditional on playing); roles; inferred roster (players seen in the
+  team's last 20 games whose latest appearance was for the team) or an explicit roster. CLI worked example:
+  `python src/minutes.py --game <id> --as-of <iso>`.
+
+### Choice of ridge penalty (honest note)
+Per-refit time-ordered validation (last 20% of the window) was unstable: it jumped between 10 and 1000 across refits.
+A pooled forward validation instead (19 windows, Jan/Mar/Nov 2020-2026; fit on the window before the date, predict the
+next 28 days' margins per 100) gave mean squared error: alpha 3: 191.4, **10: 185.2**, 30: 185.9, 100: 189.3,
+300: 193.3, 1000: 196.9, 3000: 198.6; the box prior alone: 199.4. So `RATING_RIDGE_ALPHAS = (10.0,)` is fixed in config
+(per-refit CV comes back if several values are listed), and RAPM adds real out-of-sample signal over the box prior.
+
+Sanity check (2026-03-01, players with more than 1,500 minutes): rapm top = Gilgeous-Alexander 10.5, Jokić 10.0,
+Antetokounmpo 8.4, Wembanyama 8.1, Leonard 8.0; box top = Jokić 13.4, Gilgeous-Alexander 12.6, Antetokounmpo 11.8.
+Correlation between the two types about 0.8; standard deviation about 3 points per 100 for both.
+
+### Worked example: DEN at ORL, 2021-12-01 (game `0022100320`), as_of 18:00 ET (tip 19:00 minus 60 minutes)
+Archived injury report of 17:30 ET: DEN Murray and Porter Jr. out (long-term, so not in the inferred rotation),
+JaMychal Green questionable; ORL Suggs, Fultz, Isaac, Carter-Williams, Moore out.
+
+| Team | Player | Status | p_play | Rating | Source | Base min | Exp min | p10-p90 | Role | Actual |
+|---|---|---|---|---|---|---|---|---|---|---|
+| DEN | Will Barton | - | 1.0 | -2.3 | rapm | 33.1 | 37.5 | 31.7-42.2 | starter | 32 |
+| DEN | Nikola Jokić | - | 1.0 | 6.4 | rapm | 32.5 | 36.9 | 29.4-41.0 | starter | 36 |
+| DEN | Aaron Gordon | - | 1.0 | 3.1 | rapm | 31.1 | 35.2 | 27.0-41.0 | starter | 38 |
+| DEN | Monte Morris | - | 1.0 | -0.1 | rapm | 27.9 | 31.7 | 21.4-36.5 | starter | 34 |
+| DEN | Jeff Green | - | 1.0 | -2.3 | rapm | 26.1 | 29.6 | 19.2-38.6 | starter | 29 |
+| DEN | Facundo Campazzo | - | 1.0 | -1.2 | rapm | 21.5 | 24.4 | 10.1-38.8 | rotation | 27 |
+| DEN | JaMychal Green | questionable | 0.5 | 0.3 | rapm | 16.9 | 9.6 | 12.4-26.3 | rotation | 12 |
+| ORL | Cole Anthony | - | 1.0 | -3.2 | rapm | 32.0 | 28.4 | 20.3-32.0 | starter | 37 |
+| ORL | Franz Wagner | - | 1.0 | -1.6 | rapm | 31.4 | 27.8 | 24.0-31.0 | starter | 33 |
+| ORL | Wendell Carter Jr. | - | 1.0 | 2.3 | rapm | 28.1 | 24.9 | 16.7-30.1 | starter | 33 |
+| ORL | Mo Bamba | - | 1.0 | -2.3 | rapm | 27.2 | 24.0 | 18.5-30.2 | starter | 27 |
+| ORL | Gary Harris | - | 1.0 | -1.9 | rapm | 25.4 | 22.5 | 13.2-28.5 | starter | 35 |
+
+Observation: base minutes average only games played, so deep-bench players who play garbage time carry inflated
+bases and the team scale drops below 1 (ORL here), under-projecting the starters. A later version could weight
+DNPs as zero; v1 follows the spec.
+
+### Tests
+`tests/test_ratings_minutes.py` (8): ridge recovers synthetic effects (correlation > 0.98, mean abs error < 0.6,
+home advantage about 2), large penalty returns the prior, ratings unchanged when games on/after as_of are tampered
+with, box value ordering, redistribution conserves 240 and respects the cap, cap binding, status map, out player gets
+0 expected minutes and a future game does not change a projection.

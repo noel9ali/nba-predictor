@@ -1,7 +1,8 @@
 # Player data checkpoint
 
 ## Resume here
-- Current: phases 0, 1, 2 done. Next: phase 3, step 3.1 (migration `0003_player_ratings.sql` + ratings module).
+- Current: phases 0-3 done. Next: phase 4, step 4.1 (migration `0004_team_availability_features.sql` + `src/availability_features.py`).
+- After the injury backfill finishes: run `venv/Scripts/python.exe -m src.injuries --reparse` (picks up the 2019-20 layout files parsed as 0 rows by the old parser) then `--rematch` (fills player_id/game_id with the new overrides and schedule union).
 - Work only in `C:\Users\noel9\Desktop\nba-predictor.worktrees\player-data-work` (branch `player-data-work`). Never touch
   the main checkout `C:\Users\noel9\Desktop\nba-predictor` (Task Scheduler runs production there).
 - Python: `venv\Scripts\python.exe` in the worktree (site-packages chain to the main venv via `_main_venv.pth`;
@@ -37,16 +38,14 @@ Standalone command: `cd /d C:\Users\noel9\Desktop\nba-predictor.worktrees\player
 | 1.3 players + player_aliases, resolver switch | done |
 | 1.4 absences.py | done |
 | 1.5 run_pipeline.bat wiring | done (4f03344) |
-| 3.1 migration 0003_player_ratings.sql | todo |
-| 3.2 box_value_v1 ratings | todo |
-| 3.3 rapm_lite_v1 ratings (ridge, time-ordered CV, weekly backfill) | todo |
-| 3.4 minutes projection v1 | todo |
-| 3.5 nightly refresh wiring + worked example | todo |
+| 3.1-3.5 migration 0003, ratings (both types, backfilled 183 refits), minutes v1, nightly wiring, worked example | done (064fde8) |
+| 4.1 migration 0004 + availability_features.build/backfill | todo |
+| 4.2 tests (leakage, hand example, star_out boundary, rest days) | todo |
 | phases 4-9 | todo |
 
 ## Verification commands
 - `venv/Scripts/python.exe -m unittest tests.test_injuries tests.test_player_data`
-- Full suite (phase ends): `timeout 900 venv/Scripts/python.exe scripts/run_offline_tests.py` (325 OK after phase 1)
+- Full suite (phase ends): `timeout 900 venv/Scripts/python.exe scripts/run_offline_tests.py` (325 OK after phase 1; targeted suites 45 OK after phase 3)
 
 ## Decisions (details in the report)
 - New migrations in root `migrations/` (sequential), not `supabase/migrations/`.
@@ -63,4 +62,4 @@ Standalone command: `cd /d C:\Users\noel9\Desktop\nba-predictor.worktrees\player
 - `LeagueGameLog` MIN is an integer; `started` is null.
 
 ## Last good commit
-- 4f03344 (+ the docs commit after it)
+- 064fde8 (+ the docs commit after it)
