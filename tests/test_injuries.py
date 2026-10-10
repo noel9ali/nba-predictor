@@ -397,3 +397,51 @@ class PushAndCacheTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LaterFixesTests(unittest.TestCase):
+    def test_2019_layout_with_category_column(self):
+        header = [w("Game", 21, 58), w("Date", 40, 58), w("Game", 73, 58), w("Time", 92, 58),
+                  w("Matchup", 126, 58), w("Team", 179, 58), w("Player", 269, 58), w("Name", 290, 58),
+                  w("Category", 382, 58), w("Reason", 495, 58), w("Current", 607, 58), w("Status", 630, 58),
+                  w("Previous", 720, 58), w("Status", 745, 58)]
+        title = [w("Injury", 314, 11), w("Report:", 340, 11), w("10/22/19", 370, 11), w("05:30", 410, 11),
+                 w("PM", 440, 11)]
+        rows = [w("10/22/2019", 20, 77), w("08:00", 72, 77), w("(ET)", 95, 77), w("NOP@TOR", 125, 77),
+                w("New", 178, 77), w("Orleans", 195, 77), w("Pelicans", 225, 77), w("Miller,", 268, 77),
+                w("Darius", 300, 77), w("Injury/Illness", 381, 77), w("Right", 494, 77), w("Achilles", 515, 77),
+                w("Surgery", 545, 77), w("Out", 606, 77), w("-", 719, 77),
+                w("Gray,", 268, 95), w("Josh", 290, 95), w("G", 381, 95), w("League", 388, 95), w("-", 420, 95),
+                w("Two-Way", 428, 95), w("-", 494, 95), w("Out", 606, 95), w("-", 719, 95)]
+        rep = irp.parse_pages([title + header + rows])
+        self.assertEqual(rep.report_time_et, datetime(2019, 10, 22, 17, 30))
+        self.assertEqual([(r["player"], r["status"], r["reason"]) for r in rep.rows], [
+            ("Miller, Darius", "Out", "Injury/Illness - Right Achilles Surgery"),
+            ("Gray, Josh", "Out", "G League - Two-Way")])
+
+    def test_overrides_and_rematch_fill_only_missing_keys(self):
+        conn = injuries.connect(":memory:")
+        m = fake_matchers()
+        m.resolver.overrides = {}
+        rows, unmatched, _ = injuries.build_rows(
+            parsed_report(datetime(2026, 10, 21, 13, 0), [("Cleveland Cavaliers", "Allen, Bob", "Out", None),
+                                                          ("Atlanta Hawks", "Young, Trae", "Out", None)]),
+            raw_file="x.pdf", captured_at=datetime(2026, 10, 21, 22, tzinfo=timezone.utc), matchers=m)
+        injuries.store_rows(conn, rows, unmatched)
+        self.assertIsNone(conn.execute("select player_id from injury_snapshots where player_name_raw = 'Allen, Bob'")
+                          .fetchone()[0])
+        m.resolver.overrides = {"bob allen": 1628386}
+        with tempfile.TemporaryDirectory() as tmp, patch.object(injuries, "_unmatched_path_for",
+                                                                return_value=os.path.join(tmp, "u.csv")):
+            filled = injuries.rematch(conn=conn, matchers=m)
+        self.assertEqual(filled, {"player_id": 1, "game_id": 0})
+        got = dict(conn.execute("select player_name_raw, player_id from injury_snapshots").fetchall())
+        self.assertEqual(got, {"Allen, Bob": 1628386, "Young, Trae": 1629027})
+        self.assertEqual(conn.execute("select count(*) from injury_unmatched where kind='player'").fetchone()[0], 0)
+        self.assertEqual(conn.execute("select status from injury_snapshots where player_name_raw='Allen, Bob'")
+                         .fetchone()[0], "out")
+
+    def test_override_wins(self):
+        r = NameResolver([Candidate("Nic Claxton", 1629651, BKN)], overrides={"nicolas claxton": 1629651})
+        self.assertEqual(r.resolve("Claxton, Nicolas").method, "override")
+        self.assertEqual(r.resolve("Claxton, Nicolas").player_id, 1629651)

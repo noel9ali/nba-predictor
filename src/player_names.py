@@ -67,11 +67,20 @@ class Candidate:
 @dataclass(frozen=True)
 class Match:
     player_id: int | None
-    method: str          # 'exact', 'compact', 'initial_team', 'ambiguous', 'unmatched'
+    method: str          # 'override', 'exact', 'compact', 'initial_team', 'ambiguous', 'unmatched'
 
 
 class NameResolver:
-    def __init__(self, candidates: Iterable[Candidate]):
+    def __init__(self, candidates: Iterable[Candidate], overrides: dict | None = None):
+        """overrides: normalized raw name -> player_id (defaults to config.PLAYER_NAME_OVERRIDES)."""
+        if overrides is None:
+            try:
+                import config
+
+                overrides = getattr(config, "PLAYER_NAME_OVERRIDES", {})
+            except ImportError:  # pragma: no cover
+                overrides = {}
+        self.overrides = {normalize_name(k): v for k, v in overrides.items()}
         self._by_key: dict[str, list[Candidate]] = defaultdict(list)
         self._by_compact: dict[str, list[Candidate]] = defaultdict(list)
         self._by_team: dict[int, list[Candidate]] = defaultdict(list)
@@ -116,6 +125,9 @@ class NameResolver:
         key = normalize_name(raw_name)
         if not key:
             return Match(None, "unmatched")
+        override = self.overrides.get(key)
+        if override is not None:
+            return Match(int(override), "override")
         for table, method, k in ((self._by_key, "exact", key),
                                  (self._by_compact, "compact", key.replace(" ", ""))):
             cands = table.get(k)

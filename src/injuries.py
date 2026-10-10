@@ -4,6 +4,7 @@ CLI (run from the repo root):
     python -m src.injuries --snapshot                 # scheduler tick: archive every new report of the last few hours
     python -m src.injuries --backfill-from 2025-10-21 [--to 2026-04-12] [--slots 05PM 01PM]
     python -m src.injuries --reparse                  # re-ingest every cached PDF (after a parser fix)
+    python -m src.injuries --rematch                  # fill missing player_id/game_id (after alias fixes)
     python -m src.injuries --ingest-file PATH.pdf     # ingest one PDF (fixtures, manual checks)
     python -m src.injuries --latest GAME_ID --as-of 2026-10-21T19:00-04:00
     python -m src.injuries --push-supabase [--yes]    # copy local rows to Supabase (dry run without --yes)
@@ -155,28 +156,33 @@ def load_schedule(season: str, *, refresh_hours: float = 24.0) -> pd.DataFrame:
         frames = call_frames(
             lambda: scheduleleaguev2.ScheduleLeagueV2(season=season, timeout=config.NBA_API_TIMEOUT_SECONDS),
             cache_path=v2_path, refresh=not _cache_is_fresh(v2_path, refresh_hours))
-        out = _schedule_from_v2(frames[0])
-        if not out.empty:
-            return out
+        v2 = _schedule_from_v2(frames[0])
     except Exception as exc:
         print(f"  ScheduleLeagueV2 failed for {season} ({type(exc).__name__}); trying cache / game log")
-        if os.path.exists(v2_path):
-            frames = call_frames(lambda: None, cache_path=v2_path)
-            out = _schedule_from_v2(frames[0])
-            if not out.empty:
-                return out
+        empty = pd.DataFrame(columns=["game_id", "game_date", "home_team_id", "away_team_id"])
+        v2 = _schedule_from_v2(call_frames(lambda: None, cache_path=v2_path)[0]) if os.path.exists(v2_path) else empty
+    from nba_client import season_for_date
+
+    if season_for_date(date.today()) == season and not v2.empty:
+        return v2          # current season: the schedule is the source; game logs only cover played games
+    # Past seasons: the V2 schedule misses rescheduled (COVID) and bubble/playoff games, so union it with the
+    # game logs (regular season + playoffs), which carry the dates the games were actually played.
     from nba_api.stats.endpoints import leaguegamelog
 
     parts = []
     for season_type in ("Regular Season", "Playoffs"):
         path = os.path.join(base, f"teamlog_{season}_{season_type.replace(' ', '')}.json")
-        frames = call_frames(lambda st=season_type: leaguegamelog.LeagueGameLog(
-            season=season, player_or_team_abbreviation="T", season_type_all_star=st,
-            timeout=config.NBA_API_TIMEOUT_SECONDS), cache_path=path)
+        try:
+            frames = call_frames(lambda st=season_type: leaguegamelog.LeagueGameLog(
+                season=season, player_or_team_abbreviation="T", season_type_all_star=st,
+                timeout=config.NBA_API_TIMEOUT_SECONDS), cache_path=path)
+        except Exception as exc:
+            print(f"  LeagueGameLog {season} {season_type} failed ({type(exc).__name__})")
+            continue
         if not frames[0].empty:
             parts.append(_schedule_from_gamelog(frames[0]))
-    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(
-        columns=["game_id", "game_date", "home_team_id", "away_team_id"])
+    out = pd.concat([v2] + parts, ignore_index=True)
+    return out.drop_duplicates(subset=["game_date", "home_team_id", "away_team_id"], keep="last")
 
 
 def load_player_candidates(*, refresh_hours: float = 24.0) -> list[dict]:
@@ -591,6 +597,40 @@ def backfill(start: date, end: date | None = None, *, slots=None, conn=None,
     return counts
 
 
+def rematch(*, conn=None, matchers: Matchers | None = None) -> dict:
+    """Fill NULL player_id / game_id after the matchers improve (new aliases, overrides, schedule fixes).
+    This is the one permitted change to stored snapshots: it only fills missing match keys and never
+    touches statuses, times or names."""
+    conn = conn or connect()
+    matchers = matchers or default_matchers()
+    rows = conn.execute("select snapshot_id, team_id, player_name_raw, game_date, matchup, player_id, game_id "
+                        "from injury_snapshots where player_id is null or game_id is null").fetchall()
+    filled = {"player_id": 0, "game_id": 0}
+    for r in rows:
+        if r["player_id"] is None:
+            pid = matchers.resolver.resolve(r["player_name_raw"], r["team_id"]).player_id
+            if pid is not None:
+                conn.execute("update injury_snapshots set player_id = ? where snapshot_id = ? and player_id is null",
+                             (pid, r["snapshot_id"]))
+                filled["player_id"] += 1
+        if r["game_id"] is None:
+            gid = matchers.game_id(date.fromisoformat(r["game_date"]), r["matchup"])
+            if gid is not None:
+                conn.execute("update injury_snapshots set game_id = ? where snapshot_id = ? and game_id is null",
+                             (gid, r["snapshot_id"]))
+                filled["game_id"] += 1
+    conn.execute("delete from injury_unmatched where kind = 'player' and exists (select 1 from injury_snapshots s "
+                 "where s.report_time = injury_unmatched.report_time and s.team_id = injury_unmatched.team_id "
+                 "and s.player_name_raw = injury_unmatched.player_name_raw and s.player_id is not null)")
+    conn.execute("delete from injury_unmatched where kind = 'game' and exists (select 1 from injury_snapshots s "
+                 "where s.report_time = injury_unmatched.report_time and s.team_id = injury_unmatched.team_id "
+                 "and s.matchup = injury_unmatched.matchup and s.game_id is not null)")
+    conn.commit()
+    write_unmatched_report(conn)
+    print(f"rematch: {len(rows)} rows with missing keys; filled {filled}")
+    return filled
+
+
 def reparse(*, conn=None, matchers: Matchers | None = None, raw_dir: str | None = None) -> int:
     """Re-ingest every cached PDF (idempotent: existing rows are kept, new ones added)."""
     raw_dir = raw_dir or config.INJURY_RAW_DIR
@@ -680,6 +720,7 @@ def main(argv=None) -> int:
     mode.add_argument("--snapshot", action="store_true")
     mode.add_argument("--backfill-from", type=date.fromisoformat)
     mode.add_argument("--reparse", action="store_true")
+    mode.add_argument("--rematch", action="store_true", help="fill missing player_id/game_id in stored rows")
     mode.add_argument("--ingest-file")
     mode.add_argument("--latest", metavar="GAME_ID")
     mode.add_argument("--push-supabase", action="store_true")
@@ -722,6 +763,8 @@ def main(argv=None) -> int:
             print(backfill(args.backfill_from, args.to, slots=args.slots, conn=conn))
         elif args.reparse:
             print(f"re-ingested {reparse(conn=conn)} cached report(s)")
+        elif args.rematch:
+            rematch(conn=conn)
         elif args.ingest_file:
             print(ingest_pdf(conn, args.ingest_file, default_matchers()))
             write_unmatched_report(conn)

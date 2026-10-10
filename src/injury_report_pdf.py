@@ -63,16 +63,31 @@ def _header_columns(words: list[dict]) -> tuple[dict[str, float], float] | None:
     }
     if any(v is None for v in cols.values()):
         return None
+    # 2019-20 layout: '... Player Name | Category | Reason | Current Status | Previous Status'.
+    for optional, label in (("category", "category"), ("previous", "previous")):
+        x = x_of(label)
+        if x is not None:
+            cols[optional] = x
     bottom = max(w["bottom"] for w in same_line)
     return cols, bottom
 
 
 def _column_of(x0: float, cols: dict[str, float]) -> str:
-    chosen = COLUMNS[0]
-    for name in COLUMNS:
-        if x0 >= cols[name] - _COL_TOLERANCE:
+    chosen = "game_date"
+    for name, start in sorted(cols.items(), key=lambda kv: kv[1]):
+        if x0 >= start - _COL_TOLERANCE:
             chosen = name
     return chosen
+
+
+def _join_reason(category: str | None, reason: str | None) -> str | None:
+    category = (category or "").strip()
+    reason = (reason or "").strip()
+    if reason in ("", "-"):
+        reason = ""
+    if category and reason:
+        return f"{category} - {reason}"
+    return category or reason or None
 
 
 def _group_lines(words: list[dict]) -> list[list[dict]]:
@@ -170,7 +185,8 @@ def parse_pages(pages_words: list[list[dict]]) -> ParsedReport:
             report.warnings.append(f"row without player name: {cell}")
             continue
         row = dict(current)
-        row.update(player=player, status=cell.get("status", ""), reason=cell.get("reason") or None)
+        row.update(player=player, status=cell.get("status", ""),
+                   reason=_join_reason(cell.get("category"), cell.get("reason")))
         report.rows.append(row)
     return report
 

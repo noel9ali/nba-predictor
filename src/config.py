@@ -93,7 +93,7 @@ PLAYER_LOCAL_DB = os.path.join(DATA_DIR, "player_data", "player_data.sqlite")   
 RATING_VERSION = "2026-10-10"
 RATING_WINDOW_DAYS = 730                 # trailing window (about 2 seasons of games)
 RATING_HALF_LIFE_DAYS = 365              # exponential down-weighting of older games
-RATING_RIDGE_ALPHAS = (3.0, 10.0, 30.0, 100.0, 300.0, 1000.0)   # chosen by time-ordered CV
+RATING_RIDGE_ALPHAS = (10.0,)   # pooled forward validation, 19 windows 2020-2026: 3:191.4 10:185.2 30:185.9 100:189.3 1000:196.9 (MSE, margin per 100); box prior alone 199.4. Give several values to re-enable per-refit CV.
 RATING_CV_HOLDOUT_FRACTION = 0.2         # last 20% of the window (by date) validates alpha
 RATING_MIN_GAMES = 300                   # do not fit before this many games are in the window
 RATING_BACKFILL_EVERY_DAYS = 7           # historical refit cadence (weekly)
@@ -110,3 +110,15 @@ MINUTES_QUANTILE_GAMES = 30              # games played used for p10/p90
 MINUTES_PLAYER_CAP = 40.0
 MINUTES_TEAM_TOTAL = 240.0
 MINUTES_ROTATION_MIN = 10.0              # base minutes for 'rotation' role
+
+# Provider names that the normalizer cannot match (nicknames, legal-name changes). Keyed by
+# player_names.normalize_name(raw name) -> nba_api player_id. Add entries from data/injuries/injury_unmatched.csv.
+PLAYER_NAME_OVERRIDES = {
+    "nicolas claxton": 1629651,      # Nic Claxton
+    "nene hilario": 2403,            # Nene
+    "charles brown": 1629718,        # Charlie Brown Jr.
+    "enes kanter": 202683,           # Enes Freedom
+    "marcos louzada silva": 1629712, # Didi Louzada
+    "cameron reynolds": 1629244,     # Cam Reynolds
+    "rj nembhard": 1630612,          # Ruben Nembhard Jr.
+}

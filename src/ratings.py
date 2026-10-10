@@ -217,7 +217,9 @@ def backfill_dates(start: date, end: date, every_days: int) -> list[date]:
     return out
 
 
-def backfill(*, start: date | None = None, end: date | None = None, conn=None) -> int:
+def backfill(*, start: date | None = None, end: date | None = None, conn=None, rebuild: bool = False) -> int:
+    """Weekly refits during seasons. Resumable: as_of dates already stored are skipped unless rebuild=True
+    (which refits and overwrites them, for example after a config change)."""
     pg_all = load_player_games(conn=conn)
     if pg_all.empty:
         print("player_games is empty; run collect_players.py --backfill first")
@@ -225,8 +227,8 @@ def backfill(*, start: date | None = None, end: date | None = None, conn=None) -
     start = start or date.fromisoformat(config.RATING_BACKFILL_START)
     last_game = date.fromisoformat(str(pg_all["game_date"].max())[:10])
     end = end or (last_game + timedelta(days=1))
-    done = set(player_store.query("select distinct as_of from player_ratings where rating_type = 'rapm_lite_v1'",
-                                  conn=conn)["as_of"])
+    done = set() if rebuild else set(player_store.query(
+        "select distinct as_of from player_ratings where rating_type = 'rapm_lite_v1'", conn=conn)["as_of"])
     season_days = pg_all.groupby("season")["game_date"].agg(["min", "max"])
     in_season = lambda d: any(lo <= d.isoformat() <= (date.fromisoformat(hi) + timedelta(days=7)).isoformat()  # noqa: E731
                               for lo, hi in zip(season_days["min"], season_days["max"]))
@@ -265,6 +267,7 @@ def combined_ratings(day, *, conn=None) -> pd.DataFrame:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Player ratings")
     parser.add_argument("--backfill", action="store_true")
+    parser.add_argument("--rebuild", action="store_true", help="with --backfill: refit stored dates too")
     parser.add_argument("--as-of", type=date.fromisoformat)
     args = parser.parse_args(argv)
     try:
@@ -274,9 +277,16 @@ def main(argv=None) -> int:
     except Exception:
         pass
     if args.backfill:
-        backfill()
+        backfill(rebuild=args.rebuild)
         return 0
     day = args.as_of or date.today()
+    if args.as_of is None:
+        latest = player_store.query("select max(as_of) d from player_ratings where rating_type = ?",
+                                    [config.RATING_PRIMARY])["d"].iloc[0]
+        last_game = player_store.query("select max(game_date) d from player_games")["d"].iloc[0]
+        if latest and last_game and str(last_game) < str(latest):
+            print(f"ratings: no games since the {latest} refit; nothing to do")
+            return 0
     n = run_as_of(day)
     print(f"ratings as of {day.isoformat()}: {n} rows")
     return 0

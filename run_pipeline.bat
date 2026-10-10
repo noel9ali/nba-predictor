@@ -9,7 +9,7 @@ call :step collect
 
 rem Player data (player-data work): after collect, before features. These steps are
 rem non-fatal for now; a failure is logged and does not change the pipeline's exit code.
-for %%P in (collect_players absences) do (
+for %%P in (collect_players absences ratings) do (
     echo.
     echo Running src\%%P.py...
     python src\%%P.py

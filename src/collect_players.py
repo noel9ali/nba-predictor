@@ -222,9 +222,11 @@ def resolver_rows(*, conn=None) -> list[dict]:
         "(select max(game_date) from player_games p2 where p2.player_id = pg.player_id)",
         conn=conn) if (player_store.backend() == "local" or conn is not None) else pd.DataFrame()
     team_of = dict(zip(teams["player_id"], teams["team_id"])) if not teams.empty else {}
-    active = dict(zip(players["player_id"], players["is_active"]))
+    # "Active" for tie-breaking = on a roster now or has played since the first collected season, so
+    # 'Glenn Robinson III' beats the retired 'Glenn Robinson' when the suffix is dropped.
+    active = {int(p): bool(a) or int(p) in team_of for p, a in zip(players["player_id"], players["is_active"])}
     rows = [{"name": r["full_name"], "player_id": int(r["player_id"]), "team_id": team_of.get(r["player_id"]),
-             "is_active": bool(r["is_active"])} for r in players.to_dict("records")]
+             "is_active": active[int(r["player_id"])]} for r in players.to_dict("records")]
     aliases = player_store.read("player_aliases", columns="provider, provider_name, player_id", conn=conn)
     for r in aliases.to_dict("records"):
         if r["provider"] in ("nba_api", "normalized"):
