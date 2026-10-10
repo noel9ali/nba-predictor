@@ -32,7 +32,8 @@ import player_store  # noqa: E402
 player_store.register_table("player_minutes_projection", """
     create table if not exists player_minutes_projection (
       game_id text not null, player_id integer not null, as_of text not null, team_id integer not null,
-      p_play real not null, exp_min real not null, min_p10 real, min_p90 real, role text not null,
+      p_play real not null, exp_min real not null, min_if_play real, min_p10 real, min_p90 real,
+      role text not null,
       basis text not null, version text not null, primary key (game_id, player_id, as_of))""",
     ["game_id", "player_id", "as_of"],
     ["create index if not exists player_minutes_projection_game_idx on player_minutes_projection (game_id, as_of)"])
@@ -153,8 +154,8 @@ def project_game(game_id: str, game_date: str, home_team_id: int, away_team_id: 
 
 
 def store_projection(df: pd.DataFrame, *, conn=None) -> int:
-    cols = ["game_id", "player_id", "as_of", "team_id", "p_play", "exp_min", "min_p10", "min_p90", "role",
-            "basis", "version"]
+    cols = ["game_id", "player_id", "as_of", "team_id", "p_play", "exp_min", "min_if_play", "min_p10", "min_p90",
+            "role", "basis", "version"]
     return player_store.upsert("player_minutes_projection", df[cols].to_dict("records"), conn=conn)
 
 

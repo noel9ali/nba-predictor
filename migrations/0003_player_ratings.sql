@@ -23,7 +23,8 @@ create table if not exists public.player_minutes_projection (
   as_of     timestamptz not null,
   team_id   bigint not null,
   p_play    numeric not null check (p_play >= 0 and p_play <= 1),
-  exp_min   numeric not null,
+  exp_min   numeric not null,              -- p_play x min_if_play
+  min_if_play numeric,                     -- expected minutes if he plays (additive; props use it)
   min_p10   numeric,
   min_p90   numeric,
   role      text not null check (role in ('starter', 'rotation', 'bench', 'inactive')),
