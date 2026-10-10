@@ -8,7 +8,7 @@ Spec: `docs/player-data-backend-spec.md`. Resume point: `docs/player-data-checkp
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Recon and preconditions | done |
-| 1 | Player data foundation | todo |
+| 1 | Player data foundation | done |
 | 2 | Injury snapshot ingestion | done (historical backfill running) |
 | 3 | Ratings and minutes projections | todo |
 | 4 | Availability features and rest days | todo |
@@ -189,3 +189,53 @@ This report, `docs/player-data-checkpoint.md` and the `player-data-work` branch 
 - Tests: `tests/test_injuries.py` (25 tests: status table, names with suffixes/accents, parser on synthetic words and
   both real layouts, idempotency, unmatched file, `latest_status` leakage and boundaries, CLI never failing, backfill
   resumability, push dry-run, cache round trip). Full suite 316/316 OK, also under `scripts/run_offline_tests.py`.
+
+## Phase 1: player data foundation (done, Oct 10, 2026)
+
+### Built
+- `migrations/0002_player_foundation.sql` (file only): `players` (PK `player_id`), `player_aliases`
+  (PK `provider, provider_name`), `player_games` (PK `game_id, player_id`, indexes on `(player_id, game_date)` and
+  `(team_id, game_date)`, 10-digit text `game_id` check), `player_absences` (PK `game_id, player_id`). RLS on.
+- `src/player_store.py`: storage for all new player-data tables. `NBA_PLAYER_STORE=local` (default) writes a SQLite
+  mirror at `data/player_data/player_data.sqlite` with the same tables and primary keys; `NBA_PLAYER_STORE=supabase`
+  goes through `src/database.py` (`upsert_rows` on the PK, `select_rows`). `push_local_to_supabase(table)` copies
+  rows up later (dry run by default; never run here). Booleans are 0/1 locally and converted on push.
+- `src/collect_players.py`: `--backfill` (one `LeagueGameLog` player-mode call per regular season from 2019-20 to the
+  current season, completed seasons cached in `data/raw/nba_api/`), default incremental mode (from the newest stored
+  `game_date`, re-reading that day; rolls over to a new season), `--players` (players + aliases from
+  `CommonAllPlayers`). The season list is derived from today's date, so 2026-27 is collected automatically.
+- Aliases: provider `nba_api` (display name) and `normalized` (`normalize_name`) for every player; 94 duplicate
+  historical names resolve to the most recent player. `NameResolver` now builds from `players` + `player_aliases`
+  (+ each player's latest team from `player_games`), falling back to the nba_api list. Manual fixes for unmatched
+  injury names go into `player_aliases` with provider `nba_injury_report` or `manual`.
+- `src/absences.py`: inferred absences per the spec (typical minutes = average over the games he played among the
+  team's previous 10; at least 5 appearances; at least 15 minutes). Trade rule: a player counts for team T only if his
+  previous appearance was for T and his next appearance that season, if any, is also for T. Windows never cross
+  seasons. `typical_minutes` stored.
+- `run_pipeline.bat`: `collect_players` and `absences` run after `collect` and before `elo`/`features`. They are
+  non-fatal for now (a failure is logged and does not change the exit code). The batch file now uses a `:step`
+  subroutine for the existing steps (same behaviour, verified with a dummy batch file; the real pipeline was not run
+  because it writes to production).
+
+### Verified (real data)
+- Backfill: 176,738 player-game rows (2019-20: 22,393; 2020-21: 23,054; 2021-22: 26,039; 2022-23: 25,894;
+  2023-24: 26,401; 2024-25: 26,306; 2025-26: 26,651; 2026-27: 0 so far).
+- Reconciliation against Supabase `games` (read only): 16,578 team-games in both, zero missing either way, identical
+  per-season counts. Every game has players on both teams (min 6, median 10 players per team-game; team minutes sum
+  median 240). All `game_id` values are 10-character text.
+- Second backfill and an incremental run changed nothing (row counts 176,738 / 5,240 players / 10,386 aliases).
+- 20,194 inferred absences (about 1.2 per team-game; 2021 is highest, consistent with the COVID protocol season).
+
+### Deviations
+- `started` is null: `LeagueGameLog` has no starter flag. `BoxScoreTraditionalV3` has it (non-empty `position`), but
+  needs one call per game; deferred with the DNP-comment enrichment (`basis='boxscore_comment'`), which phase 0 showed
+  is possible but costs about 1,230 calls per season. All absences are `basis='inferred'` for now.
+- `minutes` are whole numbers: nba_api 1.11.4 returns `MIN` as an integer in `LeagueGameLog`.
+- `players.position` and `birth_date` are null (would need one `CommonPlayerInfo` call per player).
+- Regular season only, matching `games`.
+
+### Tests
+`tests/test_player_data.py` (9 tests): minutes parsing (`34:12`, `PT34M12.00S`, ints, blanks), zero-padded ids,
+upsert idempotency, alias clash handling and resolver, absence fixture (30-minute player absent, 5-minute bench
+player not, traded player not absent for his old team, 5-appearance rule, no carry-over across seasons), rebuild
+idempotency. Full offline suite 325/325 OK.

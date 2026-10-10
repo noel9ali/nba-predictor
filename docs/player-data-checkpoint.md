@@ -1,61 +1,66 @@
 # Player data checkpoint
 
 ## Resume here
-- Current: phase 2 done (historical injury backfill may still be running or finished, see below). Next: phase 1, step 1.1.
+- Current: phases 0, 1, 2 done. Next: phase 3, step 3.1 (migration `0003_player_ratings.sql` + ratings module).
 - Work only in `C:\Users\noel9\Desktop\nba-predictor.worktrees\player-data-work` (branch `player-data-work`). Never touch
   the main checkout `C:\Users\noel9\Desktop\nba-predictor` (Task Scheduler runs production there).
-- Python: `venv\Scripts\python.exe` in the worktree (its site-packages chains to the main venv via `_main_venv.pth`;
-  `pdfplumber` is installed only here). Run modules from the worktree root: `venv\Scripts\python.exe -m src.injuries ...`.
+- Python: `venv\Scripts\python.exe` in the worktree (site-packages chain to the main venv via `_main_venv.pth`;
+  `pdfplumber` installed only here). Run from the worktree root.
 - First commands on resume: `git status && git log -5 --oneline`, then
-  `venv/Scripts/python.exe -m unittest tests.test_injuries` (fast, offline).
-- Historical injury backfill (resumable): `venv/Scripts/python.exe -m src.injuries --backfill-from 2019-10-22 --to 2026-06-30`
-  (log `logs/injury_backfill.log`; PDFs in `data/raw/injury_reports/`; rows in `data/injuries/injury_snapshots.sqlite`).
-  Re-running skips cached PDFs and remembered misses.
+  `venv/Scripts/python.exe -m unittest tests.test_injuries tests.test_player_data` (fast, offline).
+- Local data (git-ignored, already built): `data/player_data/player_data.sqlite` (player_games 176,738 rows, players
+  5,240, player_aliases 10,386, player_absences 20,194), `data/raw/nba_api/` caches,
+  `data/injuries/injury_snapshots.sqlite`, `data/raw/injury_reports/*.pdf`.
+- Historical injury backfill (resumable; started 16:03 ET Oct 10 in the background, ~1 h):
+  `venv/Scripts/python.exe -m src.injuries --backfill-from 2019-10-22 --to 2026-06-30` (log `logs/injury_backfill.log`).
+  If it was cut off, re-run the same command: cached PDFs and known misses are skipped.
 
 ## For Noel: start archiving before opening night (Tue Oct 20, 2026)
-Register the snapshot job from the worktree (does not touch NBA-Predictor-Daily):
 ```
 powershell -ExecutionPolicy Bypass -File C:\Users\noel9\Desktop\nba-predictor.worktrees\player-data-work\scheduler\register_injury_snapshot_task.ps1
 ```
-or with schtasks:
+or
 ```
 schtasks /Create /TN "NBA-Predictor-Injury-Snapshot" /SC DAILY /ST 11:00 /RI 30 /DU 12:00 /TR "cmd.exe /c C:\Users\noel9\Desktop\nba-predictor.worktrees\player-data-work\scheduler\run_injury_snapshot.bat" /F
 ```
-Standalone command it runs: `cd /d C:\Users\noel9\Desktop\nba-predictor.worktrees\player-data-work && venv\Scripts\python.exe -m src.injuries --snapshot`.
-After the branch is merged, re-run the .ps1 from the main checkout so the job points at main (and install `pdfplumber==0.11.10` in the main venv).
+Standalone command: `cd /d C:\Users\noel9\Desktop\nba-predictor.worktrees\player-data-work && venv\Scripts\python.exe -m src.injuries --snapshot`.
 
 ## Checklist
 | Step | Status |
 |---|---|
-| 0.1-0.5 recon, probes, report, checkpoint, branch | done (commit 5b2c09c) |
-| 2.1 migration 0001_injury_snapshots.sql | done |
-| 2.2 config + name normalizer | done |
-| 2.3 PDF fetch/cache + parser | done |
-| 2.4 local sink, matching, latest_status, CLI, push path | done (commit 1da8778) |
-| 2.5 scheduler wiring (branch only) | done (commit 8bb0bb0) |
-| 2.6 historical backfill 2019-10-22..2026-06-30 | in progress (background run started 16:03 ET Oct 10) |
-| 1.1 migration 0002_player_foundation.sql | todo |
-| 1.2 collect_players.py (backfill + incremental) + tests | todo |
-| 1.3 players + player_aliases seed, resolver switch | todo |
-| 1.4 absences.py + tests | todo |
-| 1.5 wire into run_pipeline.bat | todo |
-| phases 3-9 | todo |
+| 0.1-0.5 recon, probes, report, checkpoint, branch | done (5b2c09c) |
+| 2.1-2.4 migration 0001, parser, archiver, sink, latest_status, CLI | done (1da8778) |
+| 2.5 scheduler wiring (branch only) | done (8bb0bb0) |
+| 2.6 historical injury backfill | in progress (background) |
+| 1.1 migration 0002_player_foundation.sql + player_store | done (f29d2a4) |
+| 1.2 collect_players backfill + incremental | done, verified vs games |
+| 1.3 players + player_aliases, resolver switch | done |
+| 1.4 absences.py | done |
+| 1.5 run_pipeline.bat wiring | done (4f03344) |
+| 3.1 migration 0003_player_ratings.sql | todo |
+| 3.2 box_value_v1 ratings | todo |
+| 3.3 rapm_lite_v1 ratings (ridge, time-ordered CV, weekly backfill) | todo |
+| 3.4 minutes projection v1 | todo |
+| 3.5 nightly refresh wiring + worked example | todo |
+| phases 4-9 | todo |
 
 ## Verification commands
-- `venv/Scripts/python.exe -m unittest tests.test_injuries`
-- Full suite (phase ends): `timeout 900 venv/Scripts/python.exe -m unittest discover -s tests` (316 OK at end of phase 2)
+- `venv/Scripts/python.exe -m unittest tests.test_injuries tests.test_player_data`
+- Full suite (phase ends): `timeout 900 venv/Scripts/python.exe scripts/run_offline_tests.py` (325 OK after phase 1)
 
 ## Decisions (details in the report)
 - New migrations in root `migrations/` (sequential), not `supabase/migrations/`.
-- Injury parser: own pdfplumber parser (nbainjuries needs Java + pandas<3).
-- Local SQLite sink for new tables until Noel applies migrations; `--push-supabase` exists but is never run here.
-- Snapshot mode "latest" (one report per tick) to keep volume sane.
-- `latest_status`: report_time <= as_of; per team, newest listing is current.
+- Injury parser: own pdfplumber parser. Snapshot mode "latest". `latest_status` uses report_time <= as_of.
+- All new tables go through `src/player_store.py` (local SQLite default; `NBA_PLAYER_STORE=supabase` after migrations).
+- Absence typical minutes = average over games played in the previous 10 team games.
+- New pipeline steps are non-fatal for now.
 
 ## Open problems / traps
-- Python heredocs with backslashes mangle Windows paths (`\r` became CR). Use the Edit/Write tools for files with paths.
-- `src/collect.py` SEASONS ends at 2025-26: production will not collect 2026-27 games until Noel adds it (not changed here).
-- Preseason (Oct 2026) injury reports are not published, so no live 2026-27 snapshot yet.
+- Python heredocs with backslashes mangle Windows paths. Use Edit/Write tools, or bash `cat <<'EOF'`.
+- Do not run `run_pipeline.bat`/`run_predict.bat`: their other steps write to production Supabase.
+- `src/collect.py` SEASONS ends at 2025-26 (production won't collect 2026-27 until Noel adds it).
+- No preseason injury reports are published, so no live 2026-27 snapshot yet.
+- `LeagueGameLog` MIN is an integer; `started` is null.
 
 ## Last good commit
-- 8bb0bb0 (plus the checkpoint/report commit after it)
+- 4f03344 (+ the docs commit after it)
