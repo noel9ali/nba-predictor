@@ -110,10 +110,34 @@ def match_odds(home_abbr, away_abbr, odds_dict):
 # implied_prob() converts american odds to implied probability (market-agnostic, src/betting.py)
 from betting import implied_prob  # noqa: E402
 
+def _availability_setup():
+    """Load the availability helpers, the saved candidate (if any) and player names. Never raises."""
+    try:
+        import availability_predict as ap
+    except Exception as exc:
+        print(f"Availability step disabled: {type(exc).__name__}: {exc}")
+        return None, None, {}
+    try:
+        ap.flag_status_changes()
+    except Exception as exc:
+        print(f"Status-change check skipped: {type(exc).__name__}: {exc}")
+    try:
+        candidate = ap.load_candidate()
+    except Exception as exc:
+        print(f"Availability candidate not loaded: {type(exc).__name__}: {exc}")
+        candidate = None
+    try:
+        names = ap.player_names()
+    except Exception:
+        names = {}
+    return ap, candidate, names
+
+
 def run():
     # load the trained model and scaler
     print("Loading model...")
     model, scaler = load_model()
+    ap, candidate, player_names = _availability_setup()
 
     # load current elo ratings for all teams
     print("Loading Elo ratings...")
@@ -197,6 +221,22 @@ def run():
         home_prob = prob[1] * 100
         away_prob = prob[0] * 100
 
+        # Availability (player-data work): projections, features and the candidate's shadow prediction.
+        # Production picks only change when NBA_PRODUCTION_MODEL names the availability candidate.
+        extra = {}
+        if ap is not None:
+            try:
+                avail = ap.run_for_game(str(game['gameId']), str(date.today()), int(home_id), int(away_id), row,
+                                        candidate=candidate, names=player_names)
+                if avail and candidate and ap.production_uses_candidate(candidate['name']):
+                    home_prob = avail['home_win_prob'] * 100
+                    away_prob = 100 - home_prob
+                    extra = {'prob_range_low': avail['prob_range_low'],
+                             'prob_range_high': avail['prob_range_high'],
+                             'model_name': candidate['name']}
+            except Exception as exc:
+                print(f"  availability step skipped: {type(exc).__name__}: {exc}")
+
         # determine predicted winner
         predicted_winner = home_abbr if home_prob > away_prob else away_abbr
 
@@ -214,6 +254,11 @@ def run():
             # only bet if model has a real edge over the market
             bankroll = get_current_bankroll()
             bet_amount = kelly_bet(best_prob, bet_odds, bankroll) if edge > 0 else 0
+            if extra:
+                from scenarios import apply_gate
+                bet_amount, skip_reason = apply_gate(bet_amount, extra['prob_range_low'], extra['prob_range_high'])
+                if skip_reason:
+                    extra['skip_reason'] = skip_reason
             bet_team = predicted_winner if bet_amount > 0 else None
         else:
             # no odds available, skip the game
@@ -245,7 +290,8 @@ def run():
             predicted_winner = predicted_winner,
             bet_placed       = bet_team,
             bet_amount       = bet_amount,
-            odds             = bet_odds
+            odds             = bet_odds,
+            extra            = extra or None
         )
 
 if __name__ == '__main__':

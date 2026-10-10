@@ -67,7 +67,9 @@ def get_current_bankroll():
 # save_prediction() stores relevant information for each game in prediction table
 def save_prediction(game_id, game_date, home_team, away_team,
                     home_prob, away_prob, predicted_winner,
-                    bet_placed, bet_amount, odds):
+                    bet_placed, bet_amount, odds, extra=None):
+    """extra: optional additive columns (prob_range_low/high, model_name, skip_reason) written only when the
+    availability candidate is the production model; None keeps the original row exactly."""
     game_id = normalize_game_id(game_id)
     existing = select_rows(
         "predictions",
@@ -93,6 +95,8 @@ def save_prediction(game_id, game_date, home_team, away_team,
         "odds": int(odds) if odds is not None else None,
         "profit_loss": None,
     }
+    if extra:
+        row.update(extra)
     try:
         insert_rows("predictions", [row])
     except DuplicateRecordError:
