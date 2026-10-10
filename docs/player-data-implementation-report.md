@@ -9,7 +9,7 @@ Spec: `docs/player-data-backend-spec.md`. Resume point: `docs/player-data-checkp
 |---|---|---|
 | 0 | Recon and preconditions | done |
 | 1 | Player data foundation | todo |
-| 2 | Injury snapshot ingestion | in progress |
+| 2 | Injury snapshot ingestion | done (historical backfill running) |
 | 3 | Ratings and minutes projections | todo |
 | 4 | Availability features and rest days | todo |
 | 5 | Candidate model and walk-forward evaluation | todo |
@@ -135,3 +135,57 @@ map an injury report's (date, matchup) to `game_id`, including future games.
 
 ### Step 5
 This report, `docs/player-data-checkpoint.md` and the `player-data-work` branch were created; first commit made.
+
+## Phase 2: injury snapshot ingestion (done, Oct 10, 2026)
+
+### Built
+- `migrations/0001_injury_snapshots.sql` (file only, not applied): `injury_snapshots` with `snapshot_id` identity PK,
+  unique `(source, report_time, team_id, player_name_raw)` (the writer's conflict target), `game_id` text with a
+  10-digit check, RLS on, anon/authenticated revoked. Extra additive columns beyond the spec: `game_time_et`,
+  `matchup`, `raw_file`. `team_id` is NOT NULL because NULLs would defeat the unique key; rows whose team cannot be
+  resolved go to the unmatched report instead.
+- `src/injury_report_pdf.py`: word-position parser (pdfplumber) for both layouts, header time as `report_time`,
+  carry-forward across pages, wrapped reasons, `NOT YET SUBMITTED` teams; slot-name helpers for both URL eras.
+- `src/injuries.py`: fetch + raw PDF cache (`data/raw/injury_reports/`), parse, team match (nickname suffix, longest
+  wins), game match (`ScheduleLeagueV2` per season, LeagueGameLog fallback, cached in `data/raw/nba_api/`), player
+  match, local append-only SQLite sink (`data/injuries/injury_snapshots.sqlite`), unmatched CSV
+  (`data/injuries/injury_unmatched.csv`), `latest_status(game_id, as_of)`, `push_to_supabase` (dry run unless `--yes`;
+  uses `upsert_rows(..., ignore_duplicates=True)`, i.e. ON CONFLICT DO NOTHING). Not run against production.
+- `src/player_names.py`: `normalize_name` (lowercase, `Last, First` flip, accents folded incl. ø/ł/đ, punctuation and
+  Jr./Sr./II-V removed) and `NameResolver` (exact, compact, same-team last-name + first-initial; ties broken by team,
+  then active roster). Today it is built from a cached nba_api `CommonAllPlayers`; phase 1 switches it to `player_aliases`
+  via `NameResolver.from_rows`.
+- `src/config.py`: status map (GTD, Day-To-Day, Out for season, Not With Team, ...), unknown fallback `questionable`
+  (logged to stdout and `injury_events`), `STATUS_TO_P_PLAY`, paths, snapshot mode/lookback.
+- `src/nba_client.py`: throttled (0.6 s), retrying (3 tries, 2 s doubling backoff), JSON-cached nba_api calls that keep
+  zero-padded IDs as strings.
+- `src/database.py`: `upsert_rows` gained an optional `ignore_duplicates` flag (default off, old calls unchanged).
+- Scheduling (branch only, nothing registered): `run_pipeline.bat` (morning) and `run_predict.bat` take a snapshot;
+  new `scheduler/run_injury_snapshot.bat` + `scheduler/register_injury_snapshot_task.ps1` for a separate
+  every-30-minutes 11:00-23:00 job; `scheduler/README_scheduler.md` documents it. The command always exits 0.
+
+### Decisions
+- **Snapshot mode "latest".** Each tick archives only the newest published report (probing 15-minute slots newest
+  first over the last 3 hours). Archiving every 15-minute report would be about 60 reports and 12,000 rows a day
+  (about 2 million rows a season), too much for Supabase; with 30-minute ticks it is about 25 reports a day. Missed slots
+  can be fetched later (`--all-slots`, or `--backfill-from` with `--slots`) because nba.com keeps its archive.
+- **`latest_status` semantics.** Only rows with `report_time <= as_of` count (`report_time` is the publication time
+  from the PDF header, so backfilled rows are point-in-time correct even though `captured_at` is later). Per team, the
+  newest report listing that team is current; a player listed earlier but missing from it is treated as removed from
+  the report (no row returned, i.e. available). Known gap: if a team drops off the report entirely, its last listing
+  stands.
+- Naive `as_of` values are read as US Eastern.
+- Historical backfill uses one report per day (the 5 PM ET slot, which the old hourly file often fills with the
+  5:30 PM version).
+
+### Verified
+- Real reports parsed: 2026-04-10 5:00 PM (206 rows, 30 teams, 0 unmatched players, 0 unknown statuses) and
+  2021-12-01 5:30 PM (102 rows, 6 not-submitted teams, 2 unmatched two-way players: RJ Nembhard Jr., Daulton Hommes).
+  All rows got a zero-padded `game_id`.
+- Live snapshot at 16:00 ET on Oct 10, 2026: 13 slots probed, all 403 (no preseason reports published), exit 0. A
+  replayed snapshot (`--now 2026-04-10T17:20-04:00`) fetched real archived reports and re-running it inserted nothing.
+- `scheduler\run_injury_snapshot.bat` runs from the worktree and logs to `logs\injury_snapshot.log`; the PowerShell
+  registration script parses cleanly (not executed).
+- Tests: `tests/test_injuries.py` (25 tests: status table, names with suffixes/accents, parser on synthetic words and
+  both real layouts, idempotency, unmatched file, `latest_status` leakage and boundaries, CLI never failing, backfill
+  resumability, push dry-run, cache round trip). Full suite 316/316 OK, also under `scripts/run_offline_tests.py`.
