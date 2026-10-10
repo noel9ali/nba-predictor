@@ -197,7 +197,7 @@ def scenarios_and_factors(read, game_id: str, model_name: str | None) -> tuple[l
         return [], []
     scen = read("prediction_scenarios", columns="scenario_key,weight,home_win_prob,label,model_name",
                 filters=[("game_id", "eq", game_id), ("model_name", "eq", model_name)], order_by="scenario_key")
-    facts = read("prediction_factors", columns='factor_key,label,"group",prob_points,sort_order,model_name',
+    facts = read("prediction_factors", columns="factor_key,label,group,prob_points,sort_order,model_name",
                  filters=[("game_id", "eq", game_id), ("model_name", "eq", model_name)], order_by="sort_order")
     scenarios = [{"label": r.get("label") or r["scenario_key"], "weight": round(float(r["weight"]), 4),
                   "home_win_prob": round(float(r["home_win_prob"]), 4)}
