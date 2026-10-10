@@ -53,6 +53,25 @@ INDEXES = [
 ]
 
 
+# Tables registered by other modules; imported on first use so callers need not import them first.
+_OWNER_MODULES = {
+    "player_ratings": "ratings",
+    "player_minutes_projection": "minutes",
+    "team_availability_features": "availability_features",
+    "prediction_scenarios": "availability_predict",
+    "prediction_factors": "availability_predict",
+    "prediction_availability_inputs": "availability_predict",
+}
+
+
+def schema(table: str) -> tuple[str, list[str]]:
+    if table not in SCHEMAS and table in _OWNER_MODULES:
+        import importlib
+
+        importlib.import_module(_OWNER_MODULES[table])
+    return SCHEMAS[table]
+
+
 def register_table(name: str, ddl: str, primary_key: list[str], indexes: Iterable[str] = ()) -> None:
     """Later phases add their tables here (same DDL-mirrors-migration rule)."""
     SCHEMAS[name] = (ddl, list(primary_key))
@@ -97,7 +116,7 @@ def close_all() -> None:
 
 
 def _ensure(conn: sqlite3.Connection, table: str) -> None:
-    ddl, _pk = SCHEMAS[table]
+    ddl, _pk = schema(table)
     conn.execute(ddl)
 
 
@@ -123,7 +142,7 @@ def upsert(table: str, rows: list[dict], *, conn: sqlite3.Connection | None = No
     """Insert or update rows on the table's primary key. Returns the number of rows sent."""
     if not rows:
         return 0
-    pk = SCHEMAS[table][1]
+    pk = schema(table)[1]
     if backend() == "supabase" and conn is None:
         from database import upsert_rows
 
@@ -133,9 +152,10 @@ def upsert(table: str, rows: list[dict], *, conn: sqlite3.Connection | None = No
     _ensure(conn, table)
     columns = list(rows[0].keys())
     updates = [c for c in columns if c not in pk]
-    sql = (f"insert into {table} ({', '.join(columns)}) values ({', '.join('?' for _ in columns)}) "
-           f"on conflict ({', '.join(pk)}) do ")
-    sql += ("update set " + ", ".join(f"{c} = excluded.{c}" for c in updates)) if updates else "nothing"
+    q = lambda c: f'"{c}"'  # noqa: E731  (quoted: some columns are SQL keywords, e.g. "group")
+    sql = (f"insert into {table} ({', '.join(q(c) for c in columns)}) values ({', '.join('?' for _ in columns)}) "
+           f"on conflict ({', '.join(q(c) for c in pk)}) do ")
+    sql += ("update set " + ", ".join(f"{q(c)} = excluded.{q(c)}" for c in updates)) if updates else "nothing"
     for start in range(0, len(rows), batch_size):
         batch = rows[start:start + batch_size]
         conn.executemany(sql, [tuple(_clean(r.get(c)) for c in columns) for r in batch])
@@ -153,7 +173,7 @@ def read(table: str, *, columns: str = "*", filters: Iterable[tuple[str, str, An
         from database import select_rows
 
         return select_rows(table, columns=columns, filters=filters,
-                           order_by=order_by or SCHEMAS[table][1])
+                           order_by=order_by or schema(table)[1])
     conn = conn or connect()
     _ensure(conn, table)
     where, params = [], []
@@ -190,7 +210,7 @@ def count(table: str, *, conn: sqlite3.Connection | None = None) -> int:
 def query(sql: str, params: Iterable[Any] = (), *, conn: sqlite3.Connection | None = None) -> pd.DataFrame:
     """Local-only SQL for heavy batch jobs (backfills); the Supabase backend uses read()."""
     conn = conn or connect()
-    for table in SCHEMAS:
+    for table in list(SCHEMAS):
         _ensure(conn, table)
     return pd.read_sql_query(sql, conn, params=list(params))
 
@@ -206,5 +226,5 @@ def push_local_to_supabase(table: str, *, dry_run: bool = True, conn: sqlite3.Co
     for column in BOOLEAN_COLUMNS & set(df.columns):
         df[column] = df[column].map(lambda v: None if pd.isna(v) else bool(v))
     rows = df.astype(object).where(df.notna(), None).to_dict("records")
-    upsert_rows(table, rows, conflict_columns=SCHEMAS[table][1])
+    upsert_rows(table, rows, conflict_columns=schema(table)[1])
     return len(rows)

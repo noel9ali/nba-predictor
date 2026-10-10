@@ -112,11 +112,12 @@ class RatingLookup:
             return {}
         as_of = self.as_ofs[idx]
         if as_of not in self._cache:
-            box = self.by_type.get(config.RATING_FALLBACK, pd.DataFrame(columns=["as_of"]))
+            empty = pd.DataFrame(columns=["player_id", "as_of", "value", "minutes_basis"])
+            box = self.by_type.get(config.RATING_FALLBACK, empty)
             box = box[box["as_of"] == as_of]
             values = dict(zip(box["player_id"].astype(int), box["value"]))
             if self.rating_type == config.RATING_PRIMARY:
-                prim = self.by_type.get(config.RATING_PRIMARY, pd.DataFrame(columns=["as_of"]))
+                prim = self.by_type.get(config.RATING_PRIMARY, empty)
                 prim = prim[(prim["as_of"] == as_of)
                             & (prim["minutes_basis"] >= config.RATING_MIN_MINUTES_FOR_PRIMARY)]
                 values.update(dict(zip(prim["player_id"].astype(int), prim["value"])))
@@ -314,10 +315,15 @@ class ArchivedStatus:
     def __init__(self, conn=None):
         import injuries
 
+        own = conn is None
         conn = conn or injuries.connect()
-        self.df = pd.read_sql_query(
-            "select game_id, team_id, player_id, player_name_raw, report_time, status from injury_snapshots "
-            "where game_id is not null", conn)
+        try:
+            self.df = pd.read_sql_query(
+                "select game_id, team_id, player_id, player_name_raw, report_time, status from injury_snapshots "
+                "where game_id is not null", conn)
+        finally:
+            if own:
+                conn.close()
         self.by_game = {g: part for g, part in self.df.groupby("game_id")}
         self._cache: dict = {}
 

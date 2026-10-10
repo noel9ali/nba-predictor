@@ -403,6 +403,7 @@ def store_rows(conn: sqlite3.Connection, rows: list[dict], unmatched: list[dict]
         [(u["report_time"], u["kind"], u["team_name"], u["team_id"], u["player_name_raw"],
           u["game_date"], u["matchup"]) for u in unmatched],
     )
+    conn.commit()
     return inserted
 
 
@@ -685,10 +686,15 @@ def latest_status(game_id: str, as_of, *, conn=None, backend: str = "local") -> 
         if not df.empty:
             df["report_time"] = df["report_time"].map(lambda v: utc_iso(parse_as_of(v)))
     else:
+        own = conn is None
         conn = conn or connect()
-        df = pd.read_sql_query(
-            "select * from injury_snapshots where game_id = ? and report_time <= ? order by report_time",
-            conn, params=(game_id, cutoff))
+        try:
+            df = pd.read_sql_query(
+                "select * from injury_snapshots where game_id = ? and report_time <= ? order by report_time",
+                conn, params=(game_id, cutoff))
+        finally:
+            if own:
+                conn.close()
     return newest_per_player(df, as_of)
 
 
