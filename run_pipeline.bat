@@ -19,7 +19,7 @@ for %%P in (collect_players absences ratings availability_features) do (
 for %%S in (elo features model track) do call :step %%S
 
 rem Status-change flags for predictions made with availability inputs (informational, never fails).
-python srcvailability_predict.py --flag-status-changes
+python src\availability_predict.py --flag-status-changes
 
 rem Injury report snapshot. Never fails the pipeline: the command exits 0 on errors.
 echo.
