@@ -85,3 +85,4 @@ PLAYER_FIRST_SEASON = "2019-20"
 ABSENCE_MIN_TYPICAL_MINUTES = 15.0
 ABSENCE_LOOKBACK_GAMES = 10
 ABSENCE_MIN_APPEARANCES = 5
+PLAYER_LOCAL_DB = os.path.join(DATA_DIR, "player_data", "player_data.sqlite")   # local mirror (git-ignored)
