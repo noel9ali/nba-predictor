@@ -342,7 +342,7 @@ def write_candidates(lb_rows: list[dict], results: dict) -> None:
         meta = json.load(fh)
     meta["candidates"] = {"path": "data/model_leaderboard_candidates.csv", "evaluated_at": trained,
                           "feature_set_version": results["feature_set_version"],
-                          "models": [r["model"] for r in rows], "promoted": False,
+                          "models": [r["model"] for r in rows], "rows": rows, "promoted": False,
                           "promotion_check": results["promotion_check"]}
     with open(METADATA_JSON, "w", encoding="utf-8") as fh:
         json.dump(meta, fh, indent=2)

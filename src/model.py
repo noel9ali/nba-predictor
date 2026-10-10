@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
 from console import force_utf8_stdio
-from database import schema_v2_enabled, select_rows, upsert_rows
+from database import MissingColumnError, schema_v2_enabled, select_rows, upsert_rows
 from features import ROLLING_WINDOW
 from model_metadata import (
     build_model_run_row,
@@ -476,7 +476,16 @@ def publish_model_run():
     metadata, leaderboard = load_metadata_and_leaderboard(METADATA_PATH, LEADERBOARD_PATH)
     row = build_model_run_row(metadata, leaderboard)
     try:
-        upsert_rows("model_runs", [row], conflict_columns=["trained_at"])
+        try:
+            upsert_rows("model_runs", [row], conflict_columns=["trained_at"])
+        except MissingColumnError:
+            optional = [k for k in ("candidates", "feature_set_version") if k in row]
+            if not optional:
+                raise
+            print("model_runs has no candidates/feature_set_version columns yet "
+                  "(apply migrations/0006_model_runs_candidates.sql); publishing without them.")
+            upsert_rows("model_runs", [{k: v for k, v in row.items() if k not in optional}],
+                        conflict_columns=["trained_at"])
     except Exception as exc:
         print(f"Publishing model run failed: {exc}")
         raise

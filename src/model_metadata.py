@@ -58,6 +58,12 @@ def build_model_run_row(metadata: dict[str, Any], leaderboard: pd.DataFrame) -> 
     # older metadata file must keep publishing to a database that does not have it yet.
     if metadata.get("training") is not None:
         row["training"] = metadata["training"]
+    # Player data (migration 0006): only sent when scripts/evaluate_availability.py wrote candidates.
+    candidates = metadata.get("candidates")
+    if isinstance(candidates, dict):
+        row["candidates"] = candidates
+        if candidates.get("feature_set_version"):
+            row["feature_set_version"] = candidates["feature_set_version"]
     return row
 
 
