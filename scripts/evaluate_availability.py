@@ -86,14 +86,15 @@ def feature_sets(base: list[str]) -> dict[str, list[str]]:
 # Models and metrics (same family and code as src/model.py)
 # ---------------------------------------------------------------------------
 
-def fit(family: str, X: np.ndarray, y: np.ndarray):
+def fit(family: str, X: np.ndarray, y: np.ndarray, *, return_parts: bool = False):
     import model as prod
     from sklearn.preprocessing import StandardScaler
 
     scaler = StandardScaler().fit(X)
     fitter = prod._fit_calibrated_logistic if family == "logistic" else prod._fit_tuned_gradient_boosting
     est, _search = fitter(scaler.transform(X), y)
-    return lambda Xn: est.predict_proba(scaler.transform(Xn))[:, 1]
+    predict = lambda Xn: est.predict_proba(scaler.transform(Xn))[:, 1]  # noqa: E731
+    return (predict, est, scaler) if return_parts else predict
 
 
 def metrics(y, p) -> dict:
@@ -167,6 +168,8 @@ def main(argv=None) -> int:
     parser.add_argument("--no-archive", action="store_true")
     parser.add_argument("--no-gb", action="store_true")
     parser.add_argument("--write-candidates", action="store_true")
+    parser.add_argument("--save-candidates", action="store_true",
+                        help="save the trained candidate models to data/candidates/ for predict-time shadow use")
     args = parser.parse_args(argv)
     try:
         from console import force_utf8_stdio
@@ -200,9 +203,16 @@ def main(argv=None) -> int:
     ytr, yte = train[prod.TARGET].astype(int).to_numpy(), test[prod.TARGET].astype(int).to_numpy()
     star = ((test["rapm:home_star_out"] == 1) | (test["rapm:away_star_out"] == 1)).to_numpy()
     lb_rows, preds, models = [], {}, {}
+    saved = {"baseline+avail_rapm": "lr-calibrated-availability-v1", "all_rapm": "lr-calibrated-availability-rest-v1"}
     for name, cols in sets.items():
-        predict = fit("logistic", train[cols].to_numpy(float), ytr)
+        predict, est, scaler = fit("logistic", train[cols].to_numpy(float), ytr, return_parts=True)
         models[name] = (predict, cols)
+        if args.save_candidates and name in saved:
+            from availability_predict import save_candidate
+
+            path = save_candidate(saved[name], est, scaler, cols, {"feature_set": name, "trained_on":
+                                  "leaderboard train split", "feature_set_version": FEATURE_SET_VERSION})
+            print(f"saved {path}")
         p = predict(test[cols].to_numpy(float))
         preds[name] = p
         lb_rows.append({"feature_set": name, "subset": "all", **metrics(yte, p)})
