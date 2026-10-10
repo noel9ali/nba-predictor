@@ -57,6 +57,11 @@ Preview (Vercel login required): https://nba-predictor-git-hardwood-build-nubber
 - Settled 2025-26 rows predate v2, so their v2-only fields (tip time, book grid, bankroll at bet, scores) stay null; new nights
   fill them. `gate_m_backup` schema holds the pre-migration copy of the tables.
 
+## Visual audit fixes: DEPLOYED (Oct 10, 2026)
+- `fix/hardwood-audit` (35 of 35 findings from `design/hardwood/audit/AUDIT-2026-10-07.md`) merged to main as `0638bc4`
+  after a sonnet security review (PASS) and 291/291 offline Python tests. Production deployment
+  `dpl_6fNLWt2Aguvfho4NzC9nJtfCdnB8` (from the main SHA, READY, aliased). Report: `design/hardwood/audit/FIXES-2026-10-07.md`.
+
 ## Open items for Noel
 - NBA logo trademark sign-off before production goes public.
 - Pipeline risks (from the pipeline-engineer audit, not built): predict-time rest-days/rolling-stat mismatch with training,
