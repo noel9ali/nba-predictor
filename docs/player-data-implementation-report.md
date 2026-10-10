@@ -11,7 +11,7 @@ Spec: `docs/player-data-backend-spec.md`. Resume point: `docs/player-data-checkp
 | 1 | Player data foundation | done |
 | 2 | Injury snapshot ingestion | done (historical backfill running) |
 | 3 | Ratings and minutes projections | done |
-| 4 | Availability features and rest days | todo |
+| 4 | Availability features and rest days | done |
 | 5 | Candidate model and walk-forward evaluation | todo |
 | 6 | Predict-time integration | todo |
 | 7 | API, contract, sample data | todo |
@@ -301,3 +301,40 @@ DNPs as zero; v1 follows the spec.
 home advantage about 2), large penalty returns the prior, ratings unchanged when games on/after as_of are tampered
 with, box value ordering, redistribution conserves 240 and respects the cap, cap binding, status map, out player gets
 0 expected minutes and a future game does not change a projection.
+
+## Phase 4: availability features and rest days (done, Oct 10, 2026)
+
+### Built
+- `migrations/0004_team_availability_features.sql` (file only). **Deviation:** the primary key is
+  `(game_id, team_id, as_of, rating_type)`; `rating_type` was added so the rapm and box variants can be stored and
+  evaluated side by side. Extra column `basis` (`realized` / `report`) as the spec asks.
+- `src/availability_features.py`: `team_features(roster)` (one function for live and history), `rest_features`,
+  `RatingLookup` (point-in-time ratings by day; the rapm variant falls back to box below 500 minutes; unrated players
+  get -1.0), `historical_rows`/`backfill()` (realized availability, as_of = tip minus 60 minutes from the schedule's
+  UTC tip time, else 7 PM ET), `build(game_id, as_of, ...)` for live use with injury-report probabilities, and
+  `model_matrix(rating_type)` producing `home_*`, `away_*`, `*_diff` columns, joined in code (the `features` table is
+  not modified). Runs nightly in `run_pipeline.bat` (non-fatal).
+- Definitions chosen where the spec left room: "top" players (star_out, top3, key-uncertain) must have at least 15
+  base minutes; `top3_avail` is the mean; `minutes_lost` is healthy minus expected minutes over the top 8 by healthy
+  minutes; impact = rating x healthy minutes; `rest_days` = days since the previous game this season (1 = back-to-back),
+  capped at 7, and the season opener gets the cap. (The production `features.rest_diff` is uncapped and crosses
+  seasons; the new columns do not replace it.)
+- `src/absences.py` now keeps an absence spell flagged until the player plays again (typical minutes from the
+  spell's start). Without this, a star out for 15 games stopped being "absent" after about 6 games because the
+  10-game window emptied, and the realized features called him available. Absences: 33,620 (was 20,194).
+- `src/collect_players.py`: neutral-site games (NBA Cup knockout games, Paris/Mexico City) list both teams with '@',
+  so the home team now comes from the schedule (112 player rows over 10 games fixed). Every game has exactly one home team.
+
+### Verified
+- 33,156 rows = 16,578 team-games x 2 rating types (reconciles with `games`). 8,289 games in the wide matrix.
+- 342 early 2019-20 games (before the first rating refit on 2019-12-09) have null rating features; rest features exist.
+- Realized `star_out` rate about 32% of team-games (a top-2 player by rating missing); back-to-back rate 16%.
+  `n_key_uncertain` is always 0 in history (realized p_play is 0 or 1): it only carries information live.
+- Leakage tests pass (see Tests).
+
+### Tests
+`tests/test_availability.py` (9): hand-computed six-player example (value_out 1.0, top3_avail 2/3, minutes_lost 40),
+three-player redistribution with known ratings, star_out boundary (0.5 is not out, 0.49 is), low-minute players are
+never stars, rest days for opener, back-to-back and All-Star break, and two leakage guards: features for a game are
+identical when every later game's minutes, absences and ratings are tampered with, and when the game's own box score
+changes.
