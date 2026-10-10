@@ -122,3 +122,13 @@ PLAYER_NAME_OVERRIDES = {
     "cameron reynolds": 1629244,     # Cam Reynolds
     "rj nembhard": 1630612,          # Ruben Nembhard Jr.
 }
+
+# ---------------------------------------------------------------------------
+# Availability features (phase 4)
+# ---------------------------------------------------------------------------
+AVAILABILITY_FEATURE_VERSION = "avail_v1"
+AVAILABILITY_AS_OF_MINUTES_BEFORE_TIP = 60
+AVAILABILITY_KEY_MIN_BASE_MINUTES = 15.0   # only players with this many base minutes can be "top" players
+AVAILABILITY_RATING_TYPES = ("rapm_lite_v1", "box_value_v1")
+RATING_UNRATED_VALUE = -1.0                # players without any rating yet (just debuted): a little below average
+REST_DAYS_CAP = 7                          # season opener and long breaks (All-Star) are capped here

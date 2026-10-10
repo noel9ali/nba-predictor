@@ -146,6 +146,15 @@ class AbsenceTests(unittest.TestCase):
         self.assertEqual(len(out), 1)
         self.assertTrue(all(len(g) == 10 for g, _ in keyed))
 
+    def test_long_absence_spell_stays_flagged(self):
+        games = team_games(T1, "2025-26", date(2025, 10, 21), 30)
+        star = [30] * 10 + [None] * 15 + [30] * 5          # out for 15 straight games
+        rows = pg_rows(games, T1, {1: star, **{900 + k: [20] * 30 for k in range(5)}})
+        out = absences.infer_absences(pd.DataFrame(rows))
+        flagged = sorted(out[out["player_id"] == 1]["game_id"])
+        self.assertEqual(flagged, sorted(g for g, _d, _s in games[10:25]))
+        self.assertTrue((out["typical_minutes"] == 30.0).all())
+
     def test_needs_five_appearances(self):
         rows = pg_rows(self.g1[:5], T1, {1: [30, 30, 30, 30, None], **{900 + k: [20] * 5 for k in range(5)}})
         self.assertTrue(absences.infer_absences(pd.DataFrame(rows)).empty)    # only 4 prior appearances

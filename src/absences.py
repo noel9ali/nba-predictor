@@ -7,6 +7,8 @@ in the games he played, and he has no player_games row for this game. basis = 'i
 Trades: a player only counts for team T if his previous appearance (any team) was for T and his next
 appearance in the season, if any, is also for T, so a traded player is never absent for his old team.
 Season boundaries: the window never crosses seasons.
+Spells: once flagged, the following consecutive missed games of the season stay flagged until he plays again
+(typical_minutes from the spell's start), so long injuries stay recorded after the 10-game window empties.
 Note: this is a hindsight label for history (realized absences); live predictions use injury reports.
 
     python src/absences.py            # rebuild all seasons (idempotent upsert on (game_id, player_id))
@@ -58,8 +60,19 @@ def infer_absences(pg: pd.DataFrame, *, lookback: int | None = None, min_apps: i
         candidate = (~played) & (apps >= min_apps) & (avg >= min_minutes)
         if not candidate.values.any():
             continue
+        # Absence spells: once flagged, every following missed game of the season stays flagged (with the
+        # typical minutes from the spell's start) until he plays again, so a long injury does not drop out
+        # of the record after the 10-game window empties.
+        cand = candidate.to_numpy().copy()
+        play = played.to_numpy()
+        typical = avg.to_numpy().copy()
+        for j in range(cand.shape[1]):
+            for i in range(1, cand.shape[0]):
+                if not cand[i, j] and cand[i - 1, j] and not play[i, j]:
+                    cand[i, j] = True
+                    typical[i, j] = typical[i - 1, j]
         dates = dict(zip(games["game_id"], games["game_date"]))
-        for game_id, player_id in zip(*np.nonzero(candidate.to_numpy())):
+        for game_id, player_id in zip(*np.nonzero(cand)):
             gid = candidate.index[game_id]
             pid = candidate.columns[player_id]
             gdate = dates[gid]
@@ -72,7 +85,7 @@ def infer_absences(pg: pd.DataFrame, *, lookback: int | None = None, min_apps: i
                 continue                                   # next seen with another team: traded away
             out.append({"game_id": gid, "player_id": int(pid), "team_id": int(team_id), "game_date": gdate,
                         "basis": "inferred", "reason": None,
-                        "typical_minutes": round(float(avg.iloc[game_id, player_id]), 2)})
+                        "typical_minutes": round(float(typical[game_id, player_id]), 2)})
     return pd.DataFrame(out, columns=cols)
 
 

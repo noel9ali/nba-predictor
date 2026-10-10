@@ -125,6 +125,7 @@ def _schedule_from_v2(df: pd.DataFrame) -> pd.DataFrame:
         "game_date": df["gameDateEst"].astype(str).str[:10],
         "home_team_id": pd.to_numeric(df["homeTeam_teamId"], errors="coerce"),
         "away_team_id": pd.to_numeric(df["awayTeam_teamId"], errors="coerce"),
+        "tip_utc": df["gameDateTimeUTC"].astype(str) if "gameDateTimeUTC" in df else None,
     }).dropna(subset=["home_team_id", "away_team_id"])
 
 
