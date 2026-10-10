@@ -133,12 +133,14 @@ export function summarize(games) {
 }
 export const summary = () => summarize(store.games);
 
-export function nextUpOf(games) {
-  const c = games.filter(g => g.state === 'scheduled' && hasBet(g));
+export function nextUpOf(games, nowMs = Date.now()) {
+  const c = games.filter(g => g.state === 'scheduled' && hasBet(g) && tipMs(g) > nowMs);
   if (!c.length) return null;
   return c.sort((a, b) => (tipMs(a) - tipMs(b)) || ((b.edge ?? -Infinity) - (a.edge ?? -Infinity)) || a.game_id.localeCompare(b.game_id))[0];
 }
-export const nextUp = () => nextUpOf(store.games);
+export const nextUp = () => nextUpOf(store.games, now());
+
+export const pendingBets = () => store.games.some(g => g.state === 'scheduled' && hasBet(g));
 
 export const FILTERS = [['all', 'All'], ['bets', 'Bets'], ['live', 'Live'], ['upcoming', 'Upcoming'], ['final', 'Final']];
 export const SORTS = [['tip', 'Tip-off'], ['edge', 'Edge'], ['bet', 'Bet size']];

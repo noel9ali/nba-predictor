@@ -3,7 +3,7 @@ import { fmt, esc } from '../format.js';
 import { renderBoard, signCls } from '../board.js';
 import { glanceCourt, countUp } from '../court.js';
 import { watch, motionOn } from '../reveal.js';
-import { store, byTip, nextUp, pickSide, pickMargin, marginLabel, result, pl, now } from '../state.js';
+import { store, byTip, nextUp, pendingBets, pickSide, pickMargin, marginLabel, result, pl, now } from '../state.js';
 import { sampleQuery } from '../api.js';
 
 const $ = s => document.querySelector(s);
@@ -18,6 +18,27 @@ const phaseOf = () => (store.slate && (store.slate.offseason ? 'offseason' : sto
 function setHTML(el, html) { if (el && el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; } }
 function setText(el, t) { if (el && el.textContent !== t) el.textContent = t; }
 
+// Render kicker parts with span.kp elements (no wrapping, bullets attached to parts).
+function renderKickerSpan(el, text) {
+  if (!el || el.dataset.k === text) return;
+  el.dataset.k = text;
+  const parts = text.split(' · ');
+  el.innerHTML = '';
+  parts.forEach((part, i) => {
+    const span = document.createElement('span');
+    span.className = 'kp';
+    if (i < parts.length - 1) {
+      span.textContent = part + ' ·';  // NBSP + bullet for all but last
+    } else {
+      span.textContent = part;  // Last part, no separator
+    }
+    el.appendChild(span);
+    if (i < parts.length - 1) {
+      el.appendChild(document.createTextNode(' '));  // Space between parts
+    }
+  });
+}
+
 // Server-settled night: every bet carries bet.result, or a past night with a recap.
 function isOfficial() {
   if (store.isPast && store.slate && store.slate.recap) return true;
@@ -26,14 +47,20 @@ function isOfficial() {
 }
 
 export function boardCells(s) {
-  return [
+  if (s.bets === 0) {
+    return [{ label: 'Tonight', value: 'No bets tonight' }];
+  }
+  const cells = [
     { label: 'At risk', value: fmt.money(s.staked) },
     { label: 'Settled', value: fmt.money(s.settled, true), cls: signCls(s.settled), testid: 'settled' },
     { label: 'If it ended now', value: fmt.money(s.ifEnded, true), cls: signCls(s.ifEnded) },
-    { label: 'Live picks ahead', value: s.ahead + ' of ' + s.liveBets },
     { label: 'Bets W–L', value: s.betW + '–' + s.betL },
     { label: 'Picks W–L', value: s.pickW + '–' + s.pickL }
   ];
+  if (s.liveBets > 0) {
+    cells.splice(3, 0, { label: 'Live picks ahead', value: s.ahead + ' of ' + s.liveBets });
+  }
+  return cells;
 }
 
 function sentence(s) {
@@ -54,9 +81,9 @@ function sentence(s) {
     return 'Night over. No bets tonight. Picks went ' + n(s.pickW + '–' + s.pickL) + '.';
   }
   if (s.bets === 0) return 'The model found no bets in ' + n(String(s.games)) + ' ' + (s.games === 1 ? 'game' : 'games') + ' tonight.';
-  const nu = nextUp();
-  if (!nu) return 'Every bet has tipped. If it ended now: ' + n(fmt.money(s.ifEnded, true), signCls(s.ifEnded)) + '.';
   const found = 'The model found ' + n(String(s.bets)) + ' ' + (s.bets === 1 ? 'bet' : 'bets') + ' in ' + n(String(s.games)) + ' ' + (s.games === 1 ? 'game' : 'games') + '.';
+  const nu = nextUp();
+  if (!nu) return pendingBets() ? found : 'Every bet has tipped. If it ended now: ' + n(fmt.money(s.ifEnded, true), signCls(s.ifEnded)) + '.';
   if (nu.edge == null || nu.odds == null) return found;
   return found + ' Next up: ' + n(nu.pick + ' ' + fmt.odds(nu.odds)) + ' at ' + esc(fmt.time(nu.tip_time_utc)) + ', edge ' + n(fmt.pts(nu.edge), 'e') + '.';
 }
@@ -89,10 +116,14 @@ export function renderLede(s, { error = false } = {}) {
   const date = fmt.date(store.slate.date, { weekday: 'long', month: 'long', day: 'numeric' });
   kick.hidden = false;
   if (phase === 'no_games' || phase === 'offseason') {
-    setText(eyebrow, date); setText(counts, phase === 'offseason' ? 'offseason' : 'no games'); sep.hidden = false;
+    renderKickerSpan(eyebrow, date);
+    renderKickerSpan(counts, phase === 'offseason' ? 'offseason' : 'no games');
+    sep.innerHTML = '<span class="kp"> · </span>';
+    sep.hidden = false;
   } else {
-    setText(eyebrow, date + ' · ' + plural(s.games, 'game'));
-    setText(counts, s.final + ' final · ' + s.live + ' live · ' + s.upcoming + ' to come' + (s.postponed > 0 ? ' · ' + s.postponed + ' postponed' : ''));
+    renderKickerSpan(eyebrow, date + ' · ' + plural(s.games, 'game'));
+    renderKickerSpan(counts, s.final + ' final · ' + s.live + ' live · ' + s.upcoming + ' to come' + (s.postponed > 0 ? ' · ' + s.postponed + ' postponed' : ''));
+    sep.innerHTML = '<span class="kp"> · </span>';
     sep.hidden = false;
   }
   setHTML(h1, sentence(s));

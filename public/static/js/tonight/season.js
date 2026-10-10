@@ -1,6 +1,6 @@
 // "How the model is doing": season board, pinned bankroll chart with three scroll steps
 // (T13–T15), the last-33 W/L strip (T16) and the calibration card with model facts (T17).
-import { fmt, esc, wl, MINUS, word, seasonLabel } from '../format.js';
+import { fmt, esc, wl, MINUS, word, seasonLabel, modelLabel } from '../format.js';
 import { renderBoard, signCls } from '../board.js';
 import { renderCalibration } from '../calibration-chart.js';
 import { watch, motionOn, replay } from '../reveal.js';
@@ -25,7 +25,7 @@ function renderSeasonBoard() {
     { label: 'ROI', value: k.roi == null ? '—' : (k.roi >= 0 ? '+' : MINUS) + Math.abs(k.roi * 100).toFixed(1) + '%', cls: k.roi == null ? '' : signCls(k.roi) },
     { label: 'Bets W–L', value: wl(k.bets) || '—' },
     { label: 'Pick accuracy', value: fmt.pct(k.accuracy) },
-    { label: 'Max drawdown', value: dd ? MINUS + fmt.money(dd) : '$0.00' }
+    { label: 'Max drawdown', value: dd ? MINUS + fmt.money(dd) : fmt.money(0) }
   ]);
 }
 
@@ -53,7 +53,7 @@ function stepText(S, base) {
   const sm = summary(), phase = store.slate && (store.slate.offseason ? 'offseason' : store.slate.phase);
   if (store.isPast && store.slate) {
     const night = S.find(x => x.date === store.slate.date);
-    set(3, 'That night', night ? 'On ' + md(night.date) + ' the bankroll moved ' + fmt.money(night.nightly_pl, true) + ' (bets ' + night.bets + ', picks ' + night.picks + ').' : 'No bankroll change recorded for that night.');
+    set(3, 'That night', night ? 'On ' + md(night.date) + ' the bankroll moved ' + fmt.money(night.nightly_pl, true) + ' (bets ' + wl(night.bets) + ', picks ' + wl(night.picks) + ').' : 'No bankroll change recorded for that night.');
   } else if (!store.slate || sm.bets === 0 || ['no_games', 'offseason'].includes(phase)) {
     set(3, 'Nothing on the line tonight', 'No bets tonight, so the bankroll holds at ' + fmt.money(base) + '.');
   } else if (sm.open === 0) {
@@ -64,7 +64,7 @@ function stepText(S, base) {
 }
 
 // ---------- the chart ----------
-function renderBankroll() {
+function renderBankroll(step) {
   if (!perf || !host) return;
   const S = (perf.series || []).filter(x => !x.pending || x.bets !== '0-0');
   if (S.length < 2) {
@@ -81,14 +81,41 @@ function renderBankroll() {
   const W = Math.max(300, host.clientWidth || 700), H = Math.round(Math.min(300, Math.max(200, W * 0.36)));
   const pad = { l: 58, r: 16, t: 22, b: 28 };
   const ys = S.map(x => x.bankroll);
-  const lo = Math.floor(Math.min(start, tnLo, ...ys) / 50) * 50 - 25, hi = Math.ceil(Math.max(tnHi, ...ys) / 50) * 50 + 25;
+  const plotH = H - pad.t - pad.b;
+
+  // Domain per step: 1-2 use series only (+start), 3 also includes tonight's range
+  let domainValues;
+  if (step === 3 && tonightOn) {
+    domainValues = [start, ...ys, tnLo, tnHi, tnNow];
+  } else {
+    domainValues = [start, ...ys];
+  }
+
+  const minVal = Math.min(...domainValues), maxVal = Math.max(...domainValues);
+  const pad_val = Math.max(10, 0.06 * (maxVal - minVal));
+  let lo = minVal - pad_val, hi = maxVal + pad_val;
+
+  // Find tick step: smallest of [10, 20, 25, 50, 100, 200, 250, 500] where step × plotH / (hi - lo) ≥ 28
+  const tickSteps = [10, 20, 25, 50, 100, 200, 250, 500];
+  let tickStep = 50; // default
+  for (const ts of tickSteps) {
+    if (ts * plotH / (hi - lo) >= 28) {
+      tickStep = ts;
+      break;
+    }
+  }
+
+  // Snap domain to tick boundaries
+  lo = Math.floor(lo / tickStep) * tickStep;
+  hi = Math.ceil(hi / tickStep) * tickStep;
+
   const xs = i => pad.l + i * (W - pad.l - pad.r - 14) / N;
   const yv = v => pad.t + (hi - v) * (H - pad.t - pad.b) / (hi - lo);
   const pts = S.map((x, i) => [xs(i), yv(x.bankroll)]);
   const path = p => 'M' + p.map(q => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join('L');
   const d = path(pts), last = pts[N - 1], peakI = ys.indexOf(Math.max(...ys));
   let s = '';
-  for (let v = Math.ceil(lo / 50) * 50; v <= hi; v += 50) {
+  for (let v = lo; v <= hi; v += tickStep) {
     s += '<line class="gridl" x1="' + pad.l + '" x2="' + (W - pad.r) + '" y1="' + r1(yv(v)) + '" y2="' + r1(yv(v)) + '"/>' +
       '<text class="ax" x="' + (pad.l - 8) + '" y="' + r1(yv(v) + 4) + '" text-anchor="end">$' + v.toLocaleString('en-US') + '</text>';
   }
@@ -130,7 +157,9 @@ function renderBankroll() {
   const ln = host.querySelector('.ln');
   host.style.setProperty('--len', String(Math.ceil(ln.getTotalLength())));
   host.setAttribute('aria-label', 'Bankroll from ' + fmt.money(start) + ' on ' + md(S[0].date) + ' to ' + fmt.money(base) + ', peak ' + fmt.money(ys[peakI]) + ' on ' + md(S[peakI].date));
-  geo = { S, pts, W, N, pad };
+  geo = { S, pts, W, N, pad, lo, hi };
+  const svg = host.querySelector('svg');
+  placeLabels(svg, step);
   if (cur >= 0 && document.activeElement === host) show(cur, false);
   stepText(S, base);
   measureStage();
@@ -140,7 +169,7 @@ function renderBankroll() {
 function tipContent(x) {
   return ['<b>' + esc(fmt.date(x.date, { weekday: 'short', month: 'short', day: 'numeric' })) + '</b>',
     'Bankroll ' + esc(fmt.money(x.bankroll)),
-    'Night ' + esc(fmt.money(x.nightly_pl, true)) + ' · bets ' + esc(x.bets) + ' · picks ' + esc(x.picks)];
+    'Night ' + esc(fmt.money(x.nightly_pl, true)) + ' · bets ' + esc(wl(x.bets)) + ' · picks ' + esc(wl(x.picks))];
 }
 function show(i, announce) {
   if (!geo) return;
@@ -149,12 +178,90 @@ function show(i, announce) {
   cross.setAttribute('x1', p[0]); cross.setAttribute('x2', p[0]); cross.setAttribute('visibility', 'visible');
   const sc = host.clientWidth / geo.W;
   tip.hidden = false;
-  tip.style.left = Math.min(Math.max(p[0] * sc, 90), host.clientWidth - 90) + 'px';
-  tip.style.top = (p[1] * sc) + 'px';
   const parts = tipContent(x);
   tip.innerHTML = parts.join('<br>');
+  // Measure tooltip after setting content
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  const PAD = 8;
+  // X positioning: clamp with padding, or center if tooltip wider than available space
+  const hostW = host.clientWidth;
+  const px = p[0] * sc;
+  let left;
+  if (tw > hostW - 2 * PAD) {
+    left = hostW / 2;
+  } else {
+    left = Math.max(PAD + tw / 2, Math.min(px, hostW - PAD - tw / 2));
+  }
+  // Y positioning: above by default (12px gap), below if would go above top
+  const py = p[1] * sc;
+  let top;
+  if (py - 12 - th < 0) {
+    top = py + 14;
+  } else {
+    top = py - 12 - th;
+  }
+  tip.style.setProperty('left', left + 'px');
+  tip.style.setProperty('top', top + 'px');
   if (announce) $('[data-chart-live]').textContent = parts.map(t => t.replace(/<[^>]+>/g, '')).join('. ');
 }
+// Label placement for the bankroll chart (C4, designer ruling 9). Works in SVG units. Which labels and
+// which obstacles count depends on the step, not on live opacity (the overlays fade, so opacity lags):
+// base labels (peak, end) show at every step except the end label at step 3, the drawdown label at
+// step 2, the tonight/that-night labels at step 3. Each label tries a few positions around its default
+// and keeps the first whose box (+2px) touches no placed label, line, bar or plot edge; if none fits,
+// the lower-priority label is hidden (Tonight > drawdown > peak > end > range labels).
+const LABEL_TRIES = [[0, 0], [0, -14], [0, 18], [0, -28], [0, 30], [-12, 0], [12, 0], [-12, -14], [-12, 18], [12, -14], [12, 18]];
+function placeLabels(svg, step) {
+  if (!svg || !geo) return;
+  const W = geo.W, H = Number(svg.getAttribute('height')) || 0, P = geo.pad;
+  const stepOf = el => (el.closest('.ov.dd') ? [2] : el.closest('.ov.tn, .ov.pn') ? [3] : el.closest('.endg') ? [1, 2] : [1, 2, 3]);
+  const segs = [];
+  const addPath = d => {
+    const pts = (String(d).match(/-?\d+(\.\d+)?,-?\d+(\.\d+)?/g) || []).map(s => s.split(',').map(Number));
+    for (let i = 1; i < pts.length; i++) segs.push([pts[i - 1], pts[i]]);
+  };
+  const line = el => [[+el.getAttribute('x1'), +el.getAttribute('y1')], [+el.getAttribute('x2'), +el.getAttribute('y2')]];
+  svg.querySelectorAll('.ln').forEach(el => addPath(el.getAttribute('d')));
+  svg.querySelectorAll('.base').forEach(el => segs.push(line(el)));
+  if (step === 2) svg.querySelectorAll('.ddl').forEach(el => addPath(el.getAttribute('d')));
+  const bars = [];
+  if (step === 3) {
+    svg.querySelectorAll('.tnl').forEach(el => addPath(el.getAttribute('d')));
+    svg.querySelectorAll('.tnr').forEach(el => { const [a, b] = line(el); bars.push({ l: a[0] - 3, r: a[0] + 3, t: Math.min(a[1], b[1]), b: Math.max(a[1], b[1]) }); });
+  }
+  const dots = [...svg.querySelectorAll('circle.pk, circle.tnp')].filter(c => stepOf(c).includes(step))
+    .map(c => { const x = +c.getAttribute('cx'), y = +c.getAttribute('cy'), r = +c.getAttribute('r'); return { l: x - r, r: x + r, t: y - r, b: y + r }; });
+  const rank = el => (el.classList.contains('tnt') ? 0 : el.classList.contains('ddt') ? 1 : el.closest('.endg') ? 3 : el.classList.contains('lbl') ? 2 : 4);
+  const labels = [...svg.querySelectorAll('text.lbl, text.ddt, text.tnt, text.tns')];
+  labels.forEach(el => {                            // back to the default spot before every pass
+    if (!el.dataset.x0) { el.dataset.x0 = el.getAttribute('x'); el.dataset.y0 = el.getAttribute('y'); }
+    el.setAttribute('x', el.dataset.x0); el.setAttribute('y', el.dataset.y0); el.removeAttribute('visibility');
+  });
+  const hitRect = (a, b) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
+  const ccw = (a, b, c) => (c[1] - a[1]) * (b[0] - a[0]) > (b[1] - a[1]) * (c[0] - a[0]);
+  const cross = (a, b, c, d) => ccw(a, c, d) !== ccw(b, c, d) && ccw(a, b, c) !== ccw(a, b, d);
+  const segHit = ([a, b], r) => {
+    const inside = q => q[0] >= r.l && q[0] <= r.r && q[1] >= r.t && q[1] <= r.b;
+    if (inside(a) || inside(b)) return true;
+    const c = [[r.l, r.t], [r.r, r.t], [r.r, r.b], [r.l, r.b]];
+    return c.some((q, i) => cross(a, b, q, c[(i + 1) % 4]));
+  };
+  const placed = [...dots];
+  labels.filter(el => stepOf(el).includes(step)).sort((a, b) => rank(a) - rank(b)).forEach(el => {
+    const x0 = +el.dataset.x0, y0 = +el.dataset.y0, bb = el.getBBox();
+    for (const [dx, dy] of LABEL_TRIES) {
+      const r = { l: bb.x + dx - 2, r: bb.x + bb.width + dx + 2, t: bb.y + dy - 2, b: bb.y + bb.height + dy + 2 };
+      const inPlot = r.l >= P.l - 4 && r.r <= W - 2 && r.t >= 2 && r.b <= H - P.b + 2;
+      if (inPlot && !placed.some(o => hitRect(r, o)) && !bars.some(o => hitRect(r, o)) && !segs.some(s => segHit(s, r))) {
+        el.setAttribute('x', r1(x0 + dx)); el.setAttribute('y', r1(y0 + dy));
+        placed.push(r);
+        return;
+      }
+    }
+    el.setAttribute('visibility', 'hidden');          // ruling 9: the bar stays, the label goes
+  });
+}
+
 function hide() {
   if (!host) return;
   const cross = host.querySelector('.cross'), tip = host.querySelector('.tip');
@@ -184,7 +291,7 @@ function wireChart() {
   if ('ResizeObserver' in window) {
     new ResizeObserver(() => {
       clearTimeout(t);
-      t = setTimeout(() => { if (geo && Math.abs(host.clientWidth - geo.W) > 8 && host.clientWidth !== lastW) { lastW = host.clientWidth; renderBankroll(); } measureStage(); }, 100);
+      t = setTimeout(() => { if (geo && Math.abs(host.clientWidth - geo.W) > 8 && host.clientWidth !== lastW) { lastW = host.clientWidth; const step = Number(host.dataset.step) || 1; renderBankroll(step); } measureStage(); }, 100);
     }).observe(host);
   }
 }
@@ -195,10 +302,24 @@ function measureStage() {
 }
 
 function setStep(n) {
+  // Check if domain group changes (1-2 ↔ 3)
+  const oldGroup = host.dataset.step ? (Number(host.dataset.step) === 3 ? 3 : 1) : 1;
+  const newGroup = n === 3 ? 3 : 1;
+
   host.dataset.step = String(n);
   document.querySelectorAll('.bstep').forEach(s => s.classList.toggle('act', s.dataset.bs === String(n)));
   $('[data-bstep-k]').textContent = n + ' of 3';
   $('[data-bstep-t]').textContent = n === 3 && store.isPast ? 'Bankroll · that night' : TITLES[n - 1];
+
+  // Re-render chart if domain group changes
+  if (oldGroup !== newGroup && geo) {
+    renderBankroll(n);
+  } else {
+    // Just reposition labels for the current step (no re-render)
+    const svg = host.querySelector('svg');
+    if (svg) placeLabels(svg, n);
+  }
+
   host.classList.remove('pop');
   if (n === 3) { void host.offsetWidth; host.classList.add('pop'); }
 }
@@ -242,7 +363,7 @@ export function mountSeason(p) {
   $('[data-bscrolly]').hidden = false;
   renderSeasonBoard();
   wireChart();
-  renderBankroll();
+  renderBankroll(1);
   wireSteps();
   renderWL();
 }
@@ -250,9 +371,8 @@ export function mountSeason(p) {
 export function seasonOnBatch(batch) {
   if (!perf) return;
   if (batch.some(c => ['slate', 'tip', 'score', 'final', 'clock'].includes(c.type))) {
-    const step = host.dataset.step;
-    renderBankroll();
-    host.dataset.step = step;
+    const step = Number(host.dataset.step) || 1;
+    renderBankroll(step);
   }
 }
 
@@ -293,16 +413,31 @@ export function mountModelCard(m) {
   }
   const T = m.test || {}, live = m.season_live || {};
   const rows = [
-    ['Live model', m.production_model || '—'],
+    ['Live model', m.production_model ? modelLabel(m.production_model) : '—'],
     ['Retrained', m.trained_at ? new Date(m.trained_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' }) : '—'],
     ['This season', live.accuracy != null ? fmt.pct(live.accuracy) + ' of ' + (live.picks ?? 0) : '—', 'sep'],
     ['Test set', T.accuracy != null ? fmt.pct(T.accuracy) + ' of ' + (T.games != null ? T.games.toLocaleString('en-US') : '—') : '—'],
     ['Always pick home', T.baseline_home_win_rate != null ? fmt.pct(T.baseline_home_win_rate) : '—'],
     ['Brier score', T.brier != null ? T.brier.toFixed(3) : '—']
   ];
+  // Filter out empty rows: "Live model" when production_model is null, "Retrained" when trained_at is null/invalid
+  const filteredRows = rows.filter((row, i) => {
+    const label = row[0];
+    if (label === 'Live model' && !m.production_model) return false;
+    if (label === 'Retrained' && (!m.trained_at || Number.isNaN(Date.parse(m.trained_at)))) return false;
+    return true;
+  });
+  // If any rows precede "This season", apply sep class to the first "This season" row
+  const thisSeasonIdx = filteredRows.findIndex(r => r[0] === 'This season');
+  if (thisSeasonIdx > 0 && !filteredRows[thisSeasonIdx][2]) {
+    filteredRows[thisSeasonIdx] = [filteredRows[thisSeasonIdx][0], filteredRows[thisSeasonIdx][1], 'sep'];
+  } else if (thisSeasonIdx === 0 && filteredRows[thisSeasonIdx][2] === 'sep') {
+    // Remove sep class if it's the first row
+    filteredRows[thisSeasonIdx] = [filteredRows[thisSeasonIdx][0], filteredRows[thisSeasonIdx][1]];
+  }
   const dl = $('[data-testid=mfacts]');
   dl.textContent = '';
-  rows.forEach(([a, b, cls]) => {
+  filteredRows.forEach(([a, b, cls]) => {
     const dt = document.createElement('dt'), dd = document.createElement('dd');
     dt.textContent = a; dd.textContent = b;
     if (cls) { dt.className = cls; dd.className = cls; }

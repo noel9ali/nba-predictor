@@ -62,17 +62,25 @@ export function whyCopy(rows, cols, ranks, prodIdx, model) {
   if (ib < 0 || ia < 0) return '';
   const prod = rows[prodIdx];
   const rBrier = ranks[prodIdx][ib];
+  const out = [];
+
+  // Check if production ranks 1st on log loss
+  const rLL = il >= 0 ? ranks[prodIdx][il] : 0;
+  if (rLL === 1) {
+    out.push('It has the best log loss of the ' + word(N) + ', the score the training run ranks models by.');
+  }
+
   const brierPart = rBrier === 1 ? 'It has the best Brier score of the ' + word(N) : 'Its Brier score ranks ' + ord(rBrier) + ' of the ' + word(N);
   const bestAcc = Math.max.apply(null, rows.map(r => r.accuracy));
   const gap = (bestAcc - prod.accuracy) * 100;
   const accPart = gap < 1e-9 ? 'and has the best accuracy'
     : gap <= 1 ? 'and sits within ' + ceil1(gap) + ' points of the best accuracy'
       : 'but trails the best accuracy by ' + gap.toFixed(1) + ' points';
-  const out = [brierPart + ' ' + accPart + '.'];
+  out.push(brierPart + ' ' + accPart + '.');
+
   if (/logistic/i.test(model.production_model || prod.model)) {
     out.push("It's also the one whose answer can be explained input by input, which this page depends on.");
   }
-  const rLL = il >= 0 ? ranks[prodIdx][il] : 0;
   if (rLL > rBrier) {
     out.push('It ranks ' + (rLL === N ? 'last' : ord(rLL)) + " on log loss because it's occasionally more confident than it should be.");
   }
@@ -163,20 +171,103 @@ export function initTryouts(section, model) {
 
   let drawnW = 0;
   function drawBump() {
-    const W = Math.max(300, Math.round(host.clientWidth));
+    const W = Math.round(host.clientWidth);
     drawnW = W;
-    const narrow = W < 560;
-    const H = narrow ? 300 : 350, L = narrow ? 96 : 170, R = narrow ? 24 : 170, T = narrow ? 40 : 58, B = narrow ? 16 : 30;
+    let narrow = W < 560;
+
+    // Measure text to calculate L and R (wide layout only)
+    let L, R, T, B, H;
+    if (!narrow) {
+      // Create hidden div with SVG to measure text
+      const div = document.createElement('div');
+      div.style.position = 'absolute';
+      div.style.visibility = 'hidden';
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      const nmText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      nmText.setAttribute('class', 'nm');
+      svg.appendChild(nmText);
+      div.appendChild(svg);
+      host.appendChild(div);
+
+      let maxNameLen = 0;
+
+      // Measure longest name
+      rows.forEach(r => {
+        nmText.textContent = r.name;
+        maxNameLen = Math.max(maxNameLen, nmText.getComputedTextLength ? nmText.getComputedTextLength() : 0);
+      });
+
+      host.removeChild(div);
+
+      // Calculate gutters
+      R = maxNameLen + 14 + 8;
+      L = 28 + maxNameLen + 14 + 8;
+
+      // Clamp: plot must be at least 3 × 70px
+      const plotW = W - L - R;
+      if (plotW < 3 * 70) {
+        narrow = true;
+      } else {
+        H = 350;
+        B = 30;
+        T = 66;
+      }
+    }
+
+    if (narrow) {
+      H = 300;
+      B = 16;
+      T = 44;
+      L = 28;
+      // Measure abbreviated right names; must fit inside SVG (x + width <= W - 2)
+      const div = document.createElement('div');
+      div.style.position = 'absolute';
+      div.style.visibility = 'hidden';
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      const nmText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      nmText.setAttribute('class', 'nm');
+      svg.appendChild(nmText);
+      div.appendChild(svg);
+      host.appendChild(div);
+      let maxAbbrevLen = 0;
+      rows.forEach(r => {
+        nmText.textContent = abbreviate(r.name);
+        maxAbbrevLen = Math.max(maxAbbrevLen, nmText.getComputedTextLength ? nmText.getComputedTextLength() : 0);
+      });
+      host.removeChild(div);
+      // Right name at x = W - R + 14, must fit: x + textWidth <= W - 2
+      // => (W - R + 14) + textWidth <= W - 2
+      // => R >= textWidth + 16
+      // Prioritize fit: use enough R so names stay inside, then pad
+      R = maxAbbrevLen + 22;
+      // Also ensure plot width is reasonable (at least 140px)
+      if (W - L - R < 140) {
+        R = W - L - 140;
+      }
+      R = Math.max(R, 30);
+    }
+
     const cx = j => L + j * (W - L - R) / (C - 1);
     const ry = r => T + (r - 1) * (H - T - B) / (N - 1);
-    const label = r => (narrow ? abbreviate(r.name) : r.name);
     let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" role="img" aria-label="' + esc(ariaLabel) + '" focusable="false">';
     for (let r = 1; r <= N; r++) s += '<line class="gl" x1="' + r2(cx(0)) + '" x2="' + r2(cx(C - 1)) + '" y1="' + r2(ry(r)) + '" y2="' + r2(ry(r)) + '"/>';
+
+    // Headers: subtitle above, then column head
+    if (!narrow) {
+      cols.forEach((c, j) => {
+        s += '<text class="colsub" x="' + r2(cx(j)) + '" y="14" text-anchor="middle">' + esc(c.sub) + '</text>';
+      });
+    }
     cols.forEach((c, j) => {
-      s += '<text class="col" x="' + r2(cx(j)) + '" y="18" text-anchor="middle">' + esc(narrow ? c.short : c.head) + '</text>';
-      if (!narrow) s += '<text class="colsub" x="' + r2(cx(j)) + '" y="34" text-anchor="middle">' + esc(c.sub) + '</text>';
+      s += '<text class="col" x="' + r2(cx(j)) + '" y="' + (narrow ? '16' : '32') + '" text-anchor="middle">' + esc(narrow ? c.short : c.head) + '</text>';
     });
-    if (!narrow) for (let r = 1; r <= N; r++) s += '<text class="rk" x="' + r2(cx(0) - L + 8) + '" y="' + r2(ry(r) + 5) + '">' + r + '</text>';
+
+    // Rank numbers: always shown in narrow, on far left
+    for (let r = 1; r <= N; r++) {
+      const x = narrow ? 4 : r2(cx(0) - L + 8);
+      s += '<text class="rk" x="' + x + '" y="' + r2(ry(r) + 5) + '">' + r + '</text>';
+    }
+
     const order = rows.map((r, i) => i).filter(i => i !== prodIdx);
     if (prodIdx >= 0) order.push(prodIdx);
     order.forEach(i => {
@@ -186,12 +277,17 @@ export function initTryouts(section, model) {
       cols.forEach((c, j) => {
         const rk = ranks[i][j];
         s += '<circle class="nd" cx="' + r2(cx(j)) + '" cy="' + r2(ry(rk)) + '" r="' + (isProd ? 7 : 5) + '"/>';
-        if (isProd && !narrow) {
+        // Values: production only; shown in narrow and wide
+        if (isProd) {
           s += '<text class="vl" x="' + r2(cx(j)) + '" y="' + r2(rk === N ? ry(rk) + 24 : ry(rk) - 13) + '" text-anchor="middle">' + esc(c.f(r[c.key])) + '</text>';
         }
       });
-      s += '<text class="nm" x="' + r2(cx(0) - 14) + '" y="' + r2(ry(ranks[i][0]) + 4) + '" text-anchor="end">' + esc(label(r)) + '</text>';
-      if (!narrow) s += '<text class="nm" x="' + r2(cx(C - 1) + 14) + '" y="' + r2(ry(ranks[i][C - 1]) + 4) + '">' + esc(r.name) + '</text>';
+      // Left-side names: only in wide layout
+      if (!narrow) {
+        s += '<text class="nm" x="' + r2(cx(0) - 14) + '" y="' + r2(ry(ranks[i][0]) + 4) + '" text-anchor="end">' + esc(r.name) + '</text>';
+      }
+      // Right-side names: in both narrow and wide (abbreviated in narrow, full in wide)
+      s += '<text class="nm" x="' + r2(cx(C - 1) + 14) + '" y="' + r2(ry(ranks[i][C - 1]) + 4) + '">' + esc(narrow ? abbreviate(r.name) : r.name) + '</text>';
       s += '</g>';
     });
     host.innerHTML = s + '</svg>';

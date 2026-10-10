@@ -28,12 +28,12 @@ function tipSentence(g) {
   return [head, g.bet ? 'Ticket on ' + g.pick + ' is live.' : 'No ticket on this one.'];
 }
 
-function finalSentence(g, rec) {
+function finalSentence(g, rec, running) {
   const A = g.away.tricode, H = g.home.tricode;
   const head = (g.as == null || g.hs == null) ? 'Final: ' + A + ' at ' + H + '.' : 'Final: ' + A + ' ' + g.as + ', ' + H + ' ' + g.hs + '.';
   let tail = '';
   if (g.bet) {
-    const tonight = ' Tonight ' + fmt.money(summary().settled, true) + '.';
+    const tonight = ' Tonight ' + fmt.money(running, true) + '.';
     if (rec.result === 'hit') tail = 'Cashed ' + fmt.money(rec.pl, true) + '.' + tonight;
     else if (rec.result === 'miss') tail = 'Lost ' + fmt.money(rec.pl, true) + '.' + tonight;
   } else if (rec.result === 'hit') tail = 'Pick right, no bet.';
@@ -43,11 +43,30 @@ function finalSentence(g, rec) {
 
 function onBatch(changes) {
   if (store.isPast) return;
+  // Calculate running total for final toasts in this batch.
+  // end = final settled total after batch; inBatch = sum of P/L in this batch; running = end - inBatch.
+  const end = summary().settled;
+  let inBatch = 0;
+  for (const c of changes) {
+    if (c.type === 'final') {
+      const g = game(c.id);
+      if (g && g.bet && c.pl != null) inBatch += c.pl;
+    }
+  }
+  let running = end - inBatch;
+  // Walk changes in order, building toasts and updating running total.
   for (const c of changes) {
     if (c.type !== 'tip' && c.type !== 'final') continue;
     const g = game(c.id);
     if (!g) continue;
-    const [head, tail] = c.type === 'tip' ? tipSentence(g) : finalSentence(g, c);
+    let head, tail;
+    if (c.type === 'tip') {
+      [head, tail] = tipSentence(g);
+    } else {
+      // Final: update running total before building toast.
+      if (g.bet && c.pl != null) running += c.pl;
+      [head, tail] = finalSentence(g, c, running);
+    }
     toast(head, tail);
   }
 }

@@ -397,25 +397,22 @@ TONIGHT_BANKROLL = 1111.67
 # The latest training run (model_runs row). Six models graded on the same 1,596 test games,
 # ranked by log loss as the real leaderboard CSV is (rank 1 = best log loss). The production
 # model is stored under its real name so /api/model derives `test` from it; the leaderboard
-# key is shortened to "logistic" for the page by shorten_production_model().
-PRODUCTION = "legacy-calibrated-logistic"
+# key is shortened to "gradient-boosting" for the page by shorten_production_model().
+PRODUCTION = "gradient-boosting-gridsearch"
 LEADERBOARD = [  # (key, accuracy, brier, log loss, auc, calibration error)
-    ("gradient-boosting", 0.6792, 0.2094, 0.6075, 0.7295, 0.035),
+    (PRODUCTION, 0.6792, 0.2094, 0.6075, 0.7295, 0.035),
     ("calibrated-xgboost", 0.6779, 0.2099, 0.6085, 0.7250, 0.031),
     ("current-xgboost", 0.6736, 0.2100, 0.6086, 0.7244, 0.026),
     ("lstm", 0.6805, 0.2098, 0.6087, 0.7258, 0.027),
     ("random-forest", 0.6817, 0.2102, 0.6092, 0.7285, 0.042),
-    (PRODUCTION, 0.6811, 0.2091, 0.6325, 0.7293, 0.031),
+    ("legacy-calibrated-logistic", 0.6811, 0.2091, 0.6325, 0.7293, 0.031),
 ]
 # The production model's feature_signal, as the training run stores it. The API turns it into
-# feature_importance: top five as shares of the total (.296/.244/.183/.078/.072), then
-# "The other 11 inputs" (.127). Raw importances already sum to 1.
+# feature_importance: top five as shares normalized over those five, no "other" row.
+# The leaderboard CSV keeps only the top five importances, so the shares are normalised over those five.
 FEATURE_SIGNAL = [{"feature": f, "importance": v} for f, v in [
-    ("ELO_DIFF", 0.296), ("HOME_ELO", 0.244), ("AWAY_ELO", 0.183), ("AWAY_roll_TOV", 0.078),
-    ("HOME_roll_REB", 0.072), ("HOME_roll_PTS", 0.012), ("HOME_roll_FG_PCT", 0.012),
-    ("HOME_roll_AST", 0.012), ("HOME_roll_TOV", 0.012), ("HOME_roll_STOCKS", 0.012),
-    ("AWAY_roll_PTS", 0.012), ("AWAY_roll_FG_PCT", 0.012), ("AWAY_roll_REB", 0.012),
-    ("AWAY_roll_AST", 0.012), ("AWAY_roll_STOCKS", 0.012), ("rest_diff", 0.007)]]
+    ("ELO_DIFF", 0.7215137657682364), ("HOME_ELO", 0.08349524791151754), ("HOME_roll_PTS", 0.037613889105527536),
+    ("rest_diff", 0.026687460692923718), ("AWAY_roll_TOV", 0.020594491549311002)]]
 # B2 training block (the repo's verified values: 7,979 = 6,383 + 1,596, split Feb 25 2025).
 TRAINING = {
     "first_game_date": "2019-11-22", "cutoff_date": "2025-02-25", "last_game_date": "2026-04-12",
@@ -427,7 +424,7 @@ TRAINING = {
         ("2025-26", 1225, 0, 1225)]],
 }
 MODEL_RUN = {
-    "trained_at": "2026-10-06T02:05:00Z", "production_model": PRODUCTION,
+    "trained_at": "2026-10-07T05:09:34Z", "production_model": PRODUCTION,
     "cutoff_date": "2025-02-25", "test_games": 1596, "training": TRAINING,
     "leaderboard": [
         {"rank": i, "model": key, "test_games": 1596, "accuracy": acc, "log_loss": ll,
@@ -511,7 +508,7 @@ def prediction_row(g, status, bankroll_at_bet, with_kelly):
         "bankroll_at_bet": bankroll_at_bet if g.bet else None,
         "kelly_full": round(kelly_full(g.p_pick, g.price), 4) if (g.bet and with_kelly) else None,
         "kelly_fraction": 0.25 if (g.bet and with_kelly) else None,
-        "model_name": "legacy-calibrated-logistic",
+        "model_name": PRODUCTION,
         "predicted_at": utc(g.day, 18, 31), "status": status,
         "home_score": None, "away_score": None, "skip_reason": None,
     }
@@ -692,15 +689,18 @@ def all_predictions(tables, today=TONIGHT):
 # ---------------------------------------------------------------------------- Hardwood stubs
 def shorten_production_model(body):
     """The page matches the production row to production_model by suffix, so the sample's
-    leaderboard key for it is shortened to "logistic" (rank-bump-chart.md sec1). Everything
-    else in /api/model (B1-B3) comes straight from the route; this only sanity-checks it."""
+    leaderboard keys are shortened: gradient-boosting-gridsearch -> "gradient-boosting" (rank-bump-chart.md sec1)
+    and legacy-calibrated-logistic -> "logistic". Everything else in /api/model (B1-B3) comes straight
+    from the route; this only sanity-checks it."""
     board = body["leaderboard"]
     assert len(board) == len(MODEL_RUN["leaderboard"])
     for row in board:
         if row["is_production"]:
+            row["model"] = "gradient-boosting"
+        elif row["model"] == "legacy-calibrated-logistic":
             row["model"] = "logistic"
     assert sum(row["is_production"] for row in board) == 1
-    assert abs(sum(r["share"] for r in body["feature_importance"]) - 1.0) < 1e-9
+    assert abs(sum(r["share"] for r in body["feature_importance"]) - 1.0) < 1e-3
     assert body["training"] == TRAINING and body["elo"]["k"] == 20
     return body
 

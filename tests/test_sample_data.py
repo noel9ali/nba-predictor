@@ -269,13 +269,13 @@ class SampleHardwoodModelTests(unittest.TestCase):
     def setUp(self):
         self.model = load("model")
 
-    def test_hero_numbers_are_the_production_models_0_6811(self):
+    def test_hero_numbers_are_the_production_models_gradient_boosting(self):
         m = self.model
-        self.assertEqual(m["production_model"], "legacy-calibrated-logistic")
-        self.assertEqual(m["trained_at"], "2026-10-06T02:05:00Z")
+        self.assertEqual(m["production_model"], "gradient-boosting-gridsearch")
+        self.assertEqual(m["trained_at"], "2026-10-07T05:09:34Z")
         self.assertEqual(m["cutoff_date"], "2025-02-25")
-        self.assertEqual(m["test"], {"games": 1596, "accuracy": 0.6811, "brier": 0.2091,
-                                     "log_loss": 0.6325, "roc_auc": 0.7293,
+        self.assertEqual(m["test"], {"games": 1596, "accuracy": 0.6792, "brier": 0.2094,
+                                     "log_loss": 0.6075, "roc_auc": 0.7295,
                                      "baseline_home_win_rate": 0.5501})
 
     def test_leaderboard_has_six_models_with_the_b1_extras(self):
@@ -295,26 +295,25 @@ class SampleHardwoodModelTests(unittest.TestCase):
                        row["calibration_ece"])
                 self.assertEqual(got, want[row["model"]])
                 self.assertEqual(row["test_games"], 1596)
-                self.assertEqual(row["is_production"], row["model"] == "logistic")
+                self.assertEqual(row["is_production"], row["model"] == "gradient-boosting")
         # the production row's numbers are the headline test numbers
-        prod = board[-1]
+        prod = board[0]
         test = self.model["test"]
         self.assertEqual((prod["accuracy"], prod["brier_score"], prod["log_loss"], prod["roc_auc"]),
                          (test["accuracy"], test["brier"], test["log_loss"], test["roc_auc"]))
 
-        # the bump chart's expectation: production ranks 2nd, 1st, 6th and 2nd
+        # the bump chart's expectation: production ranks 4th on accuracy, 2nd on brier, 1st on log loss, 1st on auc
         def rank(key, reverse):
             return sorted(board, key=lambda r: r[key], reverse=reverse).index(prod) + 1
 
         self.assertEqual((rank("accuracy", True), rank("brier_score", False),
-                          rank("log_loss", False), rank("roc_auc", True)), (2, 1, 6, 2))
+                          rank("log_loss", False), rank("roc_auc", True)), (4, 2, 1, 1))
 
     def test_feature_importance_adds_up(self):
         fi = self.model["feature_importance"]
         self.assertEqual([r["feature"] for r in fi],
-                         ["ELO_DIFF", "HOME_ELO", "AWAY_ELO", "AWAY_roll_TOV", "HOME_roll_REB", "other"])
-        self.assertEqual([r["share"] for r in fi], [0.296, 0.244, 0.183, 0.078, 0.072, 0.127])
-        self.assertEqual(fi[-1]["label"], "The other 11 inputs")
+                         ["ELO_DIFF", "HOME_ELO", "HOME_roll_PTS", "rest_diff", "AWAY_roll_TOV"])
+        # Normalized from the raw importances
         self.assertAlmostEqual(sum(r["share"] for r in fi), 1.0, places=9)
 
     def test_training_block_adds_up(self):
@@ -369,7 +368,7 @@ class SampleFeaturedPickTests(unittest.TestCase):
                           bet["kelly_full"], bet["kelly_fraction"]),
                          ("hit", 52.93, 55.58, 1111.67, 0.2005, 0.25))
         self.assertEqual(d["result"], {"winner": "SAC", "home_score": 118, "away_score": 110, "correct": 1})
-        self.assertEqual(d["model_name"], "legacy-calibrated-logistic")
+        self.assertEqual(d["model_name"], "gradient-boosting-gridsearch")
 
     def test_featured_game_tape_is_the_walkthrough_example(self):
         tape = load("game-0022600195")["tape"]

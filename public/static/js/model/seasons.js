@@ -75,8 +75,24 @@ function buildStrip(card, t, d) {
   strip.setAttribute('aria-label', stripLabel(t, d));
   d.seasons.forEach((s, i) => {
     const g = String(s.games);
-    const lab = el('span', null, seasonLabel(s.season)); lab.style.setProperty('--g', g);
-    const cnt = el('span', null, s.train > 0 && s.test > 0 ? `${num(s.train)} + ${num(s.test)}` : num(s.games)); cnt.style.setProperty('--g', g);
+    const fullLabel = seasonLabel(s.season);
+    const shortLabel = fullLabel.split('–').map(y => y.slice(-2)).join('–');
+    const lab = el('span');
+    lab.style.setProperty('--g', g);
+    const lFull = el('b', 'l-full', fullLabel);
+    const lShort = el('b', 'l-short', shortLabel);
+    lab.append(lFull, lShort);
+
+    const cnt = el('span');
+    cnt.style.setProperty('--g', g);
+    if (s.train > 0 && s.test > 0) {
+      const cA = el('span', 'c-a', num(s.train));
+      const cB = el('span', 'c-b', '+ ' + num(s.test));
+      cnt.append(cA, document.createTextNode(' '), cB);
+    } else {
+      cnt.textContent = num(s.games);
+    }
+
     const sz = el('span', 'sz');
     sz.style.setProperty('--g', g);
     sz.style.setProperty('--n', String(i));
@@ -193,9 +209,31 @@ function buildScrolly(t, d, copy) {
     legend.append(l2);
   }
 
-  card.append(head, flag, labels, strip, counts, legend, buildTable(d));
+  card.append(head, flag, strip, labels, counts, legend, buildTable(d));
   pin.append(card);
   scrolly.append(pin);
+
+  // Check for overflow on narrow widths and hide labels/counts that don't fit
+  const checkOverflow = () => {
+    if (window.innerWidth > 560) return;
+    const labelSpans = labels.querySelectorAll('span');
+    const countSpans = counts.querySelectorAll('span');
+    labelSpans.forEach(span => {
+      if (span.scrollWidth > span.clientWidth + 1) {
+        span.style.setProperty('visibility', 'hidden');
+      }
+    });
+    countSpans.forEach(span => {
+      if (span.scrollWidth > span.clientWidth + 1) {
+        span.style.setProperty('visibility', 'hidden');
+      }
+    });
+  };
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => { setTimeout(checkOverflow, 0); });
+  } else {
+    setTimeout(checkOverflow, 100);
+  }
 
   // State handling
   let state = null;

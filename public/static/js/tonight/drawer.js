@@ -2,14 +2,14 @@
 // The panel is built with DOM APIs and textContent: no API string is ever parsed as HTML. Spec: components/ticket-drawer.md.
 import { on, game, pickSide } from '../state.js';
 import { api } from '../api.js';
-import { fmt, NDASH } from '../format.js';
+import { fmt, NDASH, wl, modelLabel } from '../format.js';
 import { logo } from '../logo.js';
 import { reduceMotion } from '../reveal.js';
 
 const HASH_RE = /^#g(\d{10})$/;
-const TAPE = [   // [label, field, decimals]
-  ['Elo', 'elo', 0], ['Rest days', 'rest_days', 0], ['Points', 'roll_pts', 1], ['FG%', 'roll_fg_pct', 'pct'],
-  ['Rebounds', 'roll_reb', 1], ['Assists', 'roll_ast', 1], ['Turnovers', 'roll_tov', 1], ['Stl+blk', 'roll_stocks', 1]
+const TAPE = [   // [label, field, decimals, [lo, hi]]
+  ['Elo', 'elo', 0, [1300, 1750]], ['Rest days', 'rest_days', 0, [0, 4]], ['Points', 'roll_pts', 1, [100, 125]], ['FG%', 'roll_fg_pct', 'pct', [0.42, 0.52]],
+  ['Rebounds', 'roll_reb', 1, [38, 52]], ['Assists', 'roll_ast', 1, [20, 32]], ['Turnovers', 'roll_tov', 1, [10, 18]], ['Stl+blk', 'roll_stocks', 1, [10, 20]]
 ];
 const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
@@ -46,31 +46,59 @@ function focusables(root) {
 }
 
 // ---------- text pieces ----------
-function nameOf(t) {
-  const name = (t && (t.name || t.tricode)) || '';
-  return t && t.record ? name + ' (' + t.record + ')' : name;
-}
-function stateText(g) {
+// The meta line, built from nodes so records, the time and the score never break mid-number.
+function setMeta(p, g) {
+  p.textContent = '';
+  const add = (text) => p.append(document.createTextNode(text));
+  const addNW = (text) => p.append(el('span', 'nw', text));
+
+  // Away team name
+  const awayName = (g.away && (g.away.name || g.away.tricode)) || '';
+  add(awayName);
+  if (g.away && g.away.record) addNW(' (' + wl(g.away.record) + ')');
+  add(' at ');
+
+  // Home team name
+  const homeName = (g.home && (g.home.name || g.home.tricode)) || '';
+  add(homeName);
+  if (g.home && g.home.record) addNW(' (' + wl(g.home.record) + ')');
+  add(' · ');
+
+  // Time
+  addNW(fmt.time(g.tip_time_utc) + ' ET');
+  add(' · ');
+
+  // State and score
   const A = g.away.tricode, H = g.home.tricode, sc = () => dash(g.as) + NDASH + dash(g.hs);
-  if (g.state === 'live') return 'Live' + (g.clock ? ' ' + g.clock : '') + ', ' + A + ' ' + sc() + ' ' + H;
-  if (g.state === 'final') return 'Final ' + A + ' ' + sc() + ' ' + H;
-  if (g.state === 'postponed') return 'Postponed';
-  if (g.state === 'void') return 'Void';
-  return 'Not started';
-}
-function metaText(g) {
-  return nameOf(g.away) + ' at ' + nameOf(g.home) + ' · ' + fmt.time(g.tip_time_utc) + ' ET · ' + stateText(g);
+  if (g.state === 'live') {
+    add('Live' + (g.clock ? ' ' + g.clock : '') + ', ');
+    add(A + ' ');
+    addNW(sc());
+    add(' ' + H);
+  } else if (g.state === 'final') {
+    add('Final ');
+    add(A + ' ');
+    addNW(sc());
+    add(' ' + H);
+  } else if (g.state === 'postponed') {
+    add('Postponed');
+  } else if (g.state === 'void') {
+    add('Void');
+  } else {
+    add('Not started');
+  }
 }
 function fineText(d) {
   const model = d && d.model_name, at = d && d.predicted_at;
-  if (at) return 'Predicted ' + fmt.time(at) + ' ET' + (model ? ' by ' + model : '') + '. Paper money only.';
-  return model ? 'Predicted by ' + model + '. Paper money only.' : 'Paper money only.';
+  const modelDisplay = model ? modelLabel(model) : null;
+  if (at) return 'Predicted ' + fmt.time(at) + ' ET' + (modelDisplay ? ' by ' + modelDisplay : '') + '. Paper money only.';
+  return modelDisplay ? 'Predicted by ' + modelDisplay + '. Paper money only.' : 'Paper money only.';
 }
 
 // ---------- sections ----------
 function header(g) {
   const ph = el('div', 'ph'), left = el('div');
-  const kk = el('p', 'kk', 'Back of ticket · № ' + String(g.game_id).slice(-4));
+  const kk = el('p', 'kk', 'Back of ticket · No. ' + String(g.game_id).slice(-4));
   const h2 = el('h2', 'd-title');
   h2.id = 'd-title';
   append(h2, logo(g.away.tricode, 'd-logo', 42), document.createTextNode(g.away.tricode + ' '), el('span', null, 'at'),
@@ -161,6 +189,17 @@ function pricesNodes(g, grid) {
 }
 
 // ---------- tale of the tape ----------
+export function tapeWidth(field, v) {
+  // Find the domain for this field
+  const tapeEntry = TAPE.find(t => t[1] === field);
+  if (!tapeEntry || !tapeEntry[3]) return 0;
+  const [lo, hi] = tapeEntry[3];
+  // Clamp the value to the domain and normalize to [0, 1]
+  const clamped = Math.min(Math.max(v, lo), hi);
+  const normalized = (clamped - lo) / (hi - lo);
+  return normalized * 100;
+}
+
 function betterSide(field, a, h, better) {
   const given = better && better[field];
   if (given === 'home' || given === 'away') return given;
@@ -177,8 +216,7 @@ function tapeRows(tape) {
     if (a == null || h == null) continue;
     const better = betterSide(field, a, h, tape.better);
     const show = v => (dec === 'pct' ? (v * 100).toFixed(1) + '%' : Number(v).toFixed(dec));
-    const max = Math.max(a, h) || 1;
-    const width = v => Number((v / max * 100).toFixed(1)) + '%';
+    const width = v => Number(tapeWidth(field, v).toFixed(1)) + '%';
     const value = (v, side, cls) => {
       const s = el('span', cls);
       if (better === side) s.append(el('b', null, show(v))); else s.textContent = show(v);
@@ -253,8 +291,9 @@ function buildPanel(g) {
   const prices = el('div');
   prices.setAttribute('data-prices', '');
   prices.append(...pricesNodes(g, g.book_grid));
-  const meta = el('p', 'meta', metaText(g));
+  const meta = el('p', 'meta');
   meta.setAttribute('data-meta', '');
+  setMeta(meta, g);
   const key = el('p', 'd-legend', 'Teal marks the better side. Fewer turnovers is better.');
   key.setAttribute('data-key', '');
   const fine = el('p', 'fine', 'Paper money only.');
@@ -350,7 +389,7 @@ function onBatch(changes) {
   for (const c of changes) {
     if (c.id === active.id && (c.type === 'tip' || c.type === 'score' || c.type === 'final' || c.type === 'clock')) {
       const g = game(active.id), m = document.querySelector('.drawer [data-meta]');
-      if (g && m) m.textContent = metaText(g);
+      if (g && m) setMeta(m, g);
       return;
     }
   }

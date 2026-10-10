@@ -42,23 +42,44 @@ section{padding-block:clamp(48px,7vw,88px) 0}
 /* ---------- scorer's board ---------- */
 .board{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));border:3px solid var(--line);background:var(--panel);
   transition:opacity .4s,transform .4s}
+.board[data-cells="1"]{grid-template-columns:minmax(0,1fr)}
+.board[data-cells="4"]{grid-template-columns:repeat(4,minmax(0,1fr))}
+.board[data-cells="5"]{grid-template-columns:repeat(5,minmax(0,1fr))}
 .board div{padding:16px 18px;border-right:2px solid var(--edge);display:flex;flex-direction:column-reverse;gap:8px}
 .board div:last-child{border-right:0}
 .board dt{font:600 11px/1.2 var(--body);text-transform:uppercase;letter-spacing:.12em;color:var(--ink-2)}
 .board dd{margin:0;font:400 clamp(20px,2.4vw,28px)/1 var(--jersey);font-variant-numeric:tabular-nums;white-space:nowrap}
-.board dd small{font:500 12px/1 var(--mono);color:var(--ink-2);margin-left:6px}
+.board dd small{font:500 12px/1 var(--mono);color:var(--ink-2);display:block;margin:6px 0 0}
 .board.docked{opacity:.35;transform:scale(.985)}
 @media (max-width:960px){
   .board{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .board[data-cells="1"]{grid-template-columns:minmax(0,1fr)}
+  .board[data-cells="4"]{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .board[data-cells="5"]{grid-template-columns:repeat(3,minmax(0,1fr))}
   .board div:nth-child(3){border-right:0}
   .board div:nth-child(-n+3){border-bottom:2px solid var(--edge)}
+  .board[data-cells="1"] div{border-bottom:0}
+  .board[data-cells="4"] div:nth-child(-n+3){border-bottom:2px solid var(--edge)}
+  .board[data-cells="4"] div:nth-child(n+4){border-bottom:0}
+  .board[data-cells="5"] div:nth-child(-n+3){border-bottom:2px solid var(--edge)}
+  .board[data-cells="5"] div:nth-child(n+4){border-bottom:0}
 }
 @media (max-width:520px){
   .board{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .board[data-cells="1"]{grid-template-columns:minmax(0,1fr)}
+  .board[data-cells="4"]{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .board[data-cells="5"]{grid-template-columns:repeat(2,minmax(0,1fr))}
   .board div{border-right:2px solid var(--edge)!important;border-bottom:2px solid var(--edge)}
   .board div:nth-child(2n){border-right:0!important}
   .board div:nth-last-child(-n+2){border-bottom:0}
-  .board dd small{display:block;margin:4px 0 0}
+  .board[data-cells="1"] div{border-right:0!important;border-bottom:0}
+  .board[data-cells="4"] div:nth-child(odd){border-right:2px solid var(--edge)!important}
+  .board[data-cells="4"] div:nth-child(even){border-right:0!important}
+  .board[data-cells="4"] div:nth-last-child(-n+2){border-bottom:0}
+  .board[data-cells="5"] div:nth-child(odd){border-right:2px solid var(--edge)!important}
+  .board[data-cells="5"] div:nth-child(even){border-right:0!important}
+  .board[data-cells="5"] div:nth-child(-n+4){border-bottom:2px solid var(--edge)}
+  .board[data-cells="5"] div:last-child{grid-column:1/-1;border-right:0!important;border-bottom:0}
 }
 
 /* ---------- court strip ---------- */
@@ -167,8 +188,7 @@ section{padding-block:clamp(48px,7vw,88px) 0}
 
 /* ---------- paper ticket ---------- */
 .ticket{--stubw:96px;position:relative;display:grid;grid-template-columns:var(--stubw) minmax(0,1fr);color:var(--t-ink);box-shadow:var(--shadow);
-  background:radial-gradient(circle at var(--stubw) 0,var(--floor) 9px,transparent 9.5px),
-             radial-gradient(circle at var(--stubw) 100%,var(--floor) 9px,transparent 9.5px),var(--stock)}
+  background:var(--stock)}
 .ticket .inner{display:contents}
 .js .ticket.pre{transform:translateX(-72px);opacity:0}
 .js .ticket.on{transition:transform .75s cubic-bezier(.16,.84,.24,1) var(--d,0s),opacity .5s ease var(--d,0s)}
@@ -178,9 +198,15 @@ section{padding-block:clamp(48px,7vw,88px) 0}
 
 .stub{background:var(--stub);border-right:2px dashed var(--t-rule);padding:18px 12px;display:flex;flex-direction:column;gap:14px;
   font:500 11px/1.3 var(--mono);color:var(--t-ink-2);text-transform:uppercase;letter-spacing:.06em}
+.ticket .stub{position:relative;z-index:2}
+.ticket .stub::before,.ticket .stub::after{content:"";position:absolute;width:18px;height:18px;border-radius:50%;background:var(--floor);right:-8px;pointer-events:none}
+.ticket .stub::before{top:-9px}
+.ticket .stub::after{bottom:-9px}
 .stub b{display:block;font:600 14px/1.15 var(--mono);color:var(--t-ink);letter-spacing:0;margin-top:3px}
 .stub .who b.stub-pick{font:400 30px/1 var(--jersey);color:var(--t-print);margin-top:5px}
-.stub .no{writing-mode:vertical-rl;transform:rotate(180deg);margin-top:auto;font:500 10px/1 var(--mono);letter-spacing:.22em}
+.stub .who-sep{display:none}
+.stub .who-2{display:block}
+.stub .no{position:absolute;right:2px;bottom:18px;margin:0;writing-mode:vertical-rl;transform:rotate(180deg);font:500 10px/1 var(--mono);letter-spacing:.22em}
 
 .ticket__body{padding:0 22px 18px;display:flex;flex-direction:column;gap:16px;min-width:0}
 .band{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;margin:0 -22px;padding:10px 22px;
@@ -200,7 +226,9 @@ html[data-feed="delayed"] .band .st.live::before,html[data-feed="down"] .band .s
 .team.is-pick .t-tri{text-decoration:underline;text-decoration-thickness:3px;text-underline-offset:6px;text-decoration-color:var(--t-print)}
 .bet-tag{flex:none;font:600 10px/1 var(--mono);text-transform:uppercase;letter-spacing:.1em;padding:5px 7px;background:var(--t-print);color:var(--stock)}
 .bet-tag.nobet{background:transparent;color:var(--t-print);box-shadow:inset 0 0 0 1.5px var(--t-print)}
-.tname{font:400 13px/1.25 var(--body);color:var(--t-ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tname{display:flex;min-width:0;font:400 13px/1.25 var(--body);color:var(--t-ink-2)}
+.tn-n{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tn-r{flex:none;white-space:pre}
 .score{font:400 36px/1 var(--jersey);font-variant-numeric:tabular-nums;text-align:right;min-width:2.3ch}
 .score.trail{color:var(--t-ink-2)}
 .score.pre-tip{font:500 14px/1 var(--mono);color:var(--t-ink-2)}
@@ -213,7 +241,7 @@ html[data-feed="delayed"] .band .st.live::before,html[data-feed="down"] .band .s
 .lines dd{margin:0;text-align:right}
 .lines b{font-weight:600}
 .lines .edge{color:var(--t-print);font-weight:600}
-.ticket.is-final .lines{visibility:hidden}
+.ticket.is-final .lines{visibility:hidden;min-height:98px}
 .ticket.is-final .lines dd{color:var(--t-ink-2)}
 
 .foot{display:flex;justify-content:space-between;align-items:center;gap:10px;font:500 12px/1.2 var(--mono);text-transform:uppercase;letter-spacing:.06em;color:var(--t-ink-2)}
@@ -222,12 +250,14 @@ html[data-feed="delayed"] .band .st.live::before,html[data-feed="down"] .band .s
 .foot .behind{color:var(--t-lost);font-weight:600}
 
 @media (max-width:560px){
-  .ticket{grid-template-columns:minmax(0,1fr);
-    background:radial-gradient(circle at 0 var(--stubh,58px),var(--floor) 9px,transparent 9.5px),
-               radial-gradient(circle at 100% var(--stubh,58px),var(--floor) 9px,transparent 9.5px),var(--stock)}
+  .ticket{grid-template-columns:minmax(0,1fr);background:var(--stock)}
   .stub{flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:2px dashed var(--t-rule);min-height:58px;align-items:center;padding:8px 18px;gap:6px 20px}
+  .ticket .stub::before{right:auto;top:auto;bottom:-8px;left:-9px}
+  .ticket .stub::after{right:-9px;left:auto;top:auto;bottom:-8px}
   .stub b{display:inline;margin-left:5px}
   .stub .who b.stub-pick{font-size:24px;vertical-align:-3px}
+  .stub .who-sep{display:inline}
+  .stub .who-2{display:inline}
   .stub .no{display:none}
   .ticket__body{padding:0 16px 16px}
   .band{margin:0 -16px;padding:10px 16px}
@@ -236,7 +266,7 @@ html[data-feed="delayed"] .band .st.live::before,html[data-feed="down"] .band .s
   .t-logo{width:32px;height:32px}
 }
 
-.stamp{--rot:-9deg;position:absolute;right:26px;bottom:66px;z-index:3;pointer-events:none;transform:rotate(var(--rot));
+.stamp{--rot:-9deg;position:absolute;right:26px;bottom:56px;z-index:3;pointer-events:none;transform:rotate(var(--rot));
   background:var(--stock);box-shadow:0 0 0 6px var(--stock),0 0 10px 8px var(--stock);
   font:400 38px/1 var(--jersey);text-transform:uppercase;text-align:center}
 .stamp .ink{display:block;padding:9px 18px 7px;border:5px double currentColor;
@@ -265,3 +295,23 @@ html[data-feed="delayed"] .band .st.live::before,html[data-feed="down"] .band .s
 /* the status pill and sample tag arrive after first paint; on narrow screens they wrap to their own row,
    so reserve it to keep the page from jumping (layout shift) */
 @media (max-width:700px){.top__r{min-height:24px}}
+@media (max-width:480px){
+  .top{display:grid;grid-template-columns:minmax(0,auto) 1fr;grid-template-rows:minmax(0,auto) 44px;gap:0 14px;row-gap:6px;padding-block:9px;align-items:center;margin:0;width:100%;min-width:0}
+  .brand{margin:0;min-width:0;white-space:nowrap}
+  .brand small{display:none}
+  .tabs{grid-column:1/-1;grid-row:2;flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x proximity;scrollbar-width:none;overflow-y:hidden;padding-block:4px;gap:0;padding:0 14px;margin:0;width:100%;min-width:0}
+  .tabs::-webkit-scrollbar{display:none}
+  .tabs a{flex:none;padding:0 12px;scroll-snap-align:start;min-height:44px}
+  .top__r{grid-column:2;grid-row:1;align-items:baseline;margin:0;min-height:0;height:auto;min-width:0;overflow:hidden;display:flex;gap:8px;flex-wrap:nowrap;justify-content:flex-end}
+  .status{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1;padding-block:5px;min-width:0;flex:0 1 auto}
+  .sample-tag{white-space:nowrap;line-height:1;flex:none}
+  [data-status-text]{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  .status i{margin-right:0}
+}
+@media (max-width:360px){
+  .brand{gap:8px}
+  .brand b{font-size:18px}
+  .top{column-gap:6px}
+  .top__r{gap:6px}
+  .sample-tag{letter-spacing:.06em;padding:4px 5px}
+}
