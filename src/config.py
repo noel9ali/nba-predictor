@@ -86,3 +86,27 @@ ABSENCE_MIN_TYPICAL_MINUTES = 15.0
 ABSENCE_LOOKBACK_GAMES = 10
 ABSENCE_MIN_APPEARANCES = 5
 PLAYER_LOCAL_DB = os.path.join(DATA_DIR, "player_data", "player_data.sqlite")   # local mirror (git-ignored)
+
+# ---------------------------------------------------------------------------
+# Ratings and minutes projections (phase 3)
+# ---------------------------------------------------------------------------
+RATING_VERSION = "2026-10-10"
+RATING_WINDOW_DAYS = 730                 # trailing window (about 2 seasons of games)
+RATING_HALF_LIFE_DAYS = 365              # exponential down-weighting of older games
+RATING_RIDGE_ALPHAS = (3.0, 10.0, 30.0, 100.0, 300.0, 1000.0)   # chosen by time-ordered CV
+RATING_CV_HOLDOUT_FRACTION = 0.2         # last 20% of the window (by date) validates alpha
+RATING_MIN_GAMES = 300                   # do not fit before this many games are in the window
+RATING_BACKFILL_EVERY_DAYS = 7           # historical refit cadence (weekly)
+RATING_BACKFILL_START = "2019-11-18"
+RATING_PRIMARY = "rapm_lite_v1"
+RATING_FALLBACK = "box_value_v1"
+RATING_MIN_MINUTES_FOR_PRIMARY = 500     # below this rapm minutes_basis, use box_value_v1
+BOX_PRIOR_MINUTES = 400                  # empirical-Bayes shrinkage strength for box_value_v1 (minutes)
+
+MINUTES_VERSION = "minutes_v1"
+MINUTES_HALF_LIFE_GAMES = 10             # EWMA half-life over games played
+MINUTES_ROSTER_LOOKBACK_GAMES = 20       # roster = players seen in the team's last N games
+MINUTES_QUANTILE_GAMES = 30              # games played used for p10/p90
+MINUTES_PLAYER_CAP = 40.0
+MINUTES_TEAM_TOTAL = 240.0
+MINUTES_ROTATION_MIN = 10.0              # base minutes for 'rotation' role
