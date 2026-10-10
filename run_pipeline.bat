@@ -15,6 +15,11 @@ for %%S in (collect elo features model track) do (
     )
 )
 
+rem Injury report snapshot (player-data work). Never fails the pipeline: the command exits 0 on errors.
+echo.
+echo Running injury report snapshot...
+python -m src.injuries --snapshot
+
 echo.
 if defined FAILED (
     echo Pipeline finished with failures.

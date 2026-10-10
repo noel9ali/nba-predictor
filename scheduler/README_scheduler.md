@@ -31,6 +31,29 @@ Start-ScheduledTask -TaskName "NBA-Predictor-Daily"
 Unregister-ScheduledTask -TaskName "NBA-Predictor-Daily" -Confirm:$false
 ```
 
+### Injury report snapshots (player-data work)
+
+A second, independent job, `NBA-Predictor-Injury-Snapshot`, archives the official NBA injury report. It runs
+`scheduler\run_injury_snapshot.bat` (that is, `python -m src.injuries --snapshot`) every 30 minutes from 11:00
+to 23:00. The morning pipeline (`run_pipeline.bat`) and `run_predict.bat` also take one snapshot each.
+A failed snapshot is logged and never fails the pipeline.
+
+**Setup** (registers the job for the checkout the script lives in):
+```powershell
+powershell -ExecutionPolicy Bypass -File scheduler\register_injury_snapshot_task.ps1
+```
+
+Equivalent `schtasks` command (replace the path with your checkout):
+```
+schtasks /Create /TN "NBA-Predictor-Injury-Snapshot" /SC DAILY /ST 11:00 /RI 30 /DU 12:00 /TR "cmd.exe /c C:\path\to\checkout\scheduler\run_injury_snapshot.bat" /F
+```
+
+Outputs: raw PDFs in `data\raw\injury_reports\` (the archive), parsed rows in
+`data\injuries\injury_snapshots.sqlite`, unmatched names in `data\injuries\injury_unmatched.csv`,
+log in `logs\injury_snapshot.log`.
+
+**Remove:** `Unregister-ScheduledTask -TaskName "NBA-Predictor-Injury-Snapshot" -Confirm:$false`
+
 ---
 
 ## Migrating to Linux / macOS cron
