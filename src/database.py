@@ -256,8 +256,13 @@ def upsert_rows(
     *,
     conflict_columns: list[str],
     batch_size: int = DEFAULT_BATCH_SIZE,
+    ignore_duplicates: bool = False,
 ) -> list[dict[str, Any]]:
-    """Idempotently upsert explicit row dictionaries in bounded batches."""
+    """Idempotently upsert explicit row dictionaries in bounded batches.
+
+    ignore_duplicates=True turns the upsert into INSERT ... ON CONFLICT DO NOTHING, for
+    append-only tables (injury_snapshots) whose existing rows must never be rewritten.
+    """
     if not rows:
         return []
     if not conflict_columns:
@@ -267,13 +272,14 @@ def upsert_rows(
     rows = _normalize_rows(rows)
     inserted: list[dict[str, Any]] = []
     conflict_target = ",".join(conflict_columns)
+    extra = {"ignore_duplicates": True} if ignore_duplicates else {}
     for start in range(0, len(rows), batch_size):
         batch = rows[start : start + batch_size]
         response = _run(
             f"Upserting rows into {table}",
             lambda batch=batch: get_client()
             .table(table)
-            .upsert(batch, on_conflict=conflict_target)
+            .upsert(batch, on_conflict=conflict_target, **extra)
             .execute(),
         )
         inserted.extend(response.data or [])
