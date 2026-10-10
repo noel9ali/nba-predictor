@@ -132,3 +132,21 @@ AVAILABILITY_KEY_MIN_BASE_MINUTES = 15.0   # only players with this many base mi
 AVAILABILITY_RATING_TYPES = ("rapm_lite_v1", "box_value_v1")
 RATING_UNRATED_VALUE = -1.0                # players without any rating yet (just debuted): a little below average
 REST_DAYS_CAP = 7                          # season opener and long breaks (All-Star) are capped here
+
+# ---------------------------------------------------------------------------
+# Betting (phase 6; src/betting.py). Same values as the original track.kelly_bet.
+# ---------------------------------------------------------------------------
+KELLY_FRACTION = 0.25
+KELLY_CAP = 0.05                 # max stake as a fraction of bankroll
+MAX_DECIMAL_ODDS = 5.0           # never bet longer prices than this
+
+# ---------------------------------------------------------------------------
+# Predict-time availability (phase 6)
+# ---------------------------------------------------------------------------
+MAX_SCENARIO_PLAYERS = 3         # per team: uncertain players (0.1 < p_play < 0.9) enumerated as present/absent
+SCENARIO_P_LOW = 0.1
+SCENARIO_P_HIGH = 0.9
+AVAILABILITY_GATE = False        # shipped off
+UNCERTAINTY_RANGE = 0.06         # prob_range_high - prob_range_low above this triggers the gate
+AVAILABILITY_GATE_ACTION = "halve"   # 'halve' the Kelly fraction or 'skip' (skip_reason 'availability_uncertain')
+STATUS_CHANGE_KEY_PLAYERS = 5    # top N by impact compared for status_changed_after_pred

@@ -1,6 +1,7 @@
 import pandas as pd
 from datetime import date, timedelta
 from nba_api.stats.endpoints import scoreboardv3
+import betting
 from console import force_utf8_stdio
 from database import (
     DatabaseError,
@@ -97,30 +98,10 @@ def save_prediction(game_id, game_date, home_team, away_team,
     except DuplicateRecordError:
         print(f"  Prediction already logged for {game_id}, skipping.")
 
-# kelly_bet() calculates bet size using the Kelly formula. 
-#   Uses fraction paramater to scale aggresion.
+# kelly_bet() calculates bet size using the Kelly formula (quarter Kelly, 5% cap, MAX_DECIMAL_ODDS).
+#   Thin wrapper over the market-agnostic src/betting.py, kept for existing callers.
 def kelly_bet(prob, odds, bankroll, fraction=0.25):
-    # convert american odds to decimal
-    if odds > 0:
-        decimal_odds = (odds / 100) + 1
-    else:
-        decimal_odds = (100 / abs(odds)) + 1
-
-    if decimal_odds > MAX_DECIMAL_ODDS:
-        return 0
-
-    edge = (prob * decimal_odds) - 1
-    kelly = edge / (decimal_odds - 1)
-
-    # only bet if there is a positive edge
-    if kelly <= 0:
-        return 0
-
-    # fractional kelly to scale aggression
-    bet = kelly * fraction * bankroll
-
-    # cap bet at 5% of bankroll
-    return min(bet, bankroll * 0.05)
+    return betting.stake(bankroll, prob, odds, fraction=fraction, max_decimal_odds=MAX_DECIMAL_ODDS)
 
 # update_results() fetches results for every prediction still pending from
 #   before today (not just yesterday), updates the corresponding prediction

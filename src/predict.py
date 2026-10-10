@@ -107,12 +107,8 @@ def match_odds(home_abbr, away_abbr, odds_dict):
 
     return None
 
-# implied_prob() converts american odds to implied probability
-def implied_prob(american_odds):
-    if american_odds > 0:
-        return 100 / (american_odds + 100)
-    else:
-        return abs(american_odds) / (abs(american_odds) + 100)
+# implied_prob() converts american odds to implied probability (market-agnostic, src/betting.py)
+from betting import implied_prob  # noqa: E402
 
 def run():
     # load the trained model and scaler
