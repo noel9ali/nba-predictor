@@ -160,8 +160,11 @@ def as_of_for(game_id: str, game_date: str, tips: dict) -> str:
 # History
 # ---------------------------------------------------------------------------
 
-def historical_rows(pg: pd.DataFrame, absent: set, lookups: dict, tips: dict | None = None) -> list[dict]:
-    """Feature rows for every team-game in pg (realized availability)."""
+def historical_rows(pg: pd.DataFrame, absent: set, lookups: dict, tips: dict | None = None, *,
+                    p_play_fn=None, basis: str = "realized", game_ids: set | None = None) -> list[dict]:
+    """Feature rows for every team-game in pg. Default: realized availability (absent -> 0, else 1).
+    p_play_fn(game_id, player_id, as_of) -> float overrides it (for example archived injury reports, basis
+    'report'); game_ids restricts which games get rows (history is still read in full)."""
     tips = tips or {}
     pg = pg.copy()
     pg["game_date"] = pg["game_date"].astype(str).str[:10]
@@ -180,6 +183,9 @@ def historical_rows(pg: pd.DataFrame, absent: set, lookups: dict, tips: dict | N
     for team_id, tg in team_games.groupby("team_id", sort=False):
         gids, gdates, seasons = tg["game_id"].tolist(), tg["game_date"].tolist(), tg["season"].tolist()
         for i, (gid, gdate, season) in enumerate(zip(gids, gdates, seasons)):
+            if game_ids is not None and gid not in game_ids:
+                continue
+            as_of = as_of_for(gid, gdate, tips)
             candidates = {p for g in gids[max(0, i - lookback):i] for p in appeared.get((team_id, g), [])}
             roster = []
             for pid in candidates:
@@ -187,10 +193,13 @@ def historical_rows(pg: pd.DataFrame, absent: set, lookups: dict, tips: dict | N
                 k = np.searchsorted(d, gdate, side="left") - 1
                 if k < 0 or t[k] != team_id:
                     continue
-                roster.append((pid, float(e[k]), 0.0 if (gid, pid) in absent else 1.0))
+                if p_play_fn is not None:
+                    p = float(p_play_fn(gid, int(pid), as_of))
+                else:
+                    p = 0.0 if (gid, pid) in absent else 1.0
+                roster.append((pid, float(e[k]), p))
             season_prev = [gdates[j] for j in range(i) if seasons[j] == season]
             rest = rest_features(season_prev, gdate)
-            as_of = as_of_for(gid, gdate, tips)
             for rtype, lookup in lookups.items():
                 values = lookup.for_day(gdate)
                 if roster and values:
@@ -200,7 +209,7 @@ def historical_rows(pg: pd.DataFrame, absent: set, lookups: dict, tips: dict | N
                 else:
                     feats = team_features(None)
                 rows.append({"game_id": gid, "team_id": int(team_id), "as_of": as_of, "rating_type": rtype,
-                             "basis": "realized", **feats, **rest,
+                             "basis": basis, **feats, **rest,
                              "feature_version": config.AVAILABILITY_FEATURE_VERSION})
     return rows
 
@@ -296,3 +305,34 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+class ArchivedStatus:
+    """p_play from archived injury reports (the local sink), point in time: report_time <= as_of.
+    Players not on the report get 1.0. Used for live-like evaluation of history."""
+
+    def __init__(self, conn=None):
+        import injuries
+
+        conn = conn or injuries.connect()
+        self.df = pd.read_sql_query(
+            "select game_id, team_id, player_id, player_name_raw, report_time, status from injury_snapshots "
+            "where game_id is not null", conn)
+        self.by_game = {g: part for g, part in self.df.groupby("game_id")}
+        self._cache: dict = {}
+
+    def covered(self, game_id: str, as_of: str) -> bool:
+        part = self.by_game.get(game_id)
+        return part is not None and bool((part["report_time"] <= as_of).any())
+
+    def p_play(self, game_id: str, player_id: int, as_of: str) -> float:
+        import injuries
+        from minutes import p_play_for_status
+
+        key = (game_id, as_of)
+        if key not in self._cache:
+            part = self.by_game.get(game_id)
+            latest = injuries.newest_per_player(part, as_of) if part is not None else pd.DataFrame()
+            self._cache[key] = {int(r["player_id"]): p_play_for_status(r["status"])
+                                for r in latest.to_dict("records") if pd.notna(r["player_id"])}
+        return self._cache[key].get(int(player_id), 1.0)

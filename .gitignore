@@ -16,3 +16,4 @@ table_init/*.csv
 data/raw/
 data/injuries/
 data/player_data/
+data/eval/
