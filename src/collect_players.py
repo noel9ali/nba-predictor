@@ -112,9 +112,37 @@ def fetch_season_log(season: str, *, date_from: str | None = None, refresh: bool
     return frames[0]
 
 
+def fix_neutral_site_home(rows: list[dict], season: str, schedule_loader=None) -> int:
+    """Neutral-site games (NBA Cup knockout games, Paris/London/Mexico City) print '@' for both teams in the game
+    log, so neither row is home. Take the designated home team from the season schedule. Returns rows fixed."""
+    home_count: dict[str, int] = {}
+    for r in rows:
+        home_count[r["game_id"]] = home_count.get(r["game_id"], 0) + r["is_home"]
+    missing = {g for g, n in home_count.items() if n == 0}
+    if not missing:
+        return 0
+    try:
+        if schedule_loader is None:
+            from injuries import load_schedule as schedule_loader
+        sched = schedule_loader(season)
+        home_of = dict(zip(sched["game_id"], sched["home_team_id"].astype(int)))
+    except Exception as exc:
+        print(f"  neutral-site home fix skipped for {season} ({type(exc).__name__})")
+        return 0
+    fixed = 0
+    for r in rows:
+        if r["game_id"] in missing and home_of.get(r["game_id"]) == r["team_id"]:
+            r["is_home"] = 1
+            fixed += 1
+    return fixed
+
+
 def collect_season(season: str, *, date_from: str | None = None, conn=None) -> int:
     df = fetch_season_log(season, date_from=date_from)
     rows = gamelog_to_rows(df, season) if not df.empty else []
+    fixed = fix_neutral_site_home(rows, season)
+    if fixed:
+        print(f"  {season}: home team set from the schedule for {fixed} neutral-site player rows")
     player_store.upsert("player_games", rows, conn=conn)
     print(f"  {season}{' from ' + date_from if date_from else ''}: {len(rows)} player-game rows")
     return len(rows)

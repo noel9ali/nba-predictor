@@ -288,12 +288,9 @@ def model_matrix(rating_type: str, *, conn=None, basis: str = "realized") -> pd.
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Team availability features")
-    parser.add_argument("--backfill", action="store_true")
-    args = parser.parse_args(argv)
-    if args.backfill:
-        backfill()
-    else:
-        parser.print_help()
+    parser.add_argument("--backfill", action="store_true", help="(default) rebuild every historical team-game")
+    parser.parse_args(argv)
+    backfill()
     return 0
 
 
