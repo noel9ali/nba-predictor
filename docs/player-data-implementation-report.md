@@ -9,12 +9,12 @@ Spec: `docs/player-data-backend-spec.md`. Resume point: `docs/player-data-checkp
 |---|---|---|
 | 0 | Recon and preconditions | done |
 | 1 | Player data foundation | done |
-| 2 | Injury snapshot ingestion | done (historical backfill running) |
+| 2 | Injury snapshot ingestion | done (historical archive backfilled 2019-10-22 to 2026-06-30) |
 | 3 | Ratings and minutes projections | done |
 | 4 | Availability features and rest days | done |
-| 5 | Candidate model and walk-forward evaluation | todo |
-| 6 | Predict-time integration | todo |
-| 7 | API, contract, sample data | todo |
+| 5 | Candidate model and walk-forward evaluation | in progress (realized-feature results in; live-like run pending) |
+| 6 | Predict-time integration | done (code + dry-run tests; candidate artifact not yet saved) |
+| 7 | API, contract, sample data | in progress (API + contract + tests done; sample JSON pending) |
 | 8 | Props groundwork | todo |
 | 9 | Report and handoff | todo |
 
@@ -338,3 +338,81 @@ three-player redistribution with known ratings, star_out boundary (0.5 is not ou
 never stars, rest days for opener, back-to-back and All-Star break, and two leakage guards: features for a game are
 identical when every later game's minutes, absences and ratings are tampered with, and when the game's own box score
 changes.
+
+## Phase 5: candidate model and walk-forward evaluation (IN PROGRESS)
+
+One command: `venv\Scripts\python.exe scripts\evaluate_availability.py` (first run needs
+`NBA_DOTENV_PATH=C:\Users\noel9\Desktop\nba-predictor\.env` to read the production `features` table once, read only;
+it is then cached in `data/eval/features_snapshot.json`). Flags: `--no-archive`, `--no-gb`, `--write-candidates`
+(writes `data/model_leaderboard_candidates.csv` + a `candidates` entry in `data/model_metadata.json`),
+`--save-candidates` (saves `data/candidates/lr-calibrated-availability-v1.pkl` and `...-rest-v1.pkl` for predict-time
+shadow use).
+
+Sanity check: the baseline calibrated logistic reproduces the production leaderboard row exactly
+(68.11% accuracy, log loss 0.6325, Brier 0.2091, AUC 0.7293 on the 1,596 test games).
+
+### Preliminary results (realized availability, i.e. hindsight; NOT the live expectation)
+Run of Oct 10 with `--no-archive --no-gb`. Availability inputs here come from who actually played, so they overstate
+what injury reports will deliver live. The live-like run below is the honest number.
+
+Leaderboard split (train 6,348, test 1,596 from 2025-02-25; 931 test games had a top-2 player out):
+
+| Feature set | Subset | Accuracy | Log loss | Brier | AUC | ECE |
+|---|---|---|---|---|---|---|
+| baseline | all | 0.6811 | 0.6325 | 0.2091 | 0.7293 | 0.0310 |
+| baseline+rest | all | 0.6786 | 0.6046 | 0.2082 | 0.7292 | 0.0273 |
+| baseline+avail_rapm | all | 0.6886 | 0.5834 | 0.1998 | 0.7534 | 0.0157 |
+| baseline+avail_box | all | 0.6779 | 0.5878 | 0.2024 | 0.7433 | 0.0281 |
+| all_rapm | all | 0.6892 | 0.5834 | 0.2000 | 0.7529 | 0.0165 |
+| baseline | star_out | 0.6821 | 0.6459 | 0.2064 | 0.7417 | 0.0267 |
+| baseline+avail_rapm | star_out | 0.6928 | 0.5776 | 0.1978 | 0.7615 | 0.0184 |
+
+Walk-forward by season, pooled 2021-22 to 2025-26 (6,140 games): Brier baseline 0.2184, +rest 0.2177,
++avail_rapm 0.2119, +avail_box 0.2134, all 0.2117; log loss 0.6307 / 0.6258 / 0.6119 / 0.6144 / 0.6109. Every season
+improves with availability (largest 2025-26: 0.2111 to 0.2023). rapm beats box in 4 of 5 seasons.
+
+Preliminary promotion check (all_rapm vs production GB: Brier +0.0094, log loss +0.0242; vs same-family baseline:
+Brier +0.0091, log loss +0.0491) passes the rule ON REALIZED FEATURES ONLY. No recommendation is made until the
+live-like (archived report) evaluation is in; nothing has been promoted.
+
+### Pending
+- Live-like evaluation on archived injury reports (the archive now covers every regular-season day from 2019-10-22;
+  first `--reparse` and `--rematch` must finish so 2019-20 reports and late-2020 games are matched).
+- Gradient-boosting second family, candidate CSV/metadata, saved candidate artifacts.
+
+## Phase 6: predict-time integration (code done; Oct 10, 2026)
+- `src/betting.py` (market-agnostic `implied_prob`, `edge`, `kelly_fraction`, `stake(..., exposure_left=None)`; worked
+  example 1,111.67 / 0.61 / -105 -> 55.58 unchanged). `track.kelly_bet` and `predict.implied_prob` use it.
+- `src/scenarios.py` (uncertain players, 2^k enumeration, blend, range, gate default off, status-change compare),
+  `src/factors.py` (logistic contributions reconciled to base rate + other row; availability split per player),
+  `src/availability_predict.py` (per-game projections + features + candidate shadow prediction, stored locally in
+  `prediction_scenarios`, `prediction_factors`, `prediction_availability_inputs`; `--flag-status-changes`).
+- `src/predict.py`: availability step per game inside try/except; production picks change only when
+  `NBA_PRODUCTION_MODEL` names the candidate (then blended prob, prob range, gate). `track.save_prediction(extra=None)`
+  keeps the original row unless extra is given. `run_pipeline.bat` runs the status-change flag (non-fatal).
+- `migrations/0005_predict_availability.sql`: `prediction_scenarios`, `prediction_factors`,
+  `prediction_availability_inputs`, predictions `prob_range_low/high`, `status_changed_after_pred`, skip_reason
+  `availability_uncertain`.
+- Tests: `tests/test_betting.py`, `tests/test_scenarios.py`, `tests/test_factors.py`,
+  `tests/test_predict_availability.py` (dry run of `predict.run()` on a recorded slate: shadow mode leaves production
+  unchanged; candidate-as-production uses the blend and range; gate; status-change flag).
+
+## Phase 7: API, contract and sample data (IN PROGRESS)
+- Done: `tests/contract_shapes.py` first (all additions `Maybe`), `src/api_availability.py`, `app.py` routes:
+  `GET /api/injuries?date=`, `/api/game/<id>` adds `availability`, `rest`, `scenarios`, `prob_range`, `factors`;
+  `/api/slate` games add `availability_summary` (null when no data); `/api/performance` adds `splits.star_out` (v2
+  only); `/api/model` adds `feature_set_version`, `candidates`, `availability_gate`. New reads never flag
+  `migration_pending` on existing routes (only `/api/injuries` does). Query budgets updated: slate 5->8, game 7->11,
+  performance 3->4 (constant in slate size). `migrations/0006_model_runs_candidates.sql`; `model.publish_model_run`
+  retries without the optional columns if 0006 is not applied. Tests: `tests/test_api_availability.py` (12).
+- Pending: sample JSON with plausible availability data (`scripts/build_sample_data.py` is deterministic: rerunning it
+  today only adds the new null/empty fields; still need to add sample injury/scenario/factor rows and an
+  `injuries-2026-11-17.json` file plus its `shape_for` entry in `tests/test_sample_data.py`).
+
+## Migrations to apply, in order (none applied by the agent)
+1. `migrations/0001_injury_snapshots.sql` - injury report snapshots (append-only).
+2. `migrations/0002_player_foundation.sql` - players, player_aliases, player_games, player_absences.
+3. `migrations/0003_player_ratings.sql` - player_ratings, player_minutes_projection (with min_if_play).
+4. `migrations/0004_team_availability_features.sql` - team availability features and rest.
+5. `migrations/0005_predict_availability.sql` - scenarios, factors, availability inputs, predictions columns.
+6. `migrations/0006_model_runs_candidates.sql` - model_runs candidates + feature_set_version.
