@@ -167,7 +167,9 @@ def report_p_play(game_id: str, as_of) -> tuple[dict, pd.DataFrame]:
     """p_play per player_id from the injury sink's latest_status (report_time <= as_of)."""
     import injuries
 
-    status = injuries.latest_status(game_id, as_of)
+    status = injuries.latest_status(
+        game_id, as_of,
+        backend="supabase" if player_store.backend() == "supabase" else "local")
     if status.empty:
         return {}, status
     matched = status[status["player_id"].notna()]

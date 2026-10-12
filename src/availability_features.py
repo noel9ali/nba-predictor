@@ -100,8 +100,8 @@ class RatingLookup:
 
     def __init__(self, rating_type: str, *, conn=None):
         self.rating_type = rating_type
-        df = player_store.query("select player_id, as_of, rating_type, value, minutes_basis from player_ratings",
-                                conn=conn)
+        df = player_store.read("player_ratings",
+                               columns="player_id, as_of, rating_type, value, minutes_basis", conn=conn)
         self.by_type = {t: g for t, g in df.groupby("rating_type")}
         self.as_ofs = sorted(df["as_of"].unique()) if not df.empty else []
         self._cache: dict[str, dict] = {}
@@ -286,7 +286,8 @@ def model_matrix(rating_type: str, *, conn=None, basis: str = "realized") -> pd.
     if feats.empty:
         return feats
     feats = feats.sort_values("as_of").groupby(["game_id", "team_id"], as_index=False).tail(1)
-    sides = player_store.query("select distinct game_id, team_id, is_home from player_games", conn=conn)
+    sides = player_store.read("player_games", columns="game_id, team_id, is_home",
+                              conn=conn).drop_duplicates()
     feats = feats.merge(sides, on=["game_id", "team_id"], how="inner")
     home = feats[feats["is_home"] == 1].set_index("game_id")[FEATURES].add_prefix("home_")
     away = feats[feats["is_home"] == 0].set_index("game_id")[FEATURES].add_prefix("away_")

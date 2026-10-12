@@ -1,6 +1,7 @@
 import requests
 from dotenv import load_dotenv
 import os
+from datetime import datetime, timezone
 from console import force_utf8_stdio
 
 # Config
@@ -62,6 +63,7 @@ def get_tonights_odds():
         return {}
 
     games = response.json()
+    captured_at = datetime.now(timezone.utc).isoformat(timespec='seconds')
     odds_by_teams = {}
     generic_rows = []
 
@@ -92,7 +94,7 @@ def get_tonights_odds():
                     if game.get('id'):
                         generic_rows.append({
                             'game_id': str(game['id']),
-                            'captured_at': game.get('commence_time') or '',
+                            'captured_at': captured_at,
                             'bookmaker': bookmaker['title'],
                             'market': 'moneyline',
                             'selection': 'home' if outcome['name'] == home_team else 'away',
@@ -121,10 +123,8 @@ def get_tonights_odds():
     try:
         from market_odds import write_moneyline_rows
         if generic_rows:
-            from datetime import datetime, timezone
             import hashlib
             for row in generic_rows:
-                row['captured_at'] = row['captured_at'] or datetime.now(timezone.utc).isoformat(timespec='seconds')
                 key = '|'.join(str(row.get(k)) for k in
                                ('game_id', 'captured_at', 'bookmaker', 'market', 'selection', 'line'))
                 row['odds_id'] = int(hashlib.sha256(key.encode()).hexdigest()[:15], 16)

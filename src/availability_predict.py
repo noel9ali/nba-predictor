@@ -116,7 +116,8 @@ class GameAvailability:
                                        "minutes", filters=[("game_date", "lt", cutoff)], conn=conn)
         self.pg = pg_all[pg_all["game_date"].astype(str) < cutoff]
         if statuses is None:
-            statuses = injuries.latest_status(game_id, as_of)
+            statuses = injuries.latest_status(game_id, as_of,
+                                              backend="supabase" if player_store.backend() == "supabase" else "local")
         self.statuses = statuses
         matched = statuses[statuses["player_id"].notna()] if not statuses.empty else statuses
         self.status_of = {int(r["player_id"]): r["status"] for r in matched.to_dict("records")} \
@@ -289,7 +290,9 @@ def flag_status_changes(*, conn=None, now: datetime | None = None, write_predict
     changed = []
     for r in inputs.to_dict("records"):
         before = {int(k): v for k, v in json.loads(r["key_statuses"] or "{}").items()}
-        latest = injuries.latest_status(r["game_id"], now)
+        latest = injuries.latest_status(
+            r["game_id"], now,
+            backend="supabase" if player_store.backend() == "supabase" else "local")
         after = {int(p): s for p, s in zip(latest.get("player_id", []), latest.get("status", []))
                  if pd.notna(p)} if not latest.empty else {}
         flag = status_changed(before, after, list(before))
@@ -303,7 +306,7 @@ def flag_status_changes(*, conn=None, now: datetime | None = None, write_predict
             for gid in changed:
                 update_rows("predictions", {"status_changed_after_pred": True}, filters=[("game_id", "eq", gid)])
         except DatabaseError as exc:
-            print(f"status_changed_after_pred not written ({exc}); apply migrations/0005_predict_availability.sql")
+            print(f"status_changed_after_pred not written ({exc}); apply supabase/migrations/20261012000500_predict_availability.sql")
     print(f"status changes: {len(changed)} game(s) flagged")
     return len(changed)
 

@@ -188,10 +188,14 @@ def _season_start(as_of: date) -> date:
 def prior_for(as_of: date, *, conn=None) -> dict:
     """Last season's final rapm_lite_v1 ratings (latest as_of before this season's start)."""
     cutoff = _season_start(as_of).isoformat()
-    df = player_store.query(
-        "select player_id, value from player_ratings where rating_type = 'rapm_lite_v1' and as_of = "
-        "(select max(as_of) from player_ratings where rating_type = 'rapm_lite_v1' and as_of < ?)",
-        [cutoff], conn=conn)
+    all_ratings = player_store.read("player_ratings",
+                                    columns="player_id,as_of,rating_type,value",
+                                    filters=[("rating_type", "eq", "rapm_lite_v1"),
+                                             ("as_of", "lt", cutoff)], conn=conn)
+    if all_ratings.empty:
+        return {}
+    latest = all_ratings["as_of"].max()
+    df = all_ratings[all_ratings["as_of"] == latest]
     return dict(zip(df["player_id"].astype(int), df["value"]))
 
 
@@ -227,8 +231,9 @@ def backfill(*, start: date | None = None, end: date | None = None, conn=None, r
     start = start or date.fromisoformat(config.RATING_BACKFILL_START)
     last_game = date.fromisoformat(str(pg_all["game_date"].max())[:10])
     end = end or (last_game + timedelta(days=1))
-    done = set() if rebuild else set(player_store.query(
-        "select distinct as_of from player_ratings where rating_type = 'rapm_lite_v1'", conn=conn)["as_of"])
+    stored = player_store.read("player_ratings", columns="as_of,rating_type",
+                               filters=[("rating_type", "eq", "rapm_lite_v1")], conn=conn)
+    done = set() if rebuild else set(stored["as_of"])
     season_days = pg_all.groupby("season")["game_date"].agg(["min", "max"])
     in_season = lambda d: any(lo <= d.isoformat() <= (date.fromisoformat(hi) + timedelta(days=7)).isoformat()  # noqa: E731
                               for lo, hi in zip(season_days["min"], season_days["max"]))
@@ -248,10 +253,13 @@ def backfill(*, start: date | None = None, end: date | None = None, conn=None, r
 def ratings_as_of(day, rating_type: str, *, conn=None) -> pd.DataFrame:
     """The latest stored ratings of a type with as_of <= day (point-in-time safe for games on `day`)."""
     day = day.isoformat() if hasattr(day, "isoformat") else str(day)[:10]
-    return player_store.query(
-        "select player_id, as_of, value, minutes_basis, se from player_ratings where rating_type = ? and as_of = "
-        "(select max(as_of) from player_ratings where rating_type = ? and as_of <= ?)",
-        [rating_type, rating_type, day], conn=conn)
+    df = player_store.read("player_ratings",
+                           columns="player_id,as_of,value,minutes_basis,se",
+                           filters=[("rating_type", "eq", rating_type), ("as_of", "lte", day)], conn=conn)
+    if df.empty:
+        return df
+    latest = df["as_of"].max()
+    return df[df["as_of"] == latest].copy()
 
 
 def combined_ratings(day, *, conn=None) -> pd.DataFrame:
@@ -281,9 +289,11 @@ def main(argv=None) -> int:
         return 0
     day = args.as_of or date.today()
     if args.as_of is None:
-        latest = player_store.query("select max(as_of) d from player_ratings where rating_type = ?",
-                                    [config.RATING_PRIMARY])["d"].iloc[0]
-        last_game = player_store.query("select max(game_date) d from player_games")["d"].iloc[0]
+        ratings = player_store.read("player_ratings", columns="as_of",
+                                    filters=[("rating_type", "eq", config.RATING_PRIMARY)])
+        games = player_store.read("player_games", columns="game_date")
+        latest = ratings["as_of"].max() if not ratings.empty else None
+        last_game = games["game_date"].max() if not games.empty else None
         if latest and last_game and str(last_game) < str(latest):
             print(f"ratings: no games since the {latest} refit; nothing to do")
             return 0

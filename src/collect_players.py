@@ -245,10 +245,12 @@ def resolver_rows(*, conn=None) -> list[dict]:
     players = player_store.read("players", columns="player_id, full_name, is_active", conn=conn)
     if players.empty:
         return []
-    teams = player_store.query(
-        "select player_id, team_id from player_games pg where game_date = "
-        "(select max(game_date) from player_games p2 where p2.player_id = pg.player_id)",
-        conn=conn) if (player_store.backend() == "local" or conn is not None) else pd.DataFrame()
+    all_games = player_store.read("player_games", columns="player_id,team_id,game_date", conn=conn)
+    if not all_games.empty:
+        latest = all_games.groupby("player_id")["game_date"].transform("max")
+        teams = all_games[all_games["game_date"] == latest][["player_id", "team_id"]].drop_duplicates("player_id")
+    else:
+        teams = pd.DataFrame(columns=["player_id", "team_id"])
     team_of = dict(zip(teams["player_id"], teams["team_id"])) if not teams.empty else {}
     # "Active" for tie-breaking = on a roster now or has played since the first collected season, so
     # 'Glenn Robinson III' beats the retired 'Glenn Robinson' when the suffix is dropped.

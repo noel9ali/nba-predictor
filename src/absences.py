@@ -4,8 +4,9 @@ A player is absent from a team game when, over his team's previous ABSENCE_LOOKB
 season, he appeared in at least ABSENCE_MIN_APPEARANCES and averaged at least ABSENCE_MIN_TYPICAL_MINUTES
 in the games he played, and he has no player_games row for this game. basis = 'inferred'.
 
-Trades: a player only counts for team T if his previous appearance (any team) was for T and his next
-appearance in the season, if any, is also for T, so a traded player is never absent for his old team.
+Trades: a player only counts for team T if his previous appearance (any team) was for T.  The
+inference is point-in-time safe; it deliberately does not inspect a future appearance to decide
+whether a player was traded, because that would leak future roster information into historical features.
 Season boundaries: the window never crosses seasons.
 Spells: once flagged, the following consecutive missed games of the season stay flagged until he plays again
 (typical_minutes from the spell's start), so long injuries stay recorded after the 10-game window empties.
@@ -43,7 +44,7 @@ def infer_absences(pg: pd.DataFrame, *, lookback: int | None = None, min_apps: i
     pg["game_date"] = pg["game_date"].astype(str).str[:10]
     pg["minutes"] = pd.to_numeric(pg["minutes"], errors="coerce").fillna(0.0)
 
-    # Each player's appearance timeline (any team), for the trade check.
+    # Each player's appearance timeline (any team), for the point-in-time trade check.
     timeline = pg.sort_values(["player_id", "game_date", "game_id"])[["player_id", "game_date", "team_id", "season"]]
     by_player = {pid: (g["game_date"].to_numpy(), g["team_id"].to_numpy(), g["season"].to_numpy())
                  for pid, g in timeline.groupby("player_id", sort=False)}
@@ -78,11 +79,8 @@ def infer_absences(pg: pd.DataFrame, *, lookback: int | None = None, min_apps: i
             gdate = dates[gid]
             p_dates, p_teams, p_seasons = by_player[pid]
             prev_i = np.searchsorted(p_dates, gdate, side="left") - 1
-            next_i = np.searchsorted(p_dates, gdate, side="right")
             if prev_i < 0 or p_teams[prev_i] != team_id:
                 continue                                   # last seen with another team: traded away
-            if next_i < len(p_dates) and p_seasons[next_i] == season and p_teams[next_i] != team_id:
-                continue                                   # next seen with another team: traded away
             out.append({"game_id": gid, "player_id": int(pid), "team_id": int(team_id), "game_date": gdate,
                         "basis": "inferred", "reason": None,
                         "typical_minutes": round(float(typical[game_id, player_id]), 2)})

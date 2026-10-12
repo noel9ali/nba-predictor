@@ -142,9 +142,16 @@ class AbsenceTests(unittest.TestCase):
         self.assertEqual(keyed[(missed_gid, 1)]["typical_minutes"], 30.0)
         self.assertEqual(keyed[(missed_gid, 1)]["team_id"], T1)
         self.assertNotIn((missed_gid, 2), keyed)                          # 5-minute bench player
-        self.assertFalse(any(pid == 3 for (_g, pid) in keyed))           # traded player never absent for T1
-        self.assertEqual(len(out), 1)
+        self.assertTrue(any(pid == 3 for (_g, pid) in keyed))            # no future roster data is consulted
+        self.assertEqual(len(out), 2)
         self.assertTrue(all(len(g) == 10 for g, _ in keyed))
+
+    def test_future_trade_rows_do_not_change_point_in_time_labels(self):
+        before_trade = self.pg[self.pg["game_date"] < "2025-11-07"].copy()
+        first = absences.infer_absences(before_trade)
+        second = absences.infer_absences(self.pg)
+        key = lambda df: {(r["game_id"], r["player_id"]) for r in df.to_dict("records")}
+        self.assertTrue(key(first).issubset(key(second)))
 
     def test_long_absence_spell_stays_flagged(self):
         games = team_games(T1, "2025-26", date(2025, 10, 21), 30)
@@ -168,9 +175,9 @@ class AbsenceTests(unittest.TestCase):
     def test_rebuild_is_idempotent(self):
         conn = sqlite3.connect(":memory:")
         player_store.upsert("player_games", self.pg.assign(is_home=1, started=None).to_dict("records"), conn=conn)
-        self.assertEqual(absences.rebuild(conn=conn), 1)
+        self.assertEqual(absences.rebuild(conn=conn), 2)
         absences.rebuild(conn=conn)
-        self.assertEqual(player_store.count("player_absences", conn=conn), 1)
+        self.assertEqual(player_store.count("player_absences", conn=conn), 2)
         self.assertEqual(player_store.read("player_absences", conn=conn)["game_id"].iloc[0], self.g1[12][0])
         conn.close()
 

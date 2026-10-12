@@ -483,7 +483,7 @@ def publish_model_run():
             if not optional:
                 raise
             print("model_runs has no candidates/feature_set_version columns yet "
-                  "(apply migrations/0006_model_runs_candidates.sql); publishing without them.")
+                  "(apply supabase/migrations/20261012000600_model_runs_candidates.sql); publishing without them.")
             upsert_rows("model_runs", [{k: v for k, v in row.items() if k not in optional}],
                         conflict_columns=["trained_at"])
     except Exception as exc:

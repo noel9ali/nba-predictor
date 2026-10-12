@@ -9,7 +9,7 @@ CLI (run from the repo root):
     python -m src.injuries --latest GAME_ID --as-of 2026-10-21T19:00-04:00
     python -m src.injuries --push-supabase [--yes]    # copy local rows to Supabase (dry run without --yes)
 
-Storage. Until migrations/0001_injury_snapshots.sql is applied, rows go to a local append-only SQLite sink
+Storage. Until supabase/migrations/20261012000100_injury_snapshots.sql is applied, rows go to a local append-only SQLite sink
 (data/injuries/injury_snapshots.sqlite, git-ignored) with the same columns and unique key as the Supabase
 table. Every downloaded PDF is cached in data/raw/injury_reports/ (git-ignored): that cache is the
 irreplaceable archive, and every other table can be rebuilt from it with --reparse.
@@ -308,7 +308,7 @@ create table if not exists injury_unmatched (
   player_name_raw  text,
   game_date        text,
   matchup          text,
-  unique (report_time, kind, team_name, player_name_raw, matchup)
+  unique (report_time, kind, team_id, team_name, player_name_raw, game_date, matchup)
 );
 create table if not exists injury_fetch_misses (
   slot        text primary key,
@@ -668,13 +668,15 @@ def newest_per_player(df: pd.DataFrame, as_of) -> pd.DataFrame:
     return df.drop(columns="_key").sort_values(["team_id", "player_name_raw"]).reset_index(drop=True)
 
 
-def latest_status(game_id: str, as_of, *, conn=None, backend: str = "local") -> pd.DataFrame:
+def latest_status(game_id: str, as_of, *, conn=None, backend: str | None = None) -> pd.DataFrame:
     """Newest snapshot row per player for game_id at or before as_of (report_time <= as_of).
 
     backend='local' reads the SQLite sink; backend='supabase' reads public.injury_snapshots
-    (available once migrations/0001_injury_snapshots.sql is applied).
+    (available once supabase/migrations/20261012000100_injury_snapshots.sql is applied).
     """
     from database import normalize_game_id
+    if backend is None:
+        backend = "supabase" if os.getenv("NBA_PLAYER_STORE", "local").strip().lower() == "supabase" else "local"
 
     game_id = normalize_game_id(game_id)
     cutoff = utc_iso(parse_as_of(as_of))

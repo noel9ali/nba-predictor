@@ -1,6 +1,6 @@
 """Storage for the player-data tables: a local SQLite mirror now, Supabase once migrations are applied.
 
-The new tables (migrations/0002+) do not exist in Supabase until Noel applies them, and the agent must not
+The new tables (supabase/migrations/20261012000200+) do not exist in Supabase until Noel applies them, and the agent must not
 write to production. So every writer goes through this module:
 
     NBA_PLAYER_STORE=local     (default) data/player_data/player_data.sqlite, same tables and primary keys
@@ -19,7 +19,7 @@ import pandas as pd
 
 import config
 
-# SQLite DDL mirroring migrations/*.sql (types simplified: dates/timestamps as ISO text, booleans as 0/1).
+# SQLite DDL mirroring supabase/migrations/2026101200*.sql (types simplified: dates/timestamps as ISO text, booleans as 0/1).
 SCHEMAS: dict[str, tuple[str, list[str]]] = {
     "players": ("""
         create table if not exists players (
@@ -208,7 +208,14 @@ def count(table: str, *, conn: sqlite3.Connection | None = None) -> int:
 
 
 def query(sql: str, params: Iterable[Any] = (), *, conn: sqlite3.Connection | None = None) -> pd.DataFrame:
-    """Local-only SQL for heavy batch jobs (backfills); the Supabase backend uses read()."""
+    """Run local batch SQL only.
+
+    A Supabase process must never silently query the local mirror: doing so can
+    produce apparently valid but stale player features. Callers that need
+    server-mode data use ``read`` and perform any small grouping in pandas.
+    """
+    if backend() == "supabase" and conn is None:
+        raise RuntimeError("player_store.query is local-only; use read() in Supabase mode")
     conn = conn or connect()
     for table in list(SCHEMAS):
         _ensure(conn, table)
