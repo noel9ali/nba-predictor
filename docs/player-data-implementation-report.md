@@ -12,9 +12,9 @@ Spec: `docs/player-data-backend-spec.md`. Resume point: `docs/player-data-checkp
 | 2 | Injury snapshot ingestion | done (historical archive backfilled 2019-10-22 to 2026-06-30) |
 | 3 | Ratings and minutes projections | done |
 | 4 | Availability features and rest days | done |
-| 5 | Candidate model and walk-forward evaluation | in progress (realized-feature results in; live-like run pending) |
+| 5 | Candidate model and walk-forward evaluation | done |
 | 6 | Predict-time integration | done (code + dry-run tests; candidate artifact not yet saved) |
-| 7 | API, contract, sample data | in progress (API + contract + tests done; sample JSON pending) |
+| 7 | API, contract, sample data | done |
 | 8 | Props groundwork | todo |
 | 9 | Report and handoff | todo |
 
@@ -434,7 +434,7 @@ Focused offline tests cover strict point-in-time rate filtering, empty inputs,
 and deterministic market-odds normalization. The sample-data suite and Python
 compile checks also pass. No migration was applied and no live data was written.
 
-## Phase 9: final verification and handoff (in progress)
+## Phase 9: final verification and handoff (done)
 
 The live-like archived-report evaluation completed for all 1,596 leaderboard
 games. The availability candidate improves Brier score from 0.2091 to 0.1989
@@ -442,3 +442,16 @@ and log loss from 0.6325 to 0.5815 against the production baseline on report
 features; `all_rapm` reaches 0.1984 Brier and 0.5803 log loss. These are
 candidate results only: the production model remains
 `gradient-boosting-gridsearch`, and no automatic promotion was performed.
+
+Final verification completed on the dedicated worktree:
+
+```text
+python -m unittest discover -s tests -q
+Ran 380 tests ... OK
+python -m unittest tests.test_sample_data tests.test_odds -v
+Ran 37 tests ... OK
+```
+
+The sample generator was rerun and the generated fixtures are committed. The
+player-data work remains isolated to `player-data-work`; migrations are files
+only and still require Noel's review/application process.

@@ -2,7 +2,8 @@
 
 ## Resume here (updated Oct 12, 2026; implementation session)
 
-**State:** phases 0-8 done; phase 9 final verification and handoff in progress.
+**State:** phases 0-9 done; implementation is complete and ready for Noel's
+migration review and optional candidate promotion decision.
 All work is committed on branch `player-data-work` (worktree
 `C:\Users\noel9\Desktop\nba-predictor.worktrees\player-data-work`). Never touch the main checkout
 `C:\Users\noel9\Desktop\nba-predictor` (Task Scheduler runs production there). Never push, merge, write to Supabase or
@@ -72,8 +73,8 @@ focused tests pass.
    (shrunk per-minute rates, reuse ratings.box shrinkage idea), `migrations/reserved/NNNN_prop_predictions.sql`
    (clearly NOT to apply), reserved `prop_*` section in the contract, `src/props/__init__.py` + `src/props/README.md`
    (flow, open issues, odds-provider prop markets from the report's phase 0 section). -->
-4. Phase 9: finish the report (what was built per phase, eval tables, recommendation, config values and why,
-   deviations, risks, exact commands, migrations in order). Run the full suite. Final commit.
+4. Phase 9 is complete: the report contains the evaluation, recommendation,
+   risks, commands, and migration order; the full offline suite passes.
 
 ## For Noel: start archiving before opening night (Tue Oct 20, 2026)
 ```
@@ -101,7 +102,7 @@ Standalone: `cd /d C:\Users\noel9\Desktop\nba-predictor.worktrees\player-data-wo
 | 7.1 contract, api_availability, routes, budgets, migration 0006, API tests | done |
 | 7.2 sample JSON with availability examples | done |
 | 8 props groundwork | done |
-| 9 report and handoff | in progress |
+| 9 report and handoff | done |
 
 ## Local data (git-ignored, already built in the worktree)
 - `data/player_data/player_data.sqlite`: player_games 176,738; players 5,240; player_aliases 10,386;
