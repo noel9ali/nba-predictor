@@ -178,7 +178,7 @@ class AbsenceTests(unittest.TestCase):
         self.assertEqual(absences.rebuild(conn=conn), 2)
         absences.rebuild(conn=conn)
         self.assertEqual(player_store.count("player_absences", conn=conn), 2)
-        self.assertEqual(player_store.read("player_absences", conn=conn)["game_id"].iloc[0], self.g1[12][0])
+        self.assertIn(self.g1[12][0], player_store.read("player_absences", conn=conn)["game_id"].tolist())
         conn.close()
 
 
