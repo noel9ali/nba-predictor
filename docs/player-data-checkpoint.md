@@ -64,12 +64,12 @@ focused tests pass.
    run `tests.test_sample_data`. Commit.
 3. Phase 8 verification/fix: run `tests.test_odds`, add focused offline tests for `player_rates.compute` (strict
    `as_of` leakage, shrinkage, empty input) and market-odds idempotency; inspect SQL, then commit with the required
-   Co-authored-by trailer. Files added locally are `migrations/0007_market_odds.sql`, `migrations/0008_player_rates.sql`,
+   Co-authored-by trailer. Files added locally are `supabase/migrations/20261012000700_market_odds.sql`, `supabase/migrations/20261012000800_player_rates.sql`,
    reserved `migrations/reserved/0009_prop_predictions.sql`, `src/market_odds.py`, `src/player_rates.py`,
    `src/props/__init__.py`, and `src/props/README.md`.
 <!-- Previous detail retained:
-3. Phase 8 props groundwork (spec sec11): `migrations/0007_market_odds.sql` (+ dual-write moneylines in `src/odds.py`
-   through a non-fatal local/supabase path), `migrations/0008_player_rates.sql` + nightly `player_rate_stats`
+3. Phase 8 props groundwork (spec sec11): `supabase/migrations/20261012000700_market_odds.sql` (+ dual-write moneylines in `src/odds.py`
+   through a non-fatal local/supabase path), `supabase/migrations/20261012000800_player_rates.sql` + nightly `player_rate_stats`
    (shrunk per-minute rates, reuse ratings.box shrinkage idea), `migrations/reserved/NNNN_prop_predictions.sql`
    (clearly NOT to apply), reserved `prop_*` section in the contract, `src/props/__init__.py` + `src/props/README.md`
    (flow, open issues, odds-provider prop markets from the report's phase 0 section). -->
@@ -111,7 +111,7 @@ Standalone: `cd /d C:\Users\noel9\Desktop\nba-predictor.worktrees\player-data-wo
   `data/raw/nba_api/*.json` caches, `data/eval/` (features snapshot, eval outputs).
 
 ## Decisions (details in the report)
-- New migrations in root `migrations/` (sequential), not `supabase/migrations/`.
+- New deployable migrations live in `supabase/migrations/` with timestamp names; the reserved props schema remains under `migrations/reserved/`.
 - Own pdfplumber parser; snapshot mode "latest"; `latest_status` uses report_time <= as_of, newest listing per team.
 - All new tables go through `src/player_store.py` (local SQLite default; `NBA_PLAYER_STORE=supabase` later).
 - Ridge alpha fixed at 10 by pooled forward validation; RAPM beats box prior out of sample.

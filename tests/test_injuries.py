@@ -296,6 +296,14 @@ class LatestStatusTests(unittest.TestCase):
         self.assertEqual(self.status_of(datetime(2026, 10, 21, 21, 0, tzinfo=timezone.utc))["Allen, Jarrett"], "out")
 
 
+class BackendSelectionTests(unittest.TestCase):
+    def test_player_store_supabase_mode_selects_remote_snapshots_by_default(self):
+        with patch.dict(os.environ, {"NBA_PLAYER_STORE": "supabase"}):
+            with patch("database.select_rows", return_value=pd.DataFrame()) as select:
+                injuries.latest_status("0022600001", datetime(2026, 10, 21, tzinfo=timezone.utc))
+        select.assert_called_once()
+
+
 class FakeResponse:
     def __init__(self, status, content=b""):
         self.status_code, self.content = status, content

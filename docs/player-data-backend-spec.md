@@ -25,7 +25,7 @@ Status: drafted Oct 7, 2026. Audience: the Implementation Agent. Read `claude/ag
 
 ## 1. Rules (apply to every phase)
 
-- **Safety.** No writes to the live Supabase project. No applying migrations: write them as files in `migrations/` with sequential names and let Noel apply them. Read-only inspection of Supabase is fine. Never print `.env`. No push, no merge to main.
+- **Safety.** No writes to the live Supabase project. No applying migrations: write them as timestamped files in `supabase/migrations/` and let Noel apply them. Read-only inspection of Supabase is fine. Never print `.env`. No push, no merge to main.
 - **Idempotent.** Every migration, collector and backfill is safe to re-run.
 - **IDs.** `game_id` is TEXT, zero-padded exactly as nba_api returns it (for example `0022500001`). `player_id` and `team_id` are bigint. Do not repeat the bigint-GAME_ID mistake from the integration findings.
 - **Primary keys.** Every new table has a real primary key or unique constraint that matches the upsert conflict target. (The `games` table's PK bug is the cautionary tale.)

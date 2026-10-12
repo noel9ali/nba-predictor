@@ -139,7 +139,7 @@ This report, `docs/player-data-checkpoint.md` and the `player-data-work` branch 
 ## Phase 2: injury snapshot ingestion (done, Oct 10, 2026)
 
 ### Built
-- `migrations/0001_injury_snapshots.sql` (file only, not applied): `injury_snapshots` with `snapshot_id` identity PK,
+- `supabase/migrations/20261012000100_injury_snapshots.sql` (file only, not applied): `injury_snapshots` with `snapshot_id` identity PK,
   unique `(source, report_time, team_id, player_name_raw)` (the writer's conflict target), `game_id` text with a
   10-digit check, RLS on, anon/authenticated revoked. Extra additive columns beyond the spec: `game_time_et`,
   `matchup`, `raw_file`. `team_id` is NOT NULL because NULLs would defeat the unique key; rows whose team cannot be
@@ -193,7 +193,7 @@ This report, `docs/player-data-checkpoint.md` and the `player-data-work` branch 
 ## Phase 1: player data foundation (done, Oct 10, 2026)
 
 ### Built
-- `migrations/0002_player_foundation.sql` (file only): `players` (PK `player_id`), `player_aliases`
+- `supabase/migrations/20261012000200_player_foundation.sql` (file only): `players` (PK `player_id`), `player_aliases`
   (PK `provider, provider_name`), `player_games` (PK `game_id, player_id`, indexes on `(player_id, game_date)` and
   `(team_id, game_date)`, 10-digit text `game_id` check), `player_absences` (PK `game_id, player_id`). RLS on.
 - `src/player_store.py`: storage for all new player-data tables. `NBA_PLAYER_STORE=local` (default) writes a SQLite
@@ -243,7 +243,7 @@ idempotency. Full offline suite 325/325 OK.
 ## Phase 3: ratings and minutes projections (done, Oct 10, 2026)
 
 ### Built
-- `migrations/0003_player_ratings.sql` (file only): `player_ratings` (PK `player_id, as_of, rating_type`; `as_of` is a
+- `supabase/migrations/20261012000300_player_ratings.sql` (file only): `player_ratings` (PK `player_id, as_of, rating_type`; `as_of` is a
   date) and `player_minutes_projection` (PK `game_id, player_id, as_of`; `as_of` timestamptz).
 - `src/ratings.py`:
   - `rapm_lite_v1`: one row per game, features = 5 x player minutes / team minutes (+ home, - away), target = margin
@@ -305,7 +305,7 @@ with, box value ordering, redistribution conserves 240 and respects the cap, cap
 ## Phase 4: availability features and rest days (done, Oct 10, 2026)
 
 ### Built
-- `migrations/0004_team_availability_features.sql` (file only). **Deviation:** the primary key is
+- `supabase/migrations/20261012000400_team_availability_features.sql` (file only). **Deviation:** the primary key is
   `(game_id, team_id, as_of, rating_type)`; `rating_type` was added so the rapm and box variants can be stored and
   evaluated side by side. Extra column `basis` (`realized` / `report`) as the spec asks.
 - `src/availability_features.py`: `team_features(roster)` (one function for live and history), `rest_features`,
@@ -390,7 +390,7 @@ live-like (archived report) evaluation is in; nothing has been promoted.
 - `src/predict.py`: availability step per game inside try/except; production picks change only when
   `NBA_PRODUCTION_MODEL` names the candidate (then blended prob, prob range, gate). `track.save_prediction(extra=None)`
   keeps the original row unless extra is given. `run_pipeline.bat` runs the status-change flag (non-fatal).
-- `migrations/0005_predict_availability.sql`: `prediction_scenarios`, `prediction_factors`,
+- `supabase/migrations/20261012000500_predict_availability.sql`: `prediction_scenarios`, `prediction_factors`,
   `prediction_availability_inputs`, predictions `prob_range_low/high`, `status_changed_after_pred`, skip_reason
   `availability_uncertain`.
 - Tests: `tests/test_betting.py`, `tests/test_scenarios.py`, `tests/test_factors.py`,
@@ -403,21 +403,21 @@ live-like (archived report) evaluation is in; nothing has been promoted.
   `/api/slate` games add `availability_summary` (null when no data); `/api/performance` adds `splits.star_out` (v2
   only); `/api/model` adds `feature_set_version`, `candidates`, `availability_gate`. New reads never flag
   `migration_pending` on existing routes (only `/api/injuries` does). Query budgets updated: slate 5->8, game 7->11,
-  performance 3->4 (constant in slate size). `migrations/0006_model_runs_candidates.sql`; `model.publish_model_run`
+  performance 3->4 (constant in slate size). `supabase/migrations/20261012000600_model_runs_candidates.sql`; `model.publish_model_run`
   retries without the optional columns if 0006 is not applied. Tests: `tests/test_api_availability.py` (12).
 - Pending: sample JSON with plausible availability data (`scripts/build_sample_data.py` is deterministic: rerunning it
   today only adds the new null/empty fields; still need to add sample injury/scenario/factor rows and an
   `injuries-2026-11-17.json` file plus its `shape_for` entry in `tests/test_sample_data.py`).
 
 ## Migrations to apply, in order (none applied by the agent)
-1. `migrations/0001_injury_snapshots.sql` - injury report snapshots (append-only).
-2. `migrations/0002_player_foundation.sql` - players, player_aliases, player_games, player_absences.
-3. `migrations/0003_player_ratings.sql` - player_ratings, player_minutes_projection (with min_if_play).
-4. `migrations/0004_team_availability_features.sql` - team availability features and rest.
-5. `migrations/0005_predict_availability.sql` - scenarios, factors, availability inputs, predictions columns.
-6. `migrations/0006_model_runs_candidates.sql` - model_runs candidates + feature_set_version.
-7. `migrations/0007_market_odds.sql` - generic captured market odds; retain `book_odds` during dual-write.
-8. `migrations/0008_player_rates.sql` - point-in-time shrunk per-minute player rates.
+1. `supabase/migrations/20261012000100_injury_snapshots.sql` - injury report snapshots (append-only).
+2. `supabase/migrations/20261012000200_player_foundation.sql` - players, player_aliases, player_games, player_absences.
+3. `supabase/migrations/20261012000300_player_ratings.sql` - player_ratings, player_minutes_projection (with min_if_play).
+4. `supabase/migrations/20261012000400_team_availability_features.sql` - team availability features and rest.
+5. `supabase/migrations/20261012000500_predict_availability.sql` - scenarios, factors, availability inputs, predictions columns.
+6. `supabase/migrations/20261012000600_model_runs_candidates.sql` - model_runs candidates + feature_set_version.
+7. `supabase/migrations/20261012000700_market_odds.sql` - generic captured market odds; retain `book_odds` during dual-write.
+8. `supabase/migrations/20261012000800_player_rates.sql` - point-in-time shrunk per-minute player rates.
 9. `migrations/reserved/0009_prop_predictions.sql` - **reserved; do not apply**.
 
 ## Phase 8: props groundwork (done)

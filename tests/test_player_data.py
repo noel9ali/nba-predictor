@@ -5,6 +5,7 @@ import sqlite3
 import sys
 import unittest
 from datetime import date, timedelta
+from unittest.mock import patch
 
 import pandas as pd
 
@@ -79,6 +80,11 @@ class CollectTests(unittest.TestCase):
         self.assertEqual(player_store.count("player_games", conn=self.conn), 2)
         self.assertEqual(player_store.read("player_games", filters=[("player_id", "eq", 1)],
                                            conn=self.conn)["pts"].iloc[0], 99)
+
+    def test_supabase_mode_never_falls_back_to_local_sql(self):
+        with patch.dict(os.environ, {"NBA_PLAYER_STORE": "supabase"}):
+            with self.assertRaises(RuntimeError):
+                player_store.query("select 1")
 
     def test_players_and_aliases(self):
         df = pd.DataFrame([
