@@ -47,8 +47,8 @@ The `claude/...` project docs the spec refers to (`claude/agent-memory/noel-work
   Phase 5 compares candidates against both rows: the logistic row for an attributable same-family comparison, the GB row because it
   is what a promotion would replace.
 - **Migrations folder.** The repo keeps applied schema in `supabase/migrations/` (timestamp names, 13 files, applied at Gate M on Oct 7).
-  As instructed, new migrations go to a separate root `migrations/` folder with sequential names (`0001_...sql`) so nothing can be
-  applied by accident with the Supabase CLI. When Noel applies them, they can be copied into `supabase/migrations/` with timestamp names.
+  New deployable player-data migrations now live directly in `supabase/migrations/` with timestamp names so the Supabase CLI can
+  apply them in order; only the reserved props schema remains outside that history.
 - **Scheduler script.** `task_scheduler_setup.ps1` is at `scheduler/task_scheduler_setup.ps1` (with `scheduler/README_scheduler.md`
   and `scheduler/run_daily.bat`). There is only one scheduled job today (`NBA-Predictor-Daily`, 06:00, runs `daily_workflow.py`, which
   runs `run_pipeline.bat` then `run_predict.bat`). The "every 30 minutes 11:00 to 22:00 predict tick" the spec mentions does not exist.
