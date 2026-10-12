@@ -1,4 +1,4 @@
-import json
+﻿import json
 import os
 import re
 import secrets
@@ -1836,7 +1836,7 @@ def api_model():
     payload["candidates"] = model_candidates((run or {}).get("candidates"))
     if run is None:
         payload["model_status"] = "migration_pending"
-    elif not payload["candidates"] and (run.get("candidates") is None):
+    elif not payload["candidates"]:
         payload["model_status"] = "artifact_pending"
     else:
         payload["model_status"] = "ready"
@@ -2011,3 +2011,4 @@ if __name__ == "__main__":
     port = int(os.getenv("FLASK_PORT", 5000))
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
     app.run(host=host, port=port, debug=debug)
+
