@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import os
 import sqlite3
 import sys
@@ -76,6 +77,37 @@ def parse_as_of(value) -> datetime:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=ET)
     return dt
+
+
+def snapshot_health(snapshots: pd.DataFrame | None, scheduled_games: pd.DataFrame | None, *, as_of=None,
+                    max_age_minutes: int = 90) -> dict:
+    """Return observable freshness/coverage state without treating missing reports as success.
+
+    ``scheduled_games`` must contain ``game_id`` (and may contain ``team_id``). A report is fresh when
+    its newest report_time is within max_age_minutes of as_of; coverage is measured per scheduled game.
+    """
+    now = parse_as_of(as_of or datetime.now(timezone.utc))
+    games = scheduled_games if scheduled_games is not None else pd.DataFrame()
+    game_ids = {str(v).zfill(10) for v in games.get("game_id", pd.Series(dtype=str)).dropna().tolist()}
+    df = snapshots if snapshots is not None else pd.DataFrame()
+    if df.empty or "report_time" not in df or not game_ids:
+        return {"state": "missing", "fresh": False, "scheduled_games": len(game_ids), "covered_games": 0,
+                "coverage": 0.0, "latest_report_time": None, "fallback": "no_injury_snapshot"}
+    times = pd.to_datetime(df["report_time"], utc=True, errors="coerce").dropna()
+    latest = times.max().to_pydatetime() if not times.empty else None
+    age = (now.astimezone(timezone.utc) - latest).total_seconds() / 60 if latest else None
+    covered = {str(v).zfill(10) for v in df.get("game_id", pd.Series(dtype=str)).dropna().tolist()} & game_ids
+    coverage = len(covered) / len(game_ids)
+    fresh = age is not None and age <= max_age_minutes and age >= -5
+    state = "fresh" if fresh and coverage == 1 else ("partial" if fresh and coverage > 0 else ("stale" if age is not None else "missing"))
+    return {"state": state, "fresh": bool(fresh), "scheduled_games": len(game_ids), "covered_games": len(covered),
+            "coverage": round(coverage, 4), "latest_report_time": latest.isoformat() if latest else None,
+            "age_minutes": round(age, 1) if age is not None else None,
+            "fallback": None if state == "fresh" else "availability_without_fresh_injury_snapshot"}
+
+
+def log_snapshot_health(health: dict) -> None:
+    print("injury snapshot health: " + json.dumps(health, sort_keys=True))
 
 
 def normalize_status(raw: str | None) -> tuple[str, bool]:

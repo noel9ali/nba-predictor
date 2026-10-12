@@ -455,3 +455,32 @@ Ran 37 tests ... OK
 The sample generator was rerun and the generated fixtures are committed. The
 player-data work remains isolated to `player-data-work`; migrations are files
 only and still require Noel's review/application process.
+
+
+## Production-readiness gate (Oct 12, 2026)
+
+### Completed blockers
+- Candidate artifacts now ship as self-describing bundles with model, scaler, ordered feature list, feature-set version, SHA-256 manifest, model name, and publication timestamps. `load_candidate()` validates all fields and raises an actionable error when an explicitly configured candidate is absent or mismatched; legacy `gradient-boosting-gridsearch` remains the default and does not require candidate artifacts.
+- `scripts/verify_player_schema.py` verifies the ordered `20261012000100` through `20261012000800` migration history, idempotency markers, required player/availability/prediction/model columns, and keeps reserved prop migrations out of deployable history. No live migration was applied.
+- `src/model_contract.py` checks metadata, candidate CSV, artifact paths/hashes, feature-set version, evaluated_at, and metrics. `/api/model` exposes `model_status` (`migration_pending`, `artifact_pending`, or `ready`) rather than silently implying candidate readiness.
+- Injury snapshots expose `coverage_state`, freshness/coverage helpers, explicit stale/missing/partial fallback states, and JSON health logs. The 30-minute scheduler and morning/predict snapshot ordering are checked statically; no Windows task was registered.
+- `scripts/evaluate_availability.py` persists fixed-split, walk-forward, live-like, missing-data coverage, calibration, and human-approval promotion-gate data. The current production model is unchanged.
+
+### Exact local validation commands
+```powershell
+Set-Location C:\Users\noel9\Desktop\nba-predictor.worktrees\player-data-work
+.\venv\Scripts\python.exe scripts\verify_player_schema.py
+.\venv\Scripts\python.exe scripts\verify_scheduler.py
+.\venv\Scripts\python.exe -m unittest discover -s tests -v
+.\venv\Scripts\python.exe -m py_compile src\*.py scripts\*.py
+```
+
+### External deployment checklist (operator approval required)
+1. Review and apply the eight ordered SQL files under `supabase/migrations/` using the Supabase CLI; do not apply the reserved prop migration.
+2. Deploy `data/candidates/*.pkl` and matching `*.manifest.json`, `data/model_metadata.json`, and `data/model_leaderboard_candidates.csv` as one artifact set.
+3. Confirm `/api/model` reports `model_status=ready`; otherwise leave `NBA_PRODUCTION_MODEL` unset (legacy production remains active).
+4. Register the injury task only after approval: `powershell -ExecutionPolicy Bypass -File scheduler\register_injury_snapshot_task.ps1`; verify with `Get-ScheduledTask -TaskName NBA-Predictor-Injury-Snapshot`.
+5. Do not set `NBA_PRODUCTION_MODEL=lr-calibrated-availability-v1` until schema, artifact, runtime, and human promotion gates are approved.
+
+### Verdict
+**READY WITH CONDITIONS.** Local implementation, offline contracts, artifact integrity, schema history, scheduler definition, point-in-time protections, and the 390-test offline suite pass. External Supabase migration application, artifact deployment, scheduler registration, and explicit human model-promotion approval remain required. The legacy production model is preserved by default.

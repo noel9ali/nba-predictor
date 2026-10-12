@@ -89,26 +89,10 @@
     "evaluated_at": "2026-10-12T23:28:40+00:00",
     "feature_set_version": "avail_v1+ratings:2026-10-10",
     "models": [
-      "lr-calibrated-rest-v1",
       "lr-calibrated-availability-v1",
-      "lr-calibrated-availability-box-v1",
       "lr-calibrated-availability-rest-v1"
     ],
     "rows": [
-      {
-        "model": "lr-calibrated-rest-v1",
-        "feature_set": "baseline+rest",
-        "feature_set_version": "avail_v1+ratings:2026-10-10",
-        "evaluated_at": "2026-10-12T23:28:40+00:00",
-        "test_games": 1596,
-        "accuracy": 0.6785714285714286,
-        "log_loss": 0.6045721866580316,
-        "brier_score": 0.20815601303268572,
-        "roc_auc": 0.7292093641537807,
-        "calibration_ece": 0.027294232371319928,
-        "baseline_home_win_rate": 0.550125313283208,
-        "extreme_prediction_rate": 0.03696741854636591
-      },
       {
         "model": "lr-calibrated-availability-v1",
         "feature_set": "baseline+avail_rapm",
@@ -121,21 +105,9 @@
         "roc_auc": 0.7534327193355372,
         "calibration_ece": 0.015714002351252202,
         "baseline_home_win_rate": 0.550125313283208,
-        "extreme_prediction_rate": 0.05764411027568922
-      },
-      {
-        "model": "lr-calibrated-availability-box-v1",
-        "feature_set": "baseline+avail_box",
-        "feature_set_version": "avail_v1+ratings:2026-10-10",
-        "evaluated_at": "2026-10-12T23:28:40+00:00",
-        "test_games": 1596,
-        "accuracy": 0.6779448621553885,
-        "log_loss": 0.5877820921368782,
-        "brier_score": 0.20240009659034205,
-        "roc_auc": 0.7432646366457066,
-        "calibration_ece": 0.028075086241090005,
-        "baseline_home_win_rate": 0.550125313283208,
-        "extreme_prediction_rate": 0.05513784461152882
+        "extreme_prediction_rate": 0.05764411027568922,
+        "artifact_path": "data/candidates/lr-calibrated-availability-v1.pkl",
+        "artifact_sha256": "add63d9ee46b2cd14ceede6e654ef1f83d0eaf1840e5ae1eb3612019ec8ac5f6"
       },
       {
         "model": "lr-calibrated-availability-rest-v1",
@@ -149,7 +121,9 @@
         "roc_auc": 0.7529235220588701,
         "calibration_ece": 0.01646631338075729,
         "baseline_home_win_rate": 0.550125313283208,
-        "extreme_prediction_rate": 0.02882205513784461
+        "extreme_prediction_rate": 0.02882205513784461,
+        "artifact_path": "data/candidates/lr-calibrated-availability-rest-v1.pkl",
+        "artifact_sha256": "ecf1dbb530fce0dbedb48d685d7934a1fad996e1dcd8960c96bc7aeeb4cba2cd"
       }
     ],
     "promoted": false,
@@ -166,6 +140,7 @@
         "log_loss_improvement": 0.04912,
         "passes_rule": true
       }
-    ]
+    ],
+    "artifact_status": "ready"
   }
 }

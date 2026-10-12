@@ -14,6 +14,7 @@ predictions). What it does per game, with as_of = now:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -30,6 +31,27 @@ import player_store  # noqa: E402
 
 CANDIDATE_DIR = os.path.join(config.DATA_DIR, "candidates")
 DEFAULT_CANDIDATE = "lr-calibrated-availability-v1"
+EXPECTED_FEATURE_SET_VERSION = "avail_v1+ratings:2026-10-10"
+
+
+class CandidateArtifactError(RuntimeError):
+    """Candidate artifacts are incomplete, stale, or corrupted."""
+
+
+def _sha256(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _manifest_path(name: str) -> str:
+    return os.path.join(CANDIDATE_DIR, f"{name}.manifest.json")
+
+
+def _feature_hash(features: list[str]) -> str:
+    return hashlib.sha256(json.dumps(list(features), separators=(",", ":")).encode()).hexdigest()
 
 player_store.register_table("prediction_scenarios", """
     create table if not exists prediction_scenarios (
@@ -57,21 +79,69 @@ def save_candidate(name: str, model, scaler, features: list[str], meta: dict | N
 
     os.makedirs(CANDIDATE_DIR, exist_ok=True)
     path = os.path.join(CANDIDATE_DIR, f"{name}.pkl")
-    joblib.dump({"model": model, "scaler": scaler, "features": list(features), "meta": meta or {}}, path)
+    payload_meta = dict(meta or {})
+    payload_meta.setdefault("model_name", name)
+    payload_meta.setdefault("feature_set_version", EXPECTED_FEATURE_SET_VERSION)
+    joblib.dump({"model": model, "scaler": scaler, "features": list(features), "meta": payload_meta}, path)
+    manifest = {
+        "model_name": name, "artifact_path": os.path.relpath(path, config.REPO_ROOT),
+        "artifact_sha256": _sha256(path), "feature_hash": _feature_hash(features),
+        "features": list(features), "feature_set_version": payload_meta.get("feature_set_version"),
+        "trained_at": payload_meta.get("trained_at"), "evaluated_at": payload_meta.get("evaluated_at"),
+    }
+    with open(_manifest_path(name), "w", encoding="utf-8") as handle:
+        json.dump(manifest, handle, indent=2, sort_keys=True)
+        handle.write("\n")
     return path
 
 
-def load_candidate(name: str = DEFAULT_CANDIDATE) -> dict | None:
+def load_candidate(name: str = DEFAULT_CANDIDATE, *, required: bool | None = None) -> dict | None:
     path = os.path.join(CANDIDATE_DIR, f"{name}.pkl")
+    if required is None:
+        required = production_uses_candidate(name)
     if not os.path.exists(path):
+        if required:
+            raise CandidateArtifactError(
+                f"Configured availability candidate '{name}' is missing: expected {path}. "
+                "Deploy the matching data/candidates/*.pkl and manifest, or unset NBA_PRODUCTION_MODEL."
+            )
         return None
+    manifest_path = _manifest_path(name)
+    if not os.path.exists(manifest_path):
+        raise CandidateArtifactError(f"Candidate '{name}' is missing integrity metadata: {manifest_path}")
     import joblib
-
-    # Trusted local artifact written by save_candidate on this machine (same as predict.py's data/model.pkl);
-    # never load candidate files from anywhere else.
-    bundle = joblib.load(path)
-    bundle["name"] = name
+    try:
+        with open(manifest_path, encoding="utf-8") as handle:
+            manifest = json.load(handle)
+        if manifest.get("model_name") != name or manifest.get("artifact_sha256") != _sha256(path):
+            raise CandidateArtifactError(f"Candidate '{name}' failed artifact hash/model-name validation")
+        bundle = joblib.load(path)
+        features = bundle.get("features")
+        if not isinstance(features, list) or features != manifest.get("features"):
+            raise CandidateArtifactError(f"Candidate '{name}' feature list does not match its manifest")
+        if _feature_hash(features) != manifest.get("feature_hash"):
+            raise CandidateArtifactError(f"Candidate '{name}' feature-list integrity hash mismatched")
+        meta = bundle.get("meta") if isinstance(bundle.get("meta"), dict) else {}
+        if meta.get("feature_set_version") != manifest.get("feature_set_version"):
+            raise CandidateArtifactError(f"Candidate '{name}' feature-set version does not match its manifest")
+        if manifest.get("feature_set_version") != EXPECTED_FEATURE_SET_VERSION:
+            raise CandidateArtifactError(
+                f"Candidate '{name}' uses feature_set_version={manifest.get('feature_set_version')!r}; "
+                f"runtime expects {EXPECTED_FEATURE_SET_VERSION!r}"
+            )
+        if not bundle.get("model") or not bundle.get("scaler"):
+            raise CandidateArtifactError(f"Candidate '{name}' must include model and scaler")
+    except CandidateArtifactError:
+        raise
+    except Exception as exc:
+        raise CandidateArtifactError(f"Unable to load candidate '{name}': {type(exc).__name__}: {exc}") from exc
+    bundle["name"], bundle["manifest"] = name, manifest
     return bundle
+
+
+def configured_candidate_name() -> str | None:
+    value = os.getenv("NBA_PRODUCTION_MODEL", "").strip()
+    return value if value.startswith("lr-calibrated-availability-") else None
 
 
 def production_uses_candidate(name: str) -> bool:

@@ -121,9 +121,12 @@ def _availability_setup():
         ap.flag_status_changes()
     except Exception as exc:
         print(f"Status-change check skipped: {type(exc).__name__}: {exc}")
+    configured = ap.configured_candidate_name()
     try:
-        candidate = ap.load_candidate()
+        candidate = ap.load_candidate(configured or ap.DEFAULT_CANDIDATE, required=bool(configured))
     except Exception as exc:
+        if configured:
+            raise RuntimeError(f"Configured candidate cannot be used: {exc}") from exc
         print(f"Availability candidate not loaded: {type(exc).__name__}: {exc}")
         candidate = None
     try:

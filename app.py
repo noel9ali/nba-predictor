@@ -1834,6 +1834,12 @@ def api_model():
     payload["feature_set_version"] = (run or {}).get("feature_set_version") if isinstance(
         (run or {}).get("feature_set_version"), str) else None
     payload["candidates"] = model_candidates((run or {}).get("candidates"))
+    if run is None:
+        payload["model_status"] = "migration_pending"
+    elif not payload["candidates"] and (run.get("candidates") is None):
+        payload["model_status"] = "artifact_pending"
+    else:
+        payload["model_status"] = "ready"
     payload["availability_gate"] = bool(player_config.AVAILABILITY_GATE)
     if mine_signal:
         payload["feature_importance"] = mine_signal

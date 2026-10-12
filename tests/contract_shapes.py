@@ -1,4 +1,4 @@
-"""Response shapes from integration-docs/04-API-CONTRACT.md, shared by the endpoint tests
+﻿"""Response shapes from integration-docs/04-API-CONTRACT.md, shared by the endpoint tests
 and the sample-data tests so the API and public/sample/*.json can't drift apart.
 
 A shape is a type (str, bool, NUM, INT), an Opt(shape) (the value may be null), an
@@ -169,6 +169,7 @@ MODEL = {
     "elo": Maybe({"k": NUM, "home_advantage": NUM, "mean_reversion": NUM, "start": NUM}),
     # Player data: candidate models (never auto-promoted) and the availability gate switch.
     "feature_set_version": Maybe(str),
+    "model_status": Maybe(str),
     "candidates": Maybe([{"model": str, "feature_set": Opt(str), "accuracy": Opt(NUM), "log_loss": Opt(NUM),
                           "brier_score": Opt(NUM), "roc_auc": Opt(NUM), "test_games": Opt(INT),
                           "promoted": bool}]),

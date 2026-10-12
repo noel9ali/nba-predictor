@@ -311,6 +311,22 @@ def main(argv=None) -> int:
         checks.append({"against": label, "brier_improvement": round(d_brier, 5), "log_loss_improvement": round(d_ll, 5),
                        "passes_rule": bool(d_brier >= 0.001 and d_ll >= 0)})
     results["promotion_check"] = checks
+    # Promotion is deliberately stricter than the fixed split: calibration bias must not worsen.
+    base_cal = results["leaderboard_split"]["calibration"].get("baseline", [])
+    cand_cal = results["leaderboard_split"]["calibration"].get("all_rapm", [])
+    base_ece = float(base.get("calibration_ece") or 0.0)
+    cand_ece = float(cand.get("calibration_ece") or 0.0)
+    results["evaluation_gate"] = {
+        "fixed_split_games": int(len(test)),
+        "missing_availability_rows": missing_avail,
+        "availability_coverage": round(1 - (missing_avail / len(df) if len(df) else 1), 6),
+        "walk_forward_present": bool(wf_rows),
+        "live_like_present": "live_like" in results,
+        "calibration_ece_baseline": base_ece, "calibration_ece_candidate": cand_ece,
+        "no_new_calibration_bias": cand_ece <= base_ece,
+        "human_approval_required": True,
+        "promote": bool(checks[0]["passes_rule"] and cand_ece <= base_ece and wf_rows),
+    }
     out_md += ["## Promotion rule (Brier better by >= 0.001 and log loss no worse); nothing is promoted", "",
                fmt_table(checks, ["against", "brier_improvement", "log_loss_improvement", "passes_rule"]), ""]
 
@@ -334,6 +350,7 @@ def write_candidates(lb_rows: list[dict], results: dict) -> None:
              "baseline+avail_box": "lr-calibrated-availability-box-v1", "all_rapm": "lr-calibrated-availability-rest-v1"}
     rows = [{"model": names[r["feature_set"]], "feature_set": r["feature_set"],
              "feature_set_version": results["feature_set_version"], "evaluated_at": trained,
+             "artifact_path": f"data/candidates/{names[r['feature_set']]}.pkl",
              **{k: r[k] for k in ("test_games", "accuracy", "log_loss", "brier_score", "roc_auc", "calibration_ece",
                                   "baseline_home_win_rate", "extreme_prediction_rate")}}
             for r in lb_rows if r["subset"] == "all" and r["feature_set"] in names]
