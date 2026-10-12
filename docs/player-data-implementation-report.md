@@ -416,3 +416,29 @@ live-like (archived report) evaluation is in; nothing has been promoted.
 4. `migrations/0004_team_availability_features.sql` - team availability features and rest.
 5. `migrations/0005_predict_availability.sql` - scenarios, factors, availability inputs, predictions columns.
 6. `migrations/0006_model_runs_candidates.sql` - model_runs candidates + feature_set_version.
+7. `migrations/0007_market_odds.sql` - generic captured market odds; retain `book_odds` during dual-write.
+8. `migrations/0008_player_rates.sql` - point-in-time shrunk per-minute player rates.
+9. `migrations/reserved/0009_prop_predictions.sql` - **reserved; do not apply**.
+
+## Phase 8: props groundwork (done)
+
+Added the generic market-odds sink (`src/market_odds.py`) and a best-effort
+moneyline dual-write hook in `src/odds.py`; the existing odds dictionary and
+`book_odds` path remain unchanged. Added `src/player_rates.py`, which computes
+365-day, strictly point-in-time rates for pts/reb/ast/fg3m/stl/blk/tov with a
+400-minute league-prior shrinkage. Added the reserved prop schema and a
+`src/props/README.md` describing the planned minutes/rates/distribution/staking
+flow, The Odds API markets and quota considerations, and open issues.
+
+Focused offline tests cover strict point-in-time rate filtering, empty inputs,
+and deterministic market-odds normalization. The sample-data suite and Python
+compile checks also pass. No migration was applied and no live data was written.
+
+## Phase 9: final verification and handoff (in progress)
+
+The live-like archived-report evaluation completed for all 1,596 leaderboard
+games. The availability candidate improves Brier score from 0.2091 to 0.1989
+and log loss from 0.6325 to 0.5815 against the production baseline on report
+features; `all_rapm` reaches 0.1984 Brier and 0.5803 log loss. These are
+candidate results only: the production model remains
+`gradient-boosting-gridsearch`, and no automatic promotion was performed.

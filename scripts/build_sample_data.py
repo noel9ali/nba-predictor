@@ -443,11 +443,27 @@ class Tables:
     def __init__(self):
         self.predictions, self.book_odds, self.bankroll, self.games = [], [], [], []
         self.features, self.elo, self.model_runs, self.workflow_log = [], [], [], []
+        # Player-data fixtures are deliberately small, deterministic and
+        # additive.  They exercise the API before the real migrations exist.
+        self.injury_snapshots = []
+        self.player_minutes_projection = []
+        self.player_ratings = []
+        self.team_availability_features = []
+        self.prediction_scenarios = []
+        self.prediction_factors = []
+        self.prediction_availability_inputs = []
 
     def as_dict(self):
         return {"predictions": self.predictions, "book_odds": self.book_odds,
                 "bankroll": self.bankroll, "games": self.games, "features": self.features,
-                "elo": self.elo, "model_runs": self.model_runs, "workflow_log": self.workflow_log}
+                "elo": self.elo, "model_runs": self.model_runs, "workflow_log": self.workflow_log,
+                "injury_snapshots": self.injury_snapshots,
+                "player_minutes_projection": self.player_minutes_projection,
+                "player_ratings": self.player_ratings,
+                "team_availability_features": self.team_availability_features,
+                "prediction_scenarios": self.prediction_scenarios,
+                "prediction_factors": self.prediction_factors,
+                "prediction_availability_inputs": self.prediction_availability_inputs}
 
 
 TEAM_BASE = {}
@@ -574,6 +590,12 @@ def build_tables(history, targets, tonight_variant="base"):
         "SAC": {"elo": 1561.0, "PTS": 117.8, "FG_PCT": 0.483, "REB": 44.6, "AST": 26.4, "TOV": 13.1, "STOCKS": 13.9},
     })
     tonight = tonight_games(tables, tonight_variant)
+    if tonight:
+        # Make one drawer use the candidate so its scenario/factor rows are
+        # visible while leaving the production model unchanged elsewhere.
+        first_prediction = next(r for r in tables.predictions if r["game_id"] == tonight[0].game_id)
+        first_prediction["model_name"] = "lr-calibrated-availability-v1"
+        add_player_data(tables, tonight)
     tables.model_runs.append(copy.deepcopy(MODEL_RUN))
     tables.workflow_log.extend([
         {"run_date": "2026-11-17", "kind": "predict", "trigger": "schedule", "started_at": "2026-11-17T23:30:05Z",
@@ -611,6 +633,99 @@ def tonight_games(tables, variant, first_id=None):
         add_book_odds(tables, g, a_prices, h_prices)
         games.append(g)
     return games
+
+
+def add_player_data(tables, games):
+    """Add a small API fixture for the first two games on the sample slate.
+
+    The first game is the full drawer example: an out star, a questionable
+    rotation player, an available listing, blended scenarios, factors and a
+    status change.  The second game supplies a probable/doubtful pair so the
+    injury endpoint demonstrates more than one status.  Rows use the real
+    config team IDs; all timestamps precede the sample tip times.
+    """
+    if not games:
+        return
+    stamp = "2026-11-17T17:30:00+00:00"
+    as_of = "2026-11-17T18:00:00+00:00"
+    model = "lr-calibrated-availability-v1"
+    first = games[0]
+    home_id = dashboard.player_config.TEAM_IDS[first.home]
+    away_id = dashboard.player_config.TEAM_IDS[first.away]
+    players = [
+        (203999, "Jokić, Nikola", home_id, "out", "Left wrist soreness", 0.0, 0.0, -4.2),
+        (1629027, "Banchero, Paolo", home_id, "questionable", "Left ankle sprain", 0.5, 25.0, 1.6),
+        (1629630, "Herro, Tyler", away_id, "available", None, 1.0, 31.0, 0.0),
+    ]
+    for offset, (pid, name, tid, status, reason, p_play, exp_min, impact) in enumerate(players, 1):
+        tables.injury_snapshots.append({
+            "snapshot_id": offset, "game_id": first.game_id, "game_date": TONIGHT.isoformat(),
+            "team_id": tid, "player_id": pid, "player_name_raw": name,
+            "status": status, "status_raw": status.title(), "reason": reason,
+            "report_time": stamp, "captured_at": "2026-11-17T17:31:00+00:00",
+            "matchup": f"{first.away}@{first.home}", "source": "sample",
+        })
+        tables.player_minutes_projection.append({
+            "game_id": first.game_id, "player_id": pid, "as_of": as_of,
+            "team_id": tid, "p_play": p_play, "exp_min": exp_min,
+            "min_if_play": exp_min if p_play else 0.0, "min_p10": 0.0 if not p_play else max(0, exp_min - 8),
+            "min_p90": 0.0 if not p_play else min(40, exp_min + 8),
+            "role": "inactive" if not p_play else "starter", "basis": "sample fixture", "version": "v1",
+        })
+        tables.player_ratings.append({
+            "player_id": pid, "as_of": "2026-11-16", "rating_type": "rapm_lite_v1",
+            "value": impact * 2 if impact else 1.2, "minutes_basis": 1200, "se": None, "version": "v1",
+        })
+    tables.team_availability_features.extend([
+        {"game_id": first.game_id, "team_id": home_id, "as_of": as_of, "rating_type": "rapm_lite_v1",
+         "basis": "report", "rating_baseline": 8.0, "rating_expected": 3.8, "value_out": 4.2,
+         "star_out": 1, "top3_avail": 0.67, "minutes_lost": 34.0, "n_key_uncertain": 1,
+         "rest_days": 2, "is_b2b": False, "games_last_7": 3, "feature_version": "v1"},
+        {"game_id": first.game_id, "team_id": away_id, "as_of": as_of, "rating_type": "rapm_lite_v1",
+         "basis": "report", "rating_baseline": 6.0, "rating_expected": 6.0, "value_out": 0.0,
+         "star_out": 0, "top3_avail": 1.0, "minutes_lost": 0.0, "n_key_uncertain": 0,
+         "rest_days": 1, "is_b2b": True, "games_last_7": 4, "feature_version": "v1"},
+    ])
+    # Four scenarios have weights summing to one and make the p_play=.5
+    # uncertainty visible in the drawer.
+    for key, label, weight, probability in [
+        ("all_available", "All key players available", 0.25, 0.57),
+        ("star_out", "Jokić out", 0.25, 0.49),
+        ("questionable_in", "Banchero available", 0.25, 0.55),
+        ("both_absent", "Jokić and Banchero out", 0.25, 0.45),
+    ]:
+        tables.prediction_scenarios.append({
+            "game_id": first.game_id, "model_name": model, "scenario_key": key,
+            "label": label, "weight": weight, "home_win_prob": probability,
+            "predicted_at": "2026-11-17T18:31:00+00:00",
+        })
+    tables.prediction_factors.extend([
+        {"game_id": first.game_id, "model_name": model, "factor_key": "base",
+         "label": "Home-court base rate", "group": "base", "prob_points": 5.0, "sort_order": 1},
+        {"game_id": first.game_id, "model_name": model, "factor_key": "jokic_out",
+         "label": "Jokić out: -4.2 pts", "group": "availability", "prob_points": -4.2, "sort_order": 2},
+        {"game_id": first.game_id, "model_name": model, "factor_key": "rest",
+         "label": "Two rest days: +0.8 pts", "group": "rest", "prob_points": 0.8, "sort_order": 3},
+    ])
+    tables.prediction_availability_inputs.append({
+        "game_id": first.game_id, "model_name": model, "predicted_at": "2026-11-17T18:31:00+00:00",
+        "as_of": as_of, "home_win_prob": 0.515, "prob_range_low": 0.45, "prob_range_high": 0.57,
+        "key_statuses": '{"203999":"out","1629027":"questionable"}',
+        "status_changed_after_pred": True,
+    })
+    if len(games) > 1:
+        second = games[1]
+        h2, a2 = dashboard.player_config.TEAM_IDS[second.home], dashboard.player_config.TEAM_IDS[second.away]
+        for offset, (pid, name, tid, status, reason) in enumerate([
+            (2544, "LeBron James", h2, "probable", "Left foot soreness"),
+            (1629029, "Devin Booker", a2, "doubtful", "Back tightness"),
+        ], 20):
+            tables.injury_snapshots.append({
+                "snapshot_id": offset, "game_id": second.game_id, "game_date": TONIGHT.isoformat(),
+                "team_id": tid, "player_id": pid, "player_name_raw": name, "status": status,
+                "status_raw": status.title(), "reason": reason, "report_time": stamp,
+                "captured_at": stamp, "matchup": f"{second.away}@{second.home}", "source": "sample",
+            })
 
 
 # ---------------------------------------------------------------------------- API calls
@@ -842,6 +957,9 @@ def main():
     # Tonight and every past night.
     base = fetch(tables, f"/api/slate?date={TONIGHT}")
     write(f"slate-{TONIGHT}", base)
+    injury_sample = fetch(tables, f"/api/injuries?date={TONIGHT}")
+    injury_sample["source"] = "sample"
+    write(f"injuries-{TONIGHT}", injury_sample)
     for day in season_dates:
         write(f"slate-{day}", fetch(tables, f"/api/slate?date={day}"))
     write(f"slate-{TONIGHT}-before", schedule_only(base, "before_predictions"))

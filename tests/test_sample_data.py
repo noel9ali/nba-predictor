@@ -13,7 +13,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(__file__))
 
 from contract_shapes import (  # noqa: E402
-    DAYS, FEATURED_PICK, GAME_DETAIL, LIVE_SCORES, MODEL, PERFORMANCE, PREDICTIONS, SLATE,
+    DAYS, FEATURED_PICK, GAME_DETAIL, INJURIES, LIVE_SCORES, MODEL, PERFORMANCE, PREDICTIONS, SLATE,
     WORKFLOW_STATUS, check,
 )
 
@@ -42,6 +42,8 @@ def shape_for(name):
         return PREDICTIONS
     if name.startswith("workflow-status"):
         return WORKFLOW_STATUS
+    if name.startswith("injuries-"):
+        return INJURIES
     return {"days": DAYS, "model": MODEL, "featured-pick": FEATURED_PICK}[name]
 
 
@@ -65,6 +67,26 @@ class SampleShapeTests(unittest.TestCase):
         for gid in ids:
             with self.subTest(game=gid):
                 self.assertTrue(os.path.isfile(os.path.join(SAMPLE_DIR, f"game-{gid}.json")))
+
+    def test_injury_fixture_is_labelled_and_contains_status_examples(self):
+        body = load("injuries-2026-11-17")
+        self.assertEqual(body["source"], "sample")
+        players = [p for game in body["games"] for side in ("home", "away")
+                   for p in game[side]["players"]]
+        self.assertGreaterEqual(len(players), 5)
+        self.assertTrue({"out", "questionable", "probable", "doubtful"}
+                        <= {p["status"] for p in players})
+        self.assertTrue(any(p["status"] == "out" and p["exp_min"] == 0 for p in players))
+
+    def test_drawer_fixture_contains_scenarios_factors_and_status_change(self):
+        slate = load("slate-2026-11-17")
+        game = next(g for g in slate["games"] if g["availability_summary"] and
+                    g["availability_summary"]["status_changed"])
+        detail = load(f"game-{game['game_id']}")
+        self.assertEqual(detail["model_name"], "lr-calibrated-availability-v1")
+        self.assertEqual(len(detail["scenarios"]), 4)
+        self.assertAlmostEqual(sum(s["weight"] for s in detail["scenarios"]), 1.0)
+        self.assertGreaterEqual(len(detail["factors"]), 3)
 
 
 class SampleSeasonTests(unittest.TestCase):

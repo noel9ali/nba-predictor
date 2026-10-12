@@ -177,6 +177,7 @@ MODEL = {
 # GET /api/injuries?date=: latest snapshot per game, grouped by team.
 INJURIES = {
     **ENVELOPE, "date": DATE, "report_time": Opt(TIMESTAMP),
+    "source": Maybe(str),
     "games": [{"game_id": GAME_ID, "home": {"tricode": str, "players": [AVAIL_PLAYER]},
                "away": {"tricode": str, "players": [AVAIL_PLAYER]}}],
 }

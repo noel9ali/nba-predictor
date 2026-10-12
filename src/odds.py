@@ -63,6 +63,7 @@ def get_tonights_odds():
 
     games = response.json()
     odds_by_teams = {}
+    generic_rows = []
 
     for game in games:
         home_team = game['home_team']
@@ -88,6 +89,16 @@ def get_tonights_odds():
                     continue
                 for outcome in market['outcomes']:
                     price = outcome['price']
+                    if game.get('id'):
+                        generic_rows.append({
+                            'game_id': str(game['id']),
+                            'captured_at': game.get('commence_time') or '',
+                            'bookmaker': bookmaker['title'],
+                            'market': 'moneyline',
+                            'selection': 'home' if outcome['name'] == home_team else 'away',
+                            'player_id': None, 'line': None,
+                            'price_american': int(price),
+                        })
                     if outcome['name'] == home_team:
                         if best_home_odds is None or price > best_home_odds:
                             best_home_odds = price
@@ -105,6 +116,23 @@ def get_tonights_odds():
                 'away_book': best_away_book
             }
 
+    # The old dictionary remains the caller-facing contract.  A best-effort
+    # generic write keeps moneylines available to the future props layer.
+    try:
+        from market_odds import write_moneyline_rows
+        if generic_rows:
+            from datetime import datetime, timezone
+            import hashlib
+            for row in generic_rows:
+                row['captured_at'] = row['captured_at'] or datetime.now(timezone.utc).isoformat(timespec='seconds')
+                key = '|'.join(str(row.get(k)) for k in
+                               ('game_id', 'captured_at', 'bookmaker', 'market', 'selection', 'line'))
+                row['odds_id'] = int(hashlib.sha256(key.encode()).hexdigest()[:15], 16)
+            write_moneyline_rows(generic_rows)
+    except Exception:
+        # Missing migration or a transient local-store problem must never
+        # make moneyline prediction fail.
+        generic_rows = []
     print(f"Found odds for {len(odds_by_teams)} games")
     print(f"Requests used: {response.headers.get('x-requests-used')}")
     print(f"Requests remaining: {response.headers.get('x-requests-remaining')}")
