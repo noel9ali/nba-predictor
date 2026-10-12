@@ -256,6 +256,18 @@ class SinkTests(unittest.TestCase):
         self.assertIn("Unknown, Guy", text)
         self.assertIn("player", text)
 
+    def test_unmatched_rows_do_not_collide_across_teams(self):
+        rows = [
+            {"report_time": "2026-10-21T17:00:00+00:00", "kind": "player",
+             "team_name": "Atlanta Hawks", "team_id": ATL, "player_name_raw": "Unknown, Guy",
+             "game_date": "2026-10-21", "matchup": "CLE@ATL"},
+            {"report_time": "2026-10-21T17:00:00+00:00", "kind": "player",
+             "team_name": "Cleveland Cavaliers", "team_id": CLE, "player_name_raw": "Unknown, Guy",
+             "game_date": "2026-10-21", "matchup": "CLE@ATL"},
+        ]
+        injuries.store_rows(self.conn, [], rows)
+        self.assertEqual(self.conn.execute("select count(*) from injury_unmatched").fetchone()[0], 2)
+
 
 class LatestStatusTests(unittest.TestCase):
     def setUp(self):
