@@ -8,6 +8,7 @@ from datetime import date, datetime
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+import httpx
 import pandas as pd
 from dotenv import load_dotenv
 from postgrest.exceptions import APIError
@@ -15,6 +16,7 @@ from supabase import Client, create_client
 
 
 DEFAULT_BATCH_SIZE = 500
+_STALE_CONNECTION_ERRORS = (httpx.ReadError, httpx.RemoteProtocolError, httpx.ConnectError)
 
 
 class DatabaseError(RuntimeError):
@@ -95,9 +97,19 @@ def _raise_response_error(operation: str, response: Any) -> None:
     _raise_for_error(operation, error)
 
 
-def _run(operation: str, callback):
+def _run(operation: str, callback, retry_stale: bool = False):
+    # retry_stale is for reads only: keep-alive connections the server already closed fail
+    # (ReadError) on the first requests after an idle gap. Dropping the client discards the
+    # whole pool, so the retry can't land on another stale connection.
+    global _client
     try:
-        response = callback()
+        try:
+            response = callback()
+        except _STALE_CONNECTION_ERRORS:
+            if not retry_stale:
+                raise
+            _client = None
+            response = callback()
     except DatabaseError:
         raise
     except APIError as exc:
@@ -218,7 +230,7 @@ def select_rows(
 
         if limit is not None and len(rows) >= limit:
             break
-        response = _run(f"Reading {table}", request)
+        response = _run(f"Reading {table}", request, retry_stale=True)
         batch = response.data or []
         rows.extend(batch)
         if len(batch) < batch_limit:
@@ -328,7 +340,7 @@ def select_page(
             query = query.order(order_column, desc=descending if order_desc is None else order_desc)
         return query.range(offset, offset + limit - 1).execute()
 
-    response = _run(f"Reading a page of {table}", request)
+    response = _run(f"Reading a page of {table}", request, retry_stale=True)
     return pd.DataFrame(response.data or []), response.count or 0
 
 
@@ -339,7 +351,7 @@ def count_rows(table: str, *, filters: Iterable[tuple[str, str, Any]] = ()) -> i
         query = get_client().table(table).select("*", count="exact", head=True)
         return _apply_filters(query, filters).execute()
 
-    response = _run(f"Counting {table}", request)
+    response = _run(f"Counting {table}", request, retry_stale=True)
     return response.count or 0
 
 

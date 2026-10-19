@@ -155,6 +155,31 @@ class DatabaseTests(unittest.TestCase):
         self.assertIn(("eq", "TEAM_ID", 7), client.query.calls)
         self.assertIn(("order", "GAME_DATE", True), client.query.calls)
 
+    def test_read_retries_once_on_a_stale_connection(self):
+        import httpx
+        calls = []
+
+        def flaky():
+            calls.append(1)
+            if len(calls) == 1:
+                raise httpx.ReadError("connection reset")
+            return Response([])
+
+        database._run("Reading games", flaky, retry_stale=True)
+        self.assertEqual(len(calls), 2)
+
+    def test_write_is_not_retried_on_a_stale_connection(self):
+        import httpx
+        calls = []
+
+        def broken():
+            calls.append(1)
+            raise httpx.ReadError("connection reset")
+
+        with self.assertRaises(database.DatabaseError):
+            database._run("Inserting rows into games", broken)
+        self.assertEqual(len(calls), 1)
+
     def test_select_requires_order_for_paginated_reads(self):
         database._client = FakeClient(Response([{"GAME_ID": "g1"}]))
         with self.assertRaises(ValueError):

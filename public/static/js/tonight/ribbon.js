@@ -97,7 +97,7 @@ export function updateRibbon(s) {
   put(cells[1], fmt.money(s.settled, true), signCls(s.settled));
   put(cells[2], fmt.money(s.ifEnded, true), signCls(s.ifEnded));
   put(cells[3], s.betW + '–' + s.betL);
-  let live = s.live ? s.live + ' live · ' + s.ahead + ' of ' + s.liveBets + ' bets ahead' : s.upcoming ? s.upcoming + ' to come' : 'All final';
+  let live = s.live ? s.live + ' live · ' + s.ahead + ' of ' + s.liveBets + ' bets ahead' : s.upcoming ? s.upcoming + ' to come' : s.games ? 'All final' : 'No games';
   if (!store.isPast && (store.feed.status === 'delayed' || store.feed.status === 'down') && store.feed.asOf) live = FEED_COPY.delayed(store.feed.asOf);
   const liveEl = ribbon.querySelector('[data-ribbon-live]');
   if (liveEl.textContent !== live) liveEl.textContent = live;

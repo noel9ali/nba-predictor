@@ -625,8 +625,10 @@ def bad_season_response():
 
 @app.errorhandler(DatabaseError)
 def database_unavailable(exc):
-    # The exception text stays out of the response; only its type is logged.
-    app.logger.warning("Database unavailable: %s", type(exc).__name__)
+    # The exception text stays out of the response; only its type (and its cause's) is logged.
+    cause = exc.__cause__
+    app.logger.warning("Database unavailable: %s (cause: %s)", type(exc).__name__,
+                       type(cause).__name__ if cause else "none")
     return error_response(503, "database_unavailable")
 
 
