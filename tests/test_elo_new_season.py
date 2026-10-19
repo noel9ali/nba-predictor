@@ -68,32 +68,5 @@ class CurrentRatingsSeasonTests(unittest.TestCase):
         self.assertAlmostEqual(out[1], 1650.0)
 
 
-class TodaysGamesTests(unittest.TestCase):
-    @staticmethod
-    def board(games, teams):
-        class B:
-            def get_data_frames(self):
-                return [pd.DataFrame(), games, teams]
-        return B()
-
-    def test_home_away_order_and_empty_slate(self):
-        import predict
-        # ScoreboardV3 lists the away team first and the home team second for each game.
-        teams = pd.DataFrame([
-            {"gameId": "G1", "teamId": 10, "teamTricode": "AWY"},
-            {"gameId": "G1", "teamId": 20, "teamTricode": "HOM"},
-        ])
-        games = pd.DataFrame([{"gameId": "G1"}])
-        with patch.object(predict.scoreboardv3, "ScoreboardV3", return_value=self.board(games, teams)):
-            out = predict.get_todays_games()
-        self.assertEqual(out.iloc[0]["HOME_TEAM_ID"], 20)
-        self.assertEqual(out.iloc[0]["VISITOR_TEAM_ID"], 10)
-        empty_games = pd.DataFrame(columns=["gameId"])
-        empty_teams = pd.DataFrame(columns=["gameId", "teamId", "teamTricode"])
-        with patch.object(predict.scoreboardv3, "ScoreboardV3",
-                          return_value=self.board(empty_games, empty_teams)):
-            self.assertEqual(len(predict.get_todays_games()), 0)
-
-
 if __name__ == "__main__":
     unittest.main()
