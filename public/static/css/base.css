@@ -13,3 +13,5 @@ button{font:inherit;color:inherit}
 .pos{color:var(--win)}.neg{color:var(--loss)}
 .nw{white-space:nowrap}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.legal{max-width:1160px;margin:clamp(40px,6vw,72px) auto 0;padding:20px 16px 32px;border-top:1px solid var(--line,currentColor);font:400 11px/1.6 var(--mono);color:var(--ink-2);opacity:.85}
+.legal p{margin:0 0 8px;max-width:78ch}
