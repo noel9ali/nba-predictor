@@ -47,7 +47,28 @@ ABBR_MAP = {
     'WAS': 'Washington Wizards'
 }
 
-def get_tonights_odds():
+def _archive_stamp():
+    try:
+        import odds_archive
+        return odds_archive.now_utc_ms()
+    except Exception:
+        return None
+
+
+def _archive(events, response, stamp, purpose):
+    """Append the response (every bookmaker, with the quota headers) to the odds history. Never raises."""
+    try:
+        import odds_archive
+        odds_archive.safe_archive(events, getattr(response, 'headers', None), stamp or odds_archive.now_utc_ms(),
+                                  purpose=purpose, http_status=getattr(response, 'status_code', None),
+                                  sport=SPORT, regions=REGIONS, markets=MARKETS)
+    except Exception as exc:
+        print(f"ERROR: odds archive unavailable: {type(exc).__name__}: {exc}")
+
+
+def get_tonights_odds(purpose='pricing'):
+    """One Odds API credit returns the whole slate. Every response is also appended to the odds-history archive
+    (src/odds_archive.py; zero extra credits, never fatal). purpose: 'pricing' | 'closing' | 'debug'."""
     url = f"{BASE_URL}/sports/{SPORT}/odds"
     params = {
         'apiKey': API_KEY,
@@ -57,12 +78,15 @@ def get_tonights_odds():
     }
 
     response = requests.get(url, params=params, timeout=(5, 30))
+    archive_stamp = _archive_stamp()   # when the response arrived: the archive's point-in-time stamp
 
     if response.status_code != REQUEST_SUCCESS:
         print(f"ERROR fetching odds: {response.status_code} - {response.text}")
+        _archive(None, response, archive_stamp, purpose)    # keeps the quota headers of a failed call too
         return {}
 
     games = response.json()
+    _archive(games, response, archive_stamp, purpose)
     captured_at = datetime.now(timezone.utc).isoformat(timespec='seconds')
     odds_by_teams = {}
     generic_rows = []
@@ -149,6 +173,7 @@ def get_bookmakers():
     }
     response = requests.get(url, params=params, timeout=(5, 30))
     games = response.json()
+    _archive(games if response.status_code == REQUEST_SUCCESS else None, response, _archive_stamp(), 'debug')
 
     bookmakers = set()
     for game in games:

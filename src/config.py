@@ -149,6 +149,20 @@ KELLY_CAP = 0.05                 # max stake as a fraction of bankroll
 MAX_DECIMAL_ODDS = 5.0           # never bet longer prices than this
 
 # ---------------------------------------------------------------------------
+# Odds history (append-only archive of every Odds API response; src/odds_archive.py)
+# ---------------------------------------------------------------------------
+ODDS_HISTORY_DIR = os.path.join(DATA_DIR, "odds_history")            # git-ignored; created on first use
+ODDS_HISTORY_DB = os.path.join(ODDS_HISTORY_DIR, "odds_history.sqlite")
+ODDS_ARCHIVE_ENABLED = True      # zero extra credits: it only stores responses the pipeline already paid for
+# Closing-line capture: ONE extra Odds API call per distinct tip time, shortly before tip. SHIPPED OFF: it roughly
+# doubles credit use (see docs/odds-archive.md for the arithmetic).
+ODDS_CLOSING_CAPTURE = False
+ODDS_CLOSING_TARGET_MINUTES = 10          # nominal: about tip minus 10 minutes
+ODDS_CLOSING_WINDOW_MINUTES = (2, 17)     # a 15-minute scheduler tick lands exactly once in a 15-minute window
+ODDS_CLOSING_DAILY_CALL_CAP = 8           # closing calls per day, counted apart from ODDS_DAILY_CALL_CAP (pricing)
+ODDS_CLOSING_MONTHLY_RESERVE = 100        # skip closing calls when x-requests-remaining is at or below this
+
+# ---------------------------------------------------------------------------
 # Predict-time availability (phase 6)
 # ---------------------------------------------------------------------------
 MAX_SCENARIO_PLAYERS = 3         # per team: uncertain players (0.1 < p_play < 0.9) enumerated as present/absent

@@ -199,14 +199,83 @@ def record_odds_call(today=None, path=None):
             state = json.load(fh)
     except (OSError, ValueError):
         state = {}
-    calls = int(state.get('calls', 0)) + 1 if state.get('date') == today else 1
+    same_day = state.get('date') == today
+    calls = int(state.get('calls', 0)) + 1 if same_day else 1
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w', encoding='utf-8') as fh:
-            json.dump({'date': today, 'calls': calls}, fh)
+            json.dump({'date': today, 'calls': calls,
+                       'closing_calls': int(state.get('closing_calls', 0)) if same_day else 0}, fh)
     except OSError as exc:
         print(f"Could not record the odds call ({type(exc).__name__}).")
     return calls
+
+
+def closing_call_allowed(today=None, path=None, remaining=None):
+    """Closing-line calls (flag ODDS_CLOSING_CAPTURE) have their own daily cap and a monthly reserve: no closing
+    call when the last x-requests-remaining header is at or below ODDS_CLOSING_MONTHLY_RESERVE. Unreadable state
+    fails SAFE (no call), the opposite of the pricing budget, because a closing snapshot is optional."""
+    import json
+    import config
+    today = str(today or date.today())
+    if remaining is not None and remaining <= config.ODDS_CLOSING_MONTHLY_RESERVE:
+        return False
+    try:
+        with open(path or _odds_budget_path(), encoding='utf-8') as fh:
+            state = json.load(fh)
+    except FileNotFoundError:
+        return True
+    except (OSError, ValueError):
+        return False
+    used = int(state.get('closing_calls', 0)) if state.get('date') == today else 0
+    return used < config.ODDS_CLOSING_DAILY_CALL_CAP
+
+
+def record_closing_call(today=None, path=None):
+    """Count a closing call apart from the pricing calls (same budget file, separate field)."""
+    import json
+    today, path = str(today or date.today()), path or _odds_budget_path()
+    try:
+        with open(path, encoding='utf-8') as fh:
+            state = json.load(fh)
+    except (OSError, ValueError):
+        state = {}
+    same_day = state.get('date') == today
+    state = {'date': today, 'calls': int(state.get('calls', 0)) if same_day else 0,
+             'closing_calls': (int(state.get('closing_calls', 0)) if same_day else 0) + 1}
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as fh:
+            json.dump(state, fh)
+    except OSError as exc:
+        print(f"Could not record the closing odds call ({type(exc).__name__}).")
+    return state['closing_calls']
+
+
+def maybe_capture_closing(scheduled, now=None):
+    """Closing-line snapshot (default OFF, config.ODDS_CLOSING_CAPTURE): when a not-yet-started game tips 2-17
+    minutes from now and its tip time has no closing capture yet, spend ONE credit on the slate (purpose
+    'closing'); the response is archived like every other. Never raises, never affects predictions."""
+    try:
+        import config
+        if not config.ODDS_CLOSING_CAPTURE:
+            return False
+        import odds_archive
+        due = odds_archive.due_closing_tips(scheduled, now)
+        if not due:
+            return False
+        if not closing_call_allowed(remaining=odds_archive.latest_requests_remaining()):
+            print("Closing odds capture skipped: closing budget or monthly reserve reached.")
+            return False
+        record_closing_call()
+        print(f"Capturing closing odds for tip time(s) {', '.join(due)}...")
+        get_tonights_odds(purpose='closing')
+        odds_archive.mark_closing_done(due, scheduled.loc[scheduled['TIP_UTC'].isin(due), 'gameId'].tolist())
+        odds_archive.link_game_ids(scheduled)
+        return True
+    except Exception as exc:
+        print(f"Closing odds capture failed ({type(exc).__name__}: {exc}); predictions are unaffected.")
+        return False
 
 
 def _flag_status_changes():
@@ -263,6 +332,7 @@ def run():
     if len(games) == 0:
         print("No games left to predict.")
         return
+    maybe_capture_closing(scheduled)      # OFF by default (config.ODDS_CLOSING_CAPTURE); never raises
 
     # the evening stage prices each game shortly before its tip, with the newest injury report
     window = predict_window_minutes()
@@ -296,6 +366,11 @@ def run():
     record_odds_call()
     print("Fetching odds...")
     odds_dict = get_tonights_odds()
+    try:
+        import odds_archive
+        odds_archive.link_game_ids(scheduled)     # NBA game ids onto the archived rows (non-fatal)
+    except Exception as exc:
+        print(f"Odds archive game-id link skipped: {type(exc).__name__}: {exc}")
     saved = 0
 
     # ADD THIS HERE

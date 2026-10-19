@@ -17,3 +17,5 @@ data/raw/
 data/injuries/
 data/player_data/
 data/eval/
+data/odds_history/
+data/odds_budget.json
