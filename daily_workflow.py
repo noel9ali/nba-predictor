@@ -13,6 +13,7 @@ Or triggered via the Flask API (POST /api/run-workflow).
 """
 
 import os
+import re
 import sys
 import subprocess
 import threading
@@ -320,10 +321,14 @@ def send_sms(body):
 # ---------------------------------------------------------------------------
 
 STAGES = ('full', 'morning', 'predict')
-# What src/predict.py prints when it has no new game to price (keep in sync with predict.run()).
-NOTHING_TO_PREDICT = ('No games today.', 'No games left to predict.', 'No games inside the prediction window.',
-                      'Every game today already has a prediction.')
-PREDICT_WINDOW_MINUTES = 120     # the predict stage prices a game once it tips within this long
+PREDICT_WINDOW_MINUTES = 75      # the predict stage prices a game once it tips within this long (runs every 15 min)
+# predict.py ends every run that got as far as pricing with "Saved N prediction(s)." (keep in sync with predict.run()).
+PREDICTIONS_SAVED = re.compile(r'Saved (\d+) prediction')
+
+
+def saved_predictions(predict_output):
+    """Number of predictions the predict step stored, 0 when it had nothing to price or printed no count."""
+    return sum(int(n) for n in PREDICTIONS_SAVED.findall(predict_output or ''))
 # workflow_log.kind per stage: the dashboard reads 'morning' (06:00 ET job) and 'predict' separately.
 STAGE_KIND = {'full': 'manual', 'morning': 'morning', 'predict': 'predict'}
 
@@ -333,7 +338,7 @@ def run_workflow(send_text=True, trigger='schedule', stage='full'):
     Daily workflow, in stages:
       full     pipeline, then predictions, then SMS (Run now; the original behaviour)
       morning  pipeline only (collect, settle yesterday, features), then the results SMS      06:00 ET
-      predict  predictions only (injury snapshot first), then the picks SMS            every 30 min, 10:00-21:30 ET
+      predict  predictions only (injury snapshot first), then the picks SMS            every 15 min, 10:05-22:05 ET
     The predict stage prices each game once it tips within PREDICT_WINDOW_MINUTES, so the availability model sees
     the newest game-day injury report; at 06:00 teams have not yet submitted theirs. A run with nothing new to
     price exits quietly (no SMS, no workflow_log row).
@@ -375,9 +380,9 @@ def run_workflow(send_text=True, trigger='schedule', stage='full'):
             print("✓ Predictions complete.\n")
         else:
             print(f"✗ Predictions exited with code {predict_rc}.\n")
-        if stage == 'predict' and predict_ok and any(m in predict_out for m in NOTHING_TO_PREDICT):
-            # a retry trigger (or a no-game day): no new picks, so no SMS and no extra workflow_log row
-            print("Nothing new to predict; no SMS, no log row.\n")
+        if stage == 'predict' and predict_ok and saved_predictions(predict_out) == 0:
+            # the common case (every 15-min tick between games): no new picks, so no SMS and no workflow_log row
+            print("Nothing new predicted; no SMS, no log row.\n")
             return {'run_date': run_date, 'started_at': started_at,
                     'finished_at': datetime.now().astimezone().isoformat(timespec='seconds'),
                     'status': 'success', 'pipeline_ok': True, 'predict_ok': True, 'sms_sent': False, 'noop': True}

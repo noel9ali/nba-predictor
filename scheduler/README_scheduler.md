@@ -63,13 +63,24 @@ would treat those players as available.
 | Task | When | Runs | Does |
 |---|---|---|---|
 | `NBA-Predictor-Daily` | 6:00 AM | `run_daily.bat` = `daily_workflow.py --stage morning` | collect, settle yesterday, features, results SMS (`workflow_log.kind = 'morning'`) |
-| `NBA-Predictor-Predict` | every 30 min, 10:00-22:00 | `run_predict_stage.bat` = `daily_workflow.py --stage predict` | injury snapshot, then predictions, then picks SMS (`kind = 'predict'`) |
+| `NBA-Predictor-Predict` | every 15 min, 10:05-22:05 | `run_predict_stage.bat` = `daily_workflow.py --stage predict` | injury snapshot, then predictions, then picks SMS (`kind = 'predict'`) |
 
-Each predict run prices only games that tip within the next 120 minutes (`PREDICT_WINDOW_MINUTES` in
+Each predict run prices only games that tip within the next 75 minutes (`PREDICT_WINDOW_MINUTES` in
 `daily_workflow.py`, passed to `predict.py` as `NBA_PREDICT_WINDOW_MINUTES`) and that have no prediction yet, so
-every game is priced about 1.5-2 hours before tip with the newest report, whatever its tip time. A run with nothing
-to price exits quietly: no SMS, no log row, no odds request. `predict.py` also never prices a game that already
-tipped. `python daily_workflow.py` with no flag still does everything in one go (Run now).
+every game is priced 60-75 minutes before tip with the newest report, whatever its tip time. A run with nothing
+to price exits quietly: no SMS, no log row, no odds request, and no Elo/games table reads (the cheap checks run
+first). `predict.py` also never prices a game that already tipped. `python daily_workflow.py` with no flag still
+does everything in one go (Run now).
+
+**API budget** (per day, 15-minute ticks 10:05-22:05 = 49 runs):
+
+| API | Per quiet tick | Per priced tick | Limit |
+|---|---|---|---|
+| NBA `ScoreboardV3` (stats.nba.com) | 1 | 1 | no published limit; 1 call / 15 min |
+| NBA injury report PDFs (CDN) | 0-3 (stops at the first slot already on disk; 0.4 s apart) | same | no published limit |
+| The Odds API | 0 | 1 credit (whole slate) | 500 credits/month; capped at 12/day (`ODDS_DAILY_CALL_CAP`, `data\odds_budget.json`) |
+| Supabase | 1 small read (+1 if flags change) | + Elo/games/features reads | free-tier egress |
+| Twilio | 0 | 1 SMS | per message |
 
 **Register the predict task BEFORE the morning bat changes take effect, or no predictions get made:**
 ```powershell

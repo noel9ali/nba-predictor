@@ -78,6 +78,22 @@ class HomeAwayTests(unittest.TestCase):
         self.assertEqual(list(predict.within_window(games, 120, now=now)["gameId"]), ["soon", "edge", "unknown"])
         self.assertEqual(len(predict.within_window(games, None, now=now)), 4)          # no window = everything
 
+    def test_odds_budget_caps_calls_per_day_and_resets_each_day(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "sub", "odds_budget.json")
+            self.assertTrue(predict.odds_call_allowed("2026-10-20", path))          # no file yet
+            for _ in range(predict.ODDS_DAILY_CALL_CAP):
+                self.assertTrue(predict.odds_call_allowed("2026-10-20", path))
+                predict.record_odds_call("2026-10-20", path)
+            self.assertFalse(predict.odds_call_allowed("2026-10-20", path))         # cap reached
+            self.assertTrue(predict.odds_call_allowed("2026-10-21", path))          # new day
+            self.assertEqual(predict.record_odds_call("2026-10-21", path), 1)
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write("not json")
+            self.assertTrue(predict.odds_call_allowed("2026-10-21", path))          # unreadable = allowed
+
     def test_window_from_the_environment(self):
         with patch.dict(os.environ, {"NBA_PREDICT_WINDOW_MINUTES": "120"}):
             self.assertEqual(predict.predict_window_minutes(), 120)

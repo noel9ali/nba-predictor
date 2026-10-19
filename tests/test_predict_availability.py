@@ -140,6 +140,8 @@ class PredictDryRunTests(unittest.TestCase):
                 patch.object(predict, "get_current_ratings", return_value={DEN: 1600, LAL: 1500}), \
                 patch.object(predict, "get_todays_games", return_value=slate), \
                 patch.object(predict, "not_yet_predicted", side_effect=lambda g: g), \
+                patch.object(predict, "odds_call_allowed", return_value=True), \
+                patch.object(predict, "record_odds_call"), \
                 patch.object(predict, "get_tonights_odds", return_value={}), \
                 patch.object(predict, "match_odds", return_value={"home_odds": -150, "away_odds": 130,
                                                                   "home_book": "fd", "away_book": "dk"}), \
@@ -153,6 +155,28 @@ class PredictDryRunTests(unittest.TestCase):
                 os.environ.pop("NBA_PRODUCTION_MODEL", None)
             predict.run()
         return calls
+
+    def test_a_tick_with_nothing_to_price_loads_nothing_heavy(self):
+        """Runs every 15 minutes: no Elo/games table reads, no model load, no Odds API credit when there is no game."""
+        import predict
+
+        empty = pd.DataFrame(columns=["gameId", "HOME_TEAM_ID", "HOME_TEAM_ABBREVIATION", "VISITOR_TEAM_ID",
+                                      "VISITOR_TEAM_ABBREVIATION"])
+        with patch.object(predict, "get_todays_games", return_value=empty), \
+                patch.object(predict, "load_model", side_effect=AssertionError("model loaded")), \
+                patch.object(predict, "get_current_ratings", side_effect=AssertionError("elo loaded")), \
+                patch.object(predict, "get_tonights_odds", side_effect=AssertionError("odds fetched")), \
+                patch("database.update_rows", return_value=[]):
+            predict.run()
+
+    def test_run_reports_how_many_predictions_it_saved(self):
+        import io
+        import contextlib
+
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.run_predict()
+        self.assertIn("Saved 1 prediction(s).", out.getvalue())
 
     def test_shadow_mode_leaves_production_unchanged(self):
         calls = self.run_predict()

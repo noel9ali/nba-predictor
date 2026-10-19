@@ -1,8 +1,10 @@
 # register_predict_task.ps1
-# Registers the predict stage: injury snapshot + predictions + picks SMS, every 30 minutes from 10:00 to 22:00
-# (laptop local time, US Eastern). Each run prices only games that tip within the next 120 minutes and have no
-# prediction yet, so every game is priced shortly before its tip with the newest injury report, and a run with
-# nothing to price exits quietly (no SMS, no log row, no odds request).
+# Registers the predict stage: injury snapshot + predictions + picks SMS, every 15 minutes from 10:05 to 22:05
+# (laptop local time, US Eastern). The :05/:20/:35/:50 offsets sit just after the NBA's 15-minute report slots and
+# never collide with the injury-snapshot task (:00/:30), which writes the same sqlite file. Each run prices only
+# games that tip within the next 75 minutes and have no prediction yet, so every game is priced 60-75 minutes before
+# its tip with the newest injury report; a run with nothing to price exits quietly (no SMS, no log row, no odds
+# request, no Elo/games table reads).
 # NBA-Predictor-Daily (6:00 AM) is the morning stage: pipeline, settle yesterday, results SMS.
 #
 # Usage (run once, as the user who owns the checkout):
@@ -14,8 +16,8 @@
 param(
     [string]$RepoRoot = (Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)),
     [string]$TaskName = "NBA-Predictor-Predict",
-    [string]$Start = "10:00AM",
-    [int]$EveryMinutes = 30,
+    [string]$Start = "10:05AM",
+    [int]$EveryMinutes = 15,
     [int]$ForHours = 12
 )
 
@@ -29,7 +31,7 @@ $repeat  = New-ScheduledTaskTrigger -Once -At $Start `
     -RepetitionDuration (New-TimeSpan -Hours $ForHours)
 $trigger.Repetition = $repeat.Repetition
 $settings = New-ScheduledTaskSettingsSet `
-    -ExecutionTimeLimit (New-TimeSpan -Minutes 25) `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 14) `
     -StartWhenAvailable `
     -RunOnlyIfNetworkAvailable `
     -MultipleInstances IgnoreNew

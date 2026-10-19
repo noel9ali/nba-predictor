@@ -169,6 +169,56 @@ def match_odds(home_abbr, away_abbr, odds_dict):
 # implied_prob() converts american odds to implied probability (market-agnostic, src/betting.py)
 from betting import implied_prob  # noqa: E402
 
+ODDS_DAILY_CALL_CAP = 12     # Odds API credits per day; the free plan is 500 a month (12 x 31 = 372)
+
+
+def _odds_budget_path():
+    from config import DATA_DIR
+    return os.path.join(DATA_DIR, 'odds_budget.json')
+
+
+def odds_call_allowed(today=None, path=None):
+    """True while today's Odds API calls are under ODDS_DAILY_CALL_CAP. A run that keeps finding a game without
+    odds retries every 15 minutes, and this stops that from burning the monthly quota. A missing or unreadable
+    file means no calls recorded yet."""
+    import json
+    today = str(today or date.today())
+    try:
+        with open(path or _odds_budget_path(), encoding='utf-8') as fh:
+            state = json.load(fh)
+    except (OSError, ValueError):
+        return True
+    return state.get('date') != today or int(state.get('calls', 0)) < ODDS_DAILY_CALL_CAP
+
+
+def record_odds_call(today=None, path=None):
+    import json
+    today, path = str(today or date.today()), path or _odds_budget_path()
+    try:
+        with open(path, encoding='utf-8') as fh:
+            state = json.load(fh)
+    except (OSError, ValueError):
+        state = {}
+    calls = int(state.get('calls', 0)) + 1 if state.get('date') == today else 1
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as fh:
+            json.dump({'date': today, 'calls': calls}, fh)
+    except OSError as exc:
+        print(f"Could not record the odds call ({type(exc).__name__}).")
+    return calls
+
+
+def _flag_status_changes():
+    """Informational: flag predictions whose key players' injury status changed since they were made. Local data
+    plus a Supabase update only when something changed, so it is cheap to run on every tick."""
+    try:
+        import availability_predict as ap
+        ap.flag_status_changes()
+    except Exception as exc:
+        print(f"Status-change check skipped: {type(exc).__name__}: {exc}")
+
+
 def _availability_setup():
     """Load the availability helpers, the saved candidate (if any) and player names. Never raises."""
     try:
@@ -176,10 +226,6 @@ def _availability_setup():
     except Exception as exc:
         print(f"Availability step disabled: {type(exc).__name__}: {exc}")
         return None, None, {}
-    try:
-        ap.flag_status_changes()
-    except Exception as exc:
-        print(f"Status-change check skipped: {type(exc).__name__}: {exc}")
     configured = ap.configured_candidate_name()
     try:
         candidate = ap.load_candidate(configured or ap.DEFAULT_CANDIDATE, required=bool(configured))
@@ -196,14 +242,9 @@ def _availability_setup():
 
 
 def run():
-    # load the trained model and scaler
-    print("Loading model...")
-    model, scaler = load_model()
-    ap, candidate, player_names = _availability_setup()
-
-    # load current elo ratings for all teams
-    print("Loading Elo ratings...")
-    elo_ratings = get_current_ratings()
+    # The cheap checks come first: this runs every 15 minutes, and most runs have nothing to price. Loading
+    # Elo reads the whole elo and games tables (~25k rows), so it waits until there is a game to price.
+    _flag_status_changes()
 
     # fetch tonight's games
     print("Fetching today's games...")
@@ -241,9 +282,21 @@ def run():
         print("Every game today already has a prediction.")
         return
 
-    # fetch real-time odds from The Odds API
+    # something to price: now load the model, the candidate and the Elo ratings
+    print("Loading model...")
+    model, scaler = load_model()
+    ap, candidate, player_names = _availability_setup()
+    print("Loading Elo ratings...")
+    elo_ratings = get_current_ratings()
+
+    # fetch real-time odds from The Odds API (one credit returns the whole slate)
+    if not odds_call_allowed():
+        print(f"Odds request budget for today ({ODDS_DAILY_CALL_CAP} calls) is used up; no odds fetched.")
+        return
+    record_odds_call()
     print("Fetching odds...")
     odds_dict = get_tonights_odds()
+    saved = 0
 
     # ADD THIS HERE
     print("Odds dictionary keys:")
@@ -369,7 +422,7 @@ def run():
         print()
 
         # log to database
-        save_prediction(
+        inserted = save_prediction(
             game_id          = game['gameId'],
             game_date        = str(date.today()),
             home_team        = home_abbr,
@@ -382,6 +435,11 @@ def run():
             odds             = bet_odds,
             extra            = extra or None
         )
+        if inserted is not False:     # a skipped duplicate returns False; anything else was stored
+            saved += 1
+
+    # the workflow reads this line: no new predictions means no picks SMS
+    print(f"Saved {saved} prediction(s).")
 
 if __name__ == '__main__':
     force_utf8_stdio()

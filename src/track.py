@@ -84,7 +84,7 @@ def save_prediction(game_id, game_date, home_team, away_team,
     )
     if len(existing) > 0:
         print(f"  Prediction already logged for {game_id}, skipping.")
-        return
+        return False
     row = {
         "game_id": game_id,
         "game_date": game_date,
@@ -106,6 +106,8 @@ def save_prediction(game_id, game_date, home_team, away_team,
         insert_rows("predictions", [row])
     except DuplicateRecordError:
         print(f"  Prediction already logged for {game_id}, skipping.")
+        return False
+    return True
 
 # kelly_bet() calculates bet size using the Kelly formula (quarter Kelly, 5% cap, MAX_DECIMAL_ODDS).
 #   Thin wrapper over the market-agnostic src/betting.py, kept for existing callers.

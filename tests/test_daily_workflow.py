@@ -75,7 +75,7 @@ class LogRunTests(unittest.TestCase):
         def fake_bat(path, timeout=None, extra_env=None):
             calls.append(os.path.basename(path))
             self.envs[os.path.basename(path)] = extra_env
-            return rc, "out\n"
+            return rc, "out\nSaved 1 prediction(s).\n" if "predict" in path else "out\n"
 
         with patch.object(daily_workflow, "run_bat", side_effect=fake_bat), \
                 patch.object(daily_workflow, "insert_rows") as insert_rows, \
@@ -112,10 +112,11 @@ class LogRunTests(unittest.TestCase):
         self.assertEqual(calls, ["run_pipeline.bat", "run_predict.bat"])
         self.assertEqual(row["kind"], "manual")
 
-    def test_predict_retry_with_nothing_new_sends_no_sms_and_logs_nothing(self):
-        for line in daily_workflow.NOTHING_TO_PREDICT:
-            with self.subTest(line=line), \
-                    patch.object(daily_workflow, "run_bat", return_value=(0, line + "\n")), \
+    def test_predict_tick_with_nothing_saved_sends_no_sms_and_logs_nothing(self):
+        for out in ("No games today.\n", "No games inside the prediction window.\n", "Saved 0 prediction(s).\n",
+                    "Odds request budget for today (12 calls) is used up; no odds fetched.\n", ""):
+            with self.subTest(out=out), \
+                    patch.object(daily_workflow, "run_bat", return_value=(0, out)), \
                     patch.object(daily_workflow, "insert_rows") as insert_rows, \
                     patch.object(daily_workflow, "send_sms") as send_sms, \
                     contextlib.redirect_stdout(io.StringIO()):
@@ -123,6 +124,24 @@ class LogRunTests(unittest.TestCase):
             self.assertTrue(result["noop"])
             insert_rows.assert_not_called()
             send_sms.assert_not_called()
+
+    def test_predict_tick_that_saved_a_prediction_logs_and_texts(self):
+        with patch.object(daily_workflow, "run_bat", return_value=(0, "LAL @ DEN\nSaved 2 prediction(s).\n")), \
+                patch.object(daily_workflow, "insert_rows") as insert_rows, \
+                patch.object(daily_workflow, "get_todays_predictions", return_value=[]), \
+                patch.object(daily_workflow, "get_overall_stats", return_value={}), \
+                patch.object(daily_workflow, "send_sms", return_value=True) as send_sms, \
+                contextlib.redirect_stdout(io.StringIO()):
+            result = daily_workflow.run_workflow(send_text=True, stage="predict")
+        self.assertNotIn("noop", result)
+        insert_rows.assert_called_once()
+        send_sms.assert_called_once()
+
+    def test_saved_predictions_counts_the_line(self):
+        self.assertEqual(daily_workflow.saved_predictions("x\nSaved 3 prediction(s).\n"), 3)
+        self.assertEqual(daily_workflow.saved_predictions("Saved 0 prediction(s)."), 0)
+        self.assertEqual(daily_workflow.saved_predictions(""), 0)
+        self.assertEqual(daily_workflow.saved_predictions(None), 0)
 
     def test_unknown_stage_is_rejected(self):
         with self.assertRaises(ValueError):

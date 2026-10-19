@@ -1,8 +1,8 @@
 @echo off
 :: run_predict_stage.bat - Task Scheduler entry point for the predict stage.
-:: Registered by register_predict_task.ps1: every 30 min, 10:00-22:00 ET.
+:: Registered by register_predict_task.ps1: every 15 min, 10:05-22:05 ET.
 :: Runs the injury snapshot + predictions + the picks SMS (daily_workflow.py --stage predict). Each run prices only
-:: games tipping within 120 minutes that have no prediction yet; a run with nothing to price does nothing.
+:: games tipping within 75 minutes that have no prediction yet; a run with nothing to price does nothing.
 
 cd /d "%~dp0.."
 if not exist logs mkdir logs
