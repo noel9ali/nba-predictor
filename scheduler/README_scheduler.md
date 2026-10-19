@@ -56,17 +56,20 @@ log in `logs\injury_snapshot.log`.
 
 ### Morning stage and evening predict stage
 
-The workflow runs in two stages so the availability (injury-aware) model sees game-day injury reports. At 06:00
-no report for tonight's games exists yet, so predicting then would treat every player as available.
+The workflow runs in two stages so the availability (injury-aware) model sees game-day injury reports. Teams
+submit their reports during the day, so at 06:00 most statuses for tonight's games are missing and predicting then
+would treat those players as available.
 
 | Task | When | Runs | Does |
 |---|---|---|---|
 | `NBA-Predictor-Daily` | 6:00 AM | `run_daily.bat` = `daily_workflow.py --stage morning` | collect, settle yesterday, features, results SMS (`workflow_log.kind = 'morning'`) |
-| `NBA-Predictor-Predict` | 5:15 PM, retry 6:00 PM | `run_predict_stage.bat` = `daily_workflow.py --stage predict` | injury snapshot, predictions, picks SMS (`kind = 'predict'`) |
+| `NBA-Predictor-Predict` | every 30 min, 10:00-22:00 | `run_predict_stage.bat` = `daily_workflow.py --stage predict` | injury snapshot, then predictions, then picks SMS (`kind = 'predict'`) |
 
-The retry exits quietly (no SMS, no log row) when every game already has a prediction. `predict.py` skips games
-that already tipped, so a late run never prices an in-progress game; matinee games that tip before 5:15 PM are
-therefore not predicted. `python daily_workflow.py` with no flag still does everything in one go.
+Each predict run prices only games that tip within the next 120 minutes (`PREDICT_WINDOW_MINUTES` in
+`daily_workflow.py`, passed to `predict.py` as `NBA_PREDICT_WINDOW_MINUTES`) and that have no prediction yet, so
+every game is priced about 1.5-2 hours before tip with the newest report, whatever its tip time. A run with nothing
+to price exits quietly: no SMS, no log row, no odds request. `predict.py` also never prices a game that already
+tipped. `python daily_workflow.py` with no flag still does everything in one go (Run now).
 
 **Register the predict task BEFORE the morning bat changes take effect, or no predictions get made:**
 ```powershell

@@ -108,7 +108,7 @@ def _kill_process_tree(proc):
         proc.kill()
 
 
-def run_bat(bat_path, timeout=None):
+def run_bat(bat_path, timeout=None, extra_env=None):
     """
     Run a .bat file via cmd.exe, streaming output.
     Returns (returncode, combined_stdout_stderr).
@@ -121,6 +121,7 @@ def run_bat(bat_path, timeout=None):
 
     child_env = os.environ.copy()
     child_env['PYTHONIOENCODING'] = 'utf-8'  # child scripts must not crash on non-ASCII output either
+    child_env.update(extra_env or {})
 
     proc = subprocess.Popen(
         ['cmd.exe', '/c', bat_path],
@@ -320,7 +321,9 @@ def send_sms(body):
 
 STAGES = ('full', 'morning', 'predict')
 # What src/predict.py prints when it has no new game to price (keep in sync with predict.run()).
-NOTHING_TO_PREDICT = ('No games today.', 'No games left to predict.', 'Every game today already has a prediction.')
+NOTHING_TO_PREDICT = ('No games today.', 'No games left to predict.', 'No games inside the prediction window.',
+                      'Every game today already has a prediction.')
+PREDICT_WINDOW_MINUTES = 120     # the predict stage prices a game once it tips within this long
 # workflow_log.kind per stage: the dashboard reads 'morning' (06:00 ET job) and 'predict' separately.
 STAGE_KIND = {'full': 'manual', 'morning': 'morning', 'predict': 'predict'}
 
@@ -330,9 +333,10 @@ def run_workflow(send_text=True, trigger='schedule', stage='full'):
     Daily workflow, in stages:
       full     pipeline, then predictions, then SMS (Run now; the original behaviour)
       morning  pipeline only (collect, settle yesterday, features), then the results SMS      06:00 ET
-      predict  predictions only (injury snapshot first), then the picks SMS                    evening
-    The predict stage runs after the evening injury reports so the availability model sees game-day statuses;
-    at 06:00 no report for tonight's games exists yet.
+      predict  predictions only (injury snapshot first), then the picks SMS            every 30 min, 10:00-21:30 ET
+    The predict stage prices each game once it tips within PREDICT_WINDOW_MINUTES, so the availability model sees
+    the newest game-day injury report; at 06:00 teams have not yet submitted theirs. A run with nothing new to
+    price exits quietly (no SMS, no workflow_log row).
     trigger is 'schedule' from the CLI (Task Scheduler) and 'manual' from Run now.
     Returns a dict with status info.
     """
@@ -362,7 +366,9 @@ def run_workflow(send_text=True, trigger='schedule', stage='full'):
     # Step 2 — predictions
     if stage in ('full', 'predict'):
         print("▶ Running run_predict.bat...")
-        predict_rc, predict_out = run_bat(os.path.join(REPO_ROOT, 'run_predict.bat'))
+        # predict stage: predict.py prices only games tipping soon (passed to the child process only)
+        extra_env = {'NBA_PREDICT_WINDOW_MINUTES': str(PREDICT_WINDOW_MINUTES)} if stage == 'predict' else None
+        predict_rc, predict_out = run_bat(os.path.join(REPO_ROOT, 'run_predict.bat'), extra_env=extra_env)
         predict_ok = predict_rc == 0
         print(predict_out)
         if predict_ok:

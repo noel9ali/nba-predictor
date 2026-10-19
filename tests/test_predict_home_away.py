@@ -62,6 +62,29 @@ class HomeAwayTests(unittest.TestCase):
         games = predict.games_from_scoreboard(board)
         self.assertEqual(list(predict.not_started(games)["gameId"]), ["g1", "g4"])    # unknown status = scheduled
 
+    def test_window_keeps_only_games_tipping_soon(self):
+        import pandas as pd
+
+        def game(gid, tip):
+            return {"gameId": gid, "gameStatus": 1, "gameTimeUTC": tip,
+                    "homeTeam": {"teamId": 1, "teamTricode": "AAA"}, "awayTeam": {"teamId": 2, "teamTricode": "BBB"}}
+        board = {"scoreboard": {"games": [
+            game("soon", "2026-10-20T19:00:00Z"),      # 1h from the pretend now
+            game("edge", "2026-10-20T20:00:00Z"),      # exactly 120 min
+            game("late", "2026-10-20T22:30:00Z"),      # 3.5 h
+            game("unknown", None)]}}
+        now = pd.Timestamp("2026-10-20T18:00:00Z")
+        games = predict.games_from_scoreboard(board)
+        self.assertEqual(list(predict.within_window(games, 120, now=now)["gameId"]), ["soon", "edge", "unknown"])
+        self.assertEqual(len(predict.within_window(games, None, now=now)), 4)          # no window = everything
+
+    def test_window_from_the_environment(self):
+        with patch.dict(os.environ, {"NBA_PREDICT_WINDOW_MINUTES": "120"}):
+            self.assertEqual(predict.predict_window_minutes(), 120)
+        for bad in ("", "abc", "0", "-5"):
+            with patch.dict(os.environ, {"NBA_PREDICT_WINDOW_MINUTES": bad}):
+                self.assertIsNone(predict.predict_window_minutes())
+
     def test_games_with_a_prediction_are_dropped_before_odds_are_fetched(self):
         import pandas as pd
 

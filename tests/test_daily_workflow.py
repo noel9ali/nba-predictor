@@ -70,9 +70,11 @@ class LogRunTests(unittest.TestCase):
 
     def run_stage(self, stage, rc=0):
         calls = []
+        self.envs = {}
 
-        def fake_bat(path, timeout=None):
+        def fake_bat(path, timeout=None, extra_env=None):
             calls.append(os.path.basename(path))
+            self.envs[os.path.basename(path)] = extra_env
             return rc, "out\n"
 
         with patch.object(daily_workflow, "run_bat", side_effect=fake_bat), \
@@ -91,6 +93,14 @@ class LogRunTests(unittest.TestCase):
         result, calls, row = self.run_stage("predict")
         self.assertEqual(calls, ["run_predict.bat"])
         self.assertEqual((result["status"], row["kind"]), ("success", "predict"))
+
+    def test_predict_stage_sets_the_window_for_the_child_only(self):
+        self.run_stage("predict")
+        self.assertEqual(self.envs["run_predict.bat"],
+                         {"NBA_PREDICT_WINDOW_MINUTES": str(daily_workflow.PREDICT_WINDOW_MINUTES)})
+        self.assertNotIn("NBA_PREDICT_WINDOW_MINUTES", os.environ)       # no leak into this process
+        self.run_stage("full")
+        self.assertIsNone(self.envs["run_predict.bat"])                  # Run now still prices everything
 
     def test_a_failed_single_step_stage_is_failed_not_partial(self):
         for stage in ("morning", "predict"):

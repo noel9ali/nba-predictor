@@ -1,3 +1,5 @@
+import os
+
 import joblib
 import pandas as pd
 from nba_api.stats.endpoints import scoreboardv3
@@ -42,9 +44,31 @@ def games_from_scoreboard(scoreboard):
             'VISITOR_TEAM_ID': away['teamId'],
             'VISITOR_TEAM_ABBREVIATION': away.get('teamTricode'),
             'GAME_STATUS': game.get('gameStatus'),
+            'TIP_UTC': game.get('gameTimeUTC'),
         })
     return pd.DataFrame(rows, columns=['gameId', 'HOME_TEAM_ID', 'HOME_TEAM_ABBREVIATION',
-                                       'VISITOR_TEAM_ID', 'VISITOR_TEAM_ABBREVIATION', 'GAME_STATUS'])
+                                       'VISITOR_TEAM_ID', 'VISITOR_TEAM_ABBREVIATION', 'GAME_STATUS', 'TIP_UTC'])
+
+
+def predict_window_minutes():
+    """NBA_PREDICT_WINDOW_MINUTES (set by the evening predict stage): only price games that tip within this many
+    minutes, so each game is priced shortly before tip with the newest injury report. Unset = no window."""
+    try:
+        value = int(os.environ.get('NBA_PREDICT_WINDOW_MINUTES', '').strip())
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def within_window(games, minutes, now=None):
+    """Keep games that tip within `minutes` from now. A game with an unknown tip time is kept (never silently
+    dropped); one whose tip has passed is left to not_started()."""
+    if not minutes or 'TIP_UTC' not in games.columns:
+        return games
+    now = pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz='UTC')
+    tip = pd.to_datetime(games['TIP_UTC'], utc=True, errors='coerce')
+    soon = tip.isna() | (tip <= now + pd.Timedelta(minutes=minutes))
+    return games[soon].reset_index(drop=True)
 
 
 def not_yet_predicted(games):
@@ -198,6 +222,17 @@ def run():
     if len(games) == 0:
         print("No games left to predict.")
         return
+
+    # the evening stage prices each game shortly before its tip, with the newest injury report
+    window = predict_window_minutes()
+    if window:
+        in_window = within_window(games, window)
+        if len(in_window) < len(games):
+            print(f"{len(games) - len(in_window)} game(s) tip more than {window} min from now; deferred to a later run.")
+        games = in_window
+        if len(games) == 0:
+            print("No games inside the prediction window.")
+            return
 
     # a repeat run (a retry trigger, or a manual re-run) must not spend an odds request on games that already
     # have a prediction; save_prediction would skip them anyway

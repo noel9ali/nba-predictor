@@ -1,8 +1,8 @@
 @echo off
-:: run_predict_stage.bat - Task Scheduler entry point for the evening predict stage.
-:: Registered by register_predict_task.ps1: 17:15 ET, with a retry at 18:00.
-:: Runs the injury snapshot + predictions + the picks SMS (daily_workflow.py --stage predict), after the
-:: evening injury reports exist. A retry that finds every game already predicted does nothing.
+:: run_predict_stage.bat - Task Scheduler entry point for the predict stage.
+:: Registered by register_predict_task.ps1: every 30 min, 10:00-22:00 ET.
+:: Runs the injury snapshot + predictions + the picks SMS (daily_workflow.py --stage predict). Each run prices only
+:: games tipping within 120 minutes that have no prediction yet; a run with nothing to price does nothing.
 
 cd /d "%~dp0.."
 if not exist logs mkdir logs
