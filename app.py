@@ -168,6 +168,15 @@ def records(df):
     return df.astype(object).where(df.notna(), None).to_dict("records")
 
 
+def hide_beta():
+    """Pre-launch (beta) results stay in the database but are not served. HIDE_BETA=0 shows them."""
+    return os.environ.get("HIDE_BETA", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
+def is_hidden_day(day):
+    return hide_beta() and str(day)[:10] < player_config.LIVE_START_DATE
+
+
 def _prediction_dates():
     """All predictions.game_date values, fetched once per request so available_seasons()
     and available_prediction_dates() (SEC-F4/API-F1) can share the read."""
@@ -181,6 +190,8 @@ def _prediction_dates():
             descending=True,
         )
         dates = [r["game_date"] for r in records(df) if r.get("game_date")]
+        if hide_beta():
+            dates = [d for d in dates if not is_hidden_day(d)]
         g._prediction_dates = dates
     return dates
 
@@ -1130,7 +1141,8 @@ def api_slate():
         return bad_request("date must look like 2026-04-12")
     day = day.isoformat()
 
-    rows = records(read_predictions(filters=[("game_date", "eq", day)], order_by="game_id"))
+    rows = [] if is_hidden_day(day) else records(
+        read_predictions(filters=[("game_date", "eq", day)], order_by="game_id"))
     latest_date = latest_prediction_date_before(day)
     season = season_for(day)
     grids = book_grids_for(r["game_id"] for r in rows) if rows else {}
@@ -1222,8 +1234,8 @@ def api_live_scores():
 
     # Not on the feed: answer from the slate (finals and postponements), never an error.
     try:
-        rows = records(read_predictions(filters=[("game_date", "eq", day.isoformat())],
-                                        order_by="game_id"))
+        rows = [] if is_hidden_day(day.isoformat()) else records(read_predictions(
+            filters=[("game_date", "eq", day.isoformat())], order_by="game_id"))
     except DatabaseError as exc:
         app.logger.warning("live-scores slate fallback unavailable: %s", type(exc).__name__)
         rows = []
@@ -1272,6 +1284,8 @@ def api_game(game_id):
         return error_response(404, "not_found")
     row = rows[0]
     day = str(row.get("game_date"))[:10]
+    if is_hidden_day(day):
+        return error_response(404, "not_found")
     home_team, away_team = row.get("home_team"), row.get("away_team")
 
     grids = book_grids_for([row["game_id"]])
@@ -1868,8 +1882,9 @@ def api_model():
 def api_featured_pick():
     """B4: the Model page's walkthrough subject: the largest-edge settled bet of the most recent
     night that had one, else the most recent settled pick, else null."""
+    live_only = [("game_date", "gte", player_config.LIVE_START_DATE)] if hide_beta() else []
     settled = [r for r in records(read_predictions(
-        filters=[("correct", "not_is", "null")],
+        filters=[("correct", "not_is", "null"), *live_only],
         order_by=["game_date", "game_id"], descending=True, limit=FEATURED_PICK_WINDOW,
     )) if is_settled(r) and r.get("game_id") is not None]
     bets = [r for r in settled if bet_amount(r) > 0 and bet_result(r) in ("hit", "miss")]

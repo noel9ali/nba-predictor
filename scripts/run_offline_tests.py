@@ -32,6 +32,7 @@ os.environ["SUPABASE_URL"] = "http://127.0.0.1:9"
 import tempfile  # noqa: E402
 os.environ["NBA_ODDS_HISTORY_DB"] = os.path.join(tempfile.mkdtemp(prefix="nba_offline_odds_"), "odds_history.sqlite")
 os.environ.pop("ALLOW_RUN_WORKFLOW", None)
+os.environ["HIDE_BETA"] = "0"  # the fixtures are 2025-26 (beta) data; test_app.HideBetaTests turns hiding on
 
 _PIPELINE = re.compile(r"run_pipeline|run_predict|run_daily|daily_workflow\.py|"
                        r"src[\\/](collect|elo|features|model|track|predict|odds)\.py", re.I)
