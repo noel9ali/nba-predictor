@@ -98,6 +98,28 @@ report at tip minus 60 minutes, or from the report available at 06:00 ET.
   low-capacity end, so a bigger grid is unlikely to change the conclusion.
 - Not verified: reproduced numbers line by line against the leaderboard CSV, and the report-vs-realized oddity.
 
+## Ablation: roster strength vs injury information (run after the tuning, same logistic regression and splits)
+M0 baseline; M1 roster-only (availability features with everyone healthy, trained and scored on them); M2 trained on
+realized absences as production is, scored on four inputs: healthy, tip-60 report, 06:00 report, realized. Brier
+differences on covered games, paired bootstrap, negative = better:
+
+| comparison | leaderboard split (n=1,566) | walk-forward pooled (n=4,801) |
+|---|---|---|
+| roster strength alone (M1 vs M0) | -0.0022 [-0.0037, -0.0006] | -0.0019 [-0.0028, -0.0011] |
+| injury info at tip-60 (same model, healthy -> report) | -0.0076 [-0.0110, -0.0043] | -0.0052 [-0.0068, -0.0035] |
+| injury info at 06:00 | -0.0020 [-0.0044, +0.0004] | -0.0006 [-0.0017, +0.0007] |
+| hindsight (realized absences) | -0.0057 [-0.0089, -0.0026] | -0.0046 [-0.0061, -0.0030] |
+| everything: tip-60 model vs baseline | -0.0103 [-0.0137, -0.0068] | -0.0071 [-0.0088, -0.0054] |
+
+Accuracy: baseline 67.9% -> roster 68.3% -> +tip-60 reports 70.0% (leaderboard); 65.5% -> 65.4% -> 67.0% (walk-forward).
+Roughly a quarter of the gain is roster strength, three quarters is injury information. A key player is flagged in
+50-58% of games; in those games the injury gain is -0.0121 (leaderboard) / -0.0092 (walk-forward) Brier, in unflagged
+games about -0.001. Roster strength matters ~2x more in the first 3 weeks of a season (walk-forward Brier 0.2211 ->
+0.2175 vs -0.0019 overall). The 06:00 report is worth little (noise on walk-forward); the tip-60 report is what pays.
+Reports beat hindsight, probably because the report's fractional play probabilities carry more than a binary absent
+flag (hypothesis, not tested). Logistic regression only; the models differ only in inputs. Code: `code\prep_healthy.py`,
+`code\ablate.py` in the scratch dir.
+
 ## Reproduction
 Scratch dir `C:\Users\noel9\.claude\jobs\7b5ff8e4\tmp\tuning` (deleted with the job): `code\run_jobs.py all` (resumable,
 writes `out\jobs2\*.pkl`), `code\analyze.py` (writes `out\analysis.md/json`), `code\signcheck.py`. Tuned research
