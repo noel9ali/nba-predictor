@@ -10,16 +10,17 @@
 - Power (Performance plan): sleep on AC = never; on battery the sleep timeout is short. Lid action not conclusively read (`powercfg /requests` needs admin).
 - Offline tests: `venv\Scripts\python.exe scripts\run_offline_tests.py` -> exit 0, "OK". Bare `python` is the Windows Store stub; use the venv.
 
-## NOT done (Supabase apply_migration was denied by the permission classifier)
-- Beta-flag migration 20261019000100_beta_flag.sql — not applied.
-- Vercel production deploy of 97ddf29 — not attempted.
-- Test SMS and Odds API quota check — not attempted.
-- Player-data scope A: nothing applied or deployed (nothing to do).
+## Done after approval (Oct 19, ~10:55 ET)
+- Migration beta_flag applied to aopkwfeocvgkzejxjruw. Verified: bankroll 23 beta rows + 1 live row (2026-09-01, $1000, is_beta=false); predictions 174, all beta, none live.
+- Vercel production deploy dpl_Akef9UoR8yt7pgumbacCgEV5ckEp from 97ddf29: READY, aliased to nba-predictor-tau.vercel.app.
+- Live API vs tests/contract_shapes.py: SLATE, PERFORMANCE, FEATURED_PICK, LIVE_SCORES, INJURIES all OK (performance: season 2026-27, bankroll $1000, beta_seasons [2025-26]). Not checked live: MODEL, DAYS, PREDICTIONS, GAME_DETAIL (covered by offline tests).
+- /api/injuries reports migration_pending=true (expected: Oct 12 player-data migrations not applied, scope A). /api/featured-pick returns game_id 0022501197 while the slate is empty (offseason oddity, harmless).
+- Test SMS via Twilio API key: SID SM663a5499c508d80d63f61be0d829a0b8, status queued (confirm it reached your phone).
+- Odds API: HTTP 200, x-requests-remaining 500, used 0 (checked on /sports, no quota cost).
+- Player-data scope A: nothing applied or deployed.
 
-## Needed before Tue 06:00
-1. Apply the migration (allow mcp__claude_ai_Supabase__apply_migration, or use the Supabase SQL editor).
-2. Vercel production deploy from main 97ddf29, then check the API against tests/contract_shapes.py.
-3. Laptop plugged in and awake overnight.
+## Still open
+- Keep the laptop plugged in and awake overnight; WakeToRun is off and the task will not start on battery.
 
 ## Tuesday-morning checklist
 - [ ] workflow_log has a new success row for Oct 20
