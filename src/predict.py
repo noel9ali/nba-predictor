@@ -22,27 +22,36 @@ def load_model():
     scaler = joblib.load('data/scaler.pkl')
     return model, scaler
 
+# games_from_scoreboard() builds one row per game from a ScoreboardV3 dict, taking home and away from the
+#   explicit homeTeam / awayTeam objects. The LineScore frame is NOT positional-safe: it lists the HOME team
+#   first, so the old groupby().first() = away / .last() = home swapped every game (wrong venue features,
+#   odds and edge for the wrong matchup).
+def games_from_scoreboard(scoreboard):
+    rows = []
+    seen = set()
+    for game in (scoreboard or {}).get('scoreboard', {}).get('games', []) or []:
+        game_id = game.get('gameId')
+        home, away = game.get('homeTeam') or {}, game.get('awayTeam') or {}
+        if not game_id or game_id in seen or not home.get('teamId') or not away.get('teamId'):
+            continue
+        seen.add(game_id)
+        rows.append({
+            'gameId': game_id,
+            'HOME_TEAM_ID': home['teamId'],
+            'HOME_TEAM_ABBREVIATION': home.get('teamTricode'),
+            'VISITOR_TEAM_ID': away['teamId'],
+            'VISITOR_TEAM_ABBREVIATION': away.get('teamTricode'),
+        })
+    return pd.DataFrame(rows, columns=['gameId', 'HOME_TEAM_ID', 'HOME_TEAM_ABBREVIATION',
+                                       'VISITOR_TEAM_ID', 'VISITOR_TEAM_ABBREVIATION'])
+
+
 # get_todays_games() fetches today's games from nba_api. Returns a dataframe with one
 #   game per row
 def get_todays_games():
     today = date.today().strftime('%Y-%m-%d')
     board = scoreboardv3.ScoreboardV3(game_date=today)
-    
-    games = board.get_data_frames()[1]  # game header
-    teams = board.get_data_frames()[2]  # team info
-
-    # split into separate rows for home and away to be merged
-    away_teams = teams.groupby('gameId').first().reset_index()
-    home_teams = teams.groupby('gameId').last().reset_index()
-
-    # merge into one row per game
-    merged = games[['gameId']].drop_duplicates()
-    merged = merged.merge(home_teams[['gameId', 'teamId', 'teamTricode']], on='gameId')
-    merged = merged.rename(columns={'teamId': 'HOME_TEAM_ID', 'teamTricode': 'HOME_TEAM_ABBREVIATION'})
-    merged = merged.merge(away_teams[['gameId', 'teamId', 'teamTricode']], on='gameId')
-    merged = merged.rename(columns={'teamId': 'VISITOR_TEAM_ID', 'teamTricode': 'VISITOR_TEAM_ABBREVIATION'})
-
-    return merged
+    return games_from_scoreboard(board.get_dict())
 
 # get_team_rolling_stats() looks up rolling averages for a team's past 10 games
 def get_team_rolling_stats(team_id, prefix):
