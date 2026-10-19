@@ -41,9 +41,35 @@ def games_from_scoreboard(scoreboard):
             'HOME_TEAM_ABBREVIATION': home.get('teamTricode'),
             'VISITOR_TEAM_ID': away['teamId'],
             'VISITOR_TEAM_ABBREVIATION': away.get('teamTricode'),
+            'GAME_STATUS': game.get('gameStatus'),
         })
     return pd.DataFrame(rows, columns=['gameId', 'HOME_TEAM_ID', 'HOME_TEAM_ABBREVIATION',
-                                       'VISITOR_TEAM_ID', 'VISITOR_TEAM_ABBREVIATION'])
+                                       'VISITOR_TEAM_ID', 'VISITOR_TEAM_ABBREVIATION', 'GAME_STATUS'])
+
+
+def not_yet_predicted(games):
+    """Drop games that already have a predictions row. A failed lookup keeps every game: the per-game
+    duplicate check in save_prediction is still the safety net."""
+    try:
+        done = select_rows("predictions", columns="game_id", order_by="game_id",
+                           filters=[("game_date", "eq", str(date.today()))])
+    except Exception as exc:
+        print(f"Could not check existing predictions ({type(exc).__name__}); predicting every game.")
+        return games
+    if done.empty:
+        return games
+    have = set(done["game_id"].astype(str))
+    return games[~games["gameId"].astype(str).isin(have)].reset_index(drop=True)
+
+
+def not_started(games):
+    """Keep scheduled games only (ScoreboardV3 gameStatus 1). A late-day run must not price a game that is in
+    progress or over: in-play odds and a known score would make the 'prediction' meaningless. A missing status
+    is treated as scheduled."""
+    if 'GAME_STATUS' not in games.columns:
+        return games
+    status = pd.to_numeric(games['GAME_STATUS'], errors='coerce').fillna(1)
+    return games[status == 1].reset_index(drop=True)
 
 
 # get_todays_games() fetches today's games from nba_api. Returns a dataframe with one
@@ -162,6 +188,22 @@ def run():
     # end early if no games today
     if len(games) == 0:
         print("No games today.")
+        return
+
+    # skip games already in progress or finished (a late-day run, or a manual re-run)
+    scheduled = not_started(games)
+    if len(scheduled) < len(games):
+        print(f"Skipping {len(games) - len(scheduled)} game(s) already started or finished.")
+    games = scheduled
+    if len(games) == 0:
+        print("No games left to predict.")
+        return
+
+    # a repeat run (a retry trigger, or a manual re-run) must not spend an odds request on games that already
+    # have a prediction; save_prediction would skip them anyway
+    games = not_yet_predicted(games)
+    if len(games) == 0:
+        print("Every game today already has a prediction.")
         return
 
     # fetch real-time odds from The Odds API

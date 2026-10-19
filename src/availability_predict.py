@@ -333,12 +333,41 @@ def player_names(*, conn=None) -> dict:
     return dict(zip(df["player_id"].astype(int), df["full_name"])) if not df.empty else {}
 
 
+ROSTER_CACHE_MAX_AGE_DAYS = 3     # older than this: the cache is not trusted, fall back to the inferred roster
+ROSTER_MIN_PLAYERS = 5            # a team with fewer current players than this keeps its inferred roster
+
+
+def current_rosters(path: str | None = None, *, now: datetime | None = None) -> dict[int, list[int]]:
+    """team_id -> player ids on the current roster, from the CommonAllPlayers cache that collect_players refreshes
+    daily (TEAM_ID is the team today, so offseason trades and signings are reflected; the roster inferred from
+    the last 20 game logs is still last season's in October). Empty when the cache is missing or stale: callers
+    then keep the inferred roster. Players without minutes history project to 0 minutes, so extra names are inert."""
+    from nba_client import frames_from_json
+
+    path = path or os.path.join(config.RAW_DIR, "nba_api", "common_all_players.json")
+    try:
+        age_days = ((now or datetime.now(timezone.utc)).timestamp() - os.path.getmtime(path)) / 86400
+        if age_days > ROSTER_CACHE_MAX_AGE_DAYS:
+            return {}
+        with open(path, encoding="utf-8") as fh:
+            df = frames_from_json(fh.read())[0]
+    except (OSError, ValueError, IndexError):
+        return {}
+    if df.empty or not {"PERSON_ID", "TEAM_ID", "ROSTERSTATUS"} <= set(df.columns):
+        return {}
+    df = df[(pd.to_numeric(df["ROSTERSTATUS"], errors="coerce") == 1) & (pd.to_numeric(df["TEAM_ID"], errors="coerce") > 0)]
+    rosters = {int(t): sorted(int(p) for p in g["PERSON_ID"]) for t, g in df.groupby(df["TEAM_ID"].astype(int))}
+    return {t: ids for t, ids in rosters.items() if len(ids) >= ROSTER_MIN_PLAYERS}
+
+
 def run_for_game(game_id: str, game_date: str, home_team_id: int, away_team_id: int, base_row: dict, *,
                  as_of: datetime | None = None, candidate: dict | None = None, conn=None,
-                 names: dict | None = None) -> dict | None:
+                 names: dict | None = None, rosters: dict | None = None) -> dict | None:
     """Store projections/features and, with a candidate, its shadow prediction. Returns the candidate result."""
     as_of = as_of or datetime.now(timezone.utc)
-    ga = GameAvailability(game_id, game_date, home_team_id, away_team_id, as_of, conn=conn)
+    if rosters is None:
+        rosters = current_rosters()
+    ga = GameAvailability(game_id, game_date, home_team_id, away_team_id, as_of, conn=conn, rosters=rosters)
     result = score_with_candidate(ga, base_row, candidate, names=names) if candidate else None
     store_results(ga, result, candidate["name"] if candidate else None, conn=conn)
     return result

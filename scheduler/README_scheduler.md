@@ -54,6 +54,27 @@ log in `logs\injury_snapshot.log`.
 
 **Remove:** `Unregister-ScheduledTask -TaskName "NBA-Predictor-Injury-Snapshot" -Confirm:$false`
 
+### Morning stage and evening predict stage
+
+The workflow runs in two stages so the availability (injury-aware) model sees game-day injury reports. At 06:00
+no report for tonight's games exists yet, so predicting then would treat every player as available.
+
+| Task | When | Runs | Does |
+|---|---|---|---|
+| `NBA-Predictor-Daily` | 6:00 AM | `run_daily.bat` = `daily_workflow.py --stage morning` | collect, settle yesterday, features, results SMS (`workflow_log.kind = 'morning'`) |
+| `NBA-Predictor-Predict` | 5:15 PM, retry 6:00 PM | `run_predict_stage.bat` = `daily_workflow.py --stage predict` | injury snapshot, predictions, picks SMS (`kind = 'predict'`) |
+
+The retry exits quietly (no SMS, no log row) when every game already has a prediction. `predict.py` skips games
+that already tipped, so a late run never prices an in-progress game; matinee games that tip before 5:15 PM are
+therefore not predicted. `python daily_workflow.py` with no flag still does everything in one go.
+
+**Register the predict task BEFORE the morning bat changes take effect, or no predictions get made:**
+```powershell
+powershell -ExecutionPolicy Bypass -File scheduler\register_predict_task.ps1
+```
+**Remove:** `Unregister-ScheduledTask -TaskName "NBA-Predictor-Predict" -Confirm:$false` (and change `run_daily.bat`
+back to `python daily_workflow.py`).
+
 ---
 
 ## Migrating to Linux / macOS cron

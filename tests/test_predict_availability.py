@@ -100,6 +100,7 @@ class PredictDryRunTests(unittest.TestCase):
                                     "NBA_PLAYER_STORE": "local"}),
             patch.object(config, "INJURY_LOCAL_DB", os.path.join(self.tmp.name, "inj.sqlite")),
             patch.object(config, "INJURY_UNMATCHED_CSV", os.path.join(self.tmp.name, "u.csv")),
+            patch.object(config, "RAW_DIR", os.path.join(self.tmp.name, "raw")),   # no roster cache: inferred rosters
         ]
         for p in self.patches:
             p.start()
@@ -138,6 +139,7 @@ class PredictDryRunTests(unittest.TestCase):
         with patch.object(predict, "load_model", return_value=(FakeProdModel(), IdentityScaler())), \
                 patch.object(predict, "get_current_ratings", return_value={DEN: 1600, LAL: 1500}), \
                 patch.object(predict, "get_todays_games", return_value=slate), \
+                patch.object(predict, "not_yet_predicted", side_effect=lambda g: g), \
                 patch.object(predict, "get_tonights_odds", return_value={}), \
                 patch.object(predict, "match_odds", return_value={"home_odds": -150, "away_odds": 130,
                                                                   "home_book": "fd", "away_book": "dk"}), \
@@ -216,6 +218,58 @@ class PredictDryRunTests(unittest.TestCase):
         upd.assert_called_once()
         self.assertEqual(upd.call_args[0][1], {"status_changed_after_pred": True})
         self.assertEqual(int(player_store.read("prediction_availability_inputs")["status_changed_after_pred"].iloc[0]), 1)
+
+
+class CurrentRosterTests(unittest.TestCase):
+    """current_rosters(): the CommonAllPlayers cache gives today's teams (offseason moves), else inferred rosters."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self.tmp.name, "common_all_players.json")
+        import availability_predict as ap
+
+        self.ap = ap
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def write_cache(self, rows):
+        from nba_client import frames_to_json
+
+        df = pd.DataFrame(rows, columns=["PERSON_ID", "TEAM_ID", "ROSTERSTATUS"])
+        with open(self.path, "w", encoding="utf-8") as fh:
+            fh.write(frames_to_json([df]))
+
+    def test_uses_current_team_and_skips_inactive_and_free_agents(self):
+        rows = [(p, 10, 1) for p in range(1, 8)] + [(8, 10, 0), (9, 0, 1)] + [(p, 20, 1) for p in range(11, 17)]
+        self.write_cache(rows)
+        rosters = self.ap.current_rosters(self.path)
+        self.assertEqual(rosters[10], [1, 2, 3, 4, 5, 6, 7])    # 8 is inactive, 9 has no team
+        self.assertEqual(rosters[20], [11, 12, 13, 14, 15, 16])
+
+    def test_a_traded_player_is_on_the_new_team(self):
+        rows = [(p, 10, 1) for p in range(1, 7)] + [(99, 20, 1)] + [(p, 20, 1) for p in range(11, 16)]
+        self.write_cache(rows)
+        rosters = self.ap.current_rosters(self.path)
+        self.assertIn(99, rosters[20])
+        self.assertNotIn(99, rosters[10])
+
+    def test_thin_team_keeps_its_inferred_roster(self):
+        self.write_cache([(1, 10, 1), (2, 10, 1)] + [(p, 20, 1) for p in range(11, 17)])
+        rosters = self.ap.current_rosters(self.path)
+        self.assertNotIn(10, rosters)
+        self.assertIn(20, rosters)
+
+    def test_missing_or_stale_cache_returns_empty(self):
+        self.assertEqual(self.ap.current_rosters(self.path), {})
+        self.write_cache([(p, 10, 1) for p in range(1, 8)])
+        later = datetime.now(timezone.utc) + timedelta(days=self.ap.ROSTER_CACHE_MAX_AGE_DAYS + 1)
+        self.assertEqual(self.ap.current_rosters(self.path, now=later), {})
+
+    def test_unreadable_cache_returns_empty(self):
+        with open(self.path, "w", encoding="utf-8") as fh:
+            fh.write("not json")
+        self.assertEqual(self.ap.current_rosters(self.path), {})
 
 
 if __name__ == "__main__":

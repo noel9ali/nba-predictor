@@ -68,6 +68,67 @@ class LogRunTests(unittest.TestCase):
         self.assertEqual(row["log_tail"], "step output\nstep output\n")
         self.assertRegex(row["started_at"], r"[+-]\d{2}:\d{2}$")  # timestamptz needs an offset
 
+    def run_stage(self, stage, rc=0):
+        calls = []
+
+        def fake_bat(path, timeout=None):
+            calls.append(os.path.basename(path))
+            return rc, "out\n"
+
+        with patch.object(daily_workflow, "run_bat", side_effect=fake_bat), \
+                patch.object(daily_workflow, "insert_rows") as insert_rows, \
+                contextlib.redirect_stdout(io.StringIO()):
+            result = daily_workflow.run_workflow(send_text=False, trigger="schedule", stage=stage)
+        return result, calls, insert_rows.call_args.args[1][0]
+
+    def test_morning_stage_runs_only_the_pipeline_and_logs_kind_morning(self):
+        result, calls, row = self.run_stage("morning")
+        self.assertEqual(calls, ["run_pipeline.bat"])
+        self.assertEqual((result["status"], row["kind"]), ("success", "morning"))
+        self.assertIn("morning stage", row["notes"])
+
+    def test_predict_stage_runs_only_predictions_and_logs_kind_predict(self):
+        result, calls, row = self.run_stage("predict")
+        self.assertEqual(calls, ["run_predict.bat"])
+        self.assertEqual((result["status"], row["kind"]), ("success", "predict"))
+
+    def test_a_failed_single_step_stage_is_failed_not_partial(self):
+        for stage in ("morning", "predict"):
+            result, _, row = self.run_stage(stage, rc=1)
+            self.assertEqual((result["status"], row["status"]), ("failed", "failed"))
+
+    def test_full_stage_is_unchanged(self):
+        result, calls, row = self.run_stage("full")
+        self.assertEqual(calls, ["run_pipeline.bat", "run_predict.bat"])
+        self.assertEqual(row["kind"], "manual")
+
+    def test_predict_retry_with_nothing_new_sends_no_sms_and_logs_nothing(self):
+        for line in daily_workflow.NOTHING_TO_PREDICT:
+            with self.subTest(line=line), \
+                    patch.object(daily_workflow, "run_bat", return_value=(0, line + "\n")), \
+                    patch.object(daily_workflow, "insert_rows") as insert_rows, \
+                    patch.object(daily_workflow, "send_sms") as send_sms, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                result = daily_workflow.run_workflow(send_text=True, stage="predict")
+            self.assertTrue(result["noop"])
+            insert_rows.assert_not_called()
+            send_sms.assert_not_called()
+
+    def test_unknown_stage_is_rejected(self):
+        with self.assertRaises(ValueError):
+            daily_workflow.run_workflow(send_text=False, stage="evening")
+
+    def test_stage_sms_texts(self):
+        picks = [{"home_team": "LAL", "away_team": "BOS", "home_win_prob": 0.62, "away_win_prob": 0.38,
+                  "predicted_winner": "LAL", "bet_placed": None, "bet_amount": 0, "odds": None}]
+        morning = daily_workflow.format_sms([], picks, {}, include_today=False)
+        self.assertIn("Today's picks follow later", morning)
+        self.assertNotIn("LAL", morning)
+        evening = daily_workflow.format_sms([], picks, {}, include_yesterday=False)
+        self.assertIn("NBA Picks", evening)
+        self.assertNotIn("Yesterday", evening)
+        self.assertIn("BOS @ LAL", evening)
+
 
 class QueryAndSmsTests(unittest.TestCase):
     def test_format_sms_with_text_probabilities_and_odds(self):

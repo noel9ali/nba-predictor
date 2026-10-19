@@ -5,7 +5,9 @@ Runs the morning pipeline (collect → elo → features → model → track) and
 evening predictions, then sends a Twilio SMS summary and logs the run.
 
 Can be invoked directly:
-    python daily_workflow.py
+    python daily_workflow.py                    # everything in one go
+    python daily_workflow.py --stage morning    # 06:00 ET: pipeline + results SMS
+    python daily_workflow.py --stage predict    # evening: predictions + picks SMS
 
 Or triggered via the Flask API (POST /api/run-workflow).
 """
@@ -230,16 +232,18 @@ def get_overall_stats():
 # SMS formatting & sending
 # ---------------------------------------------------------------------------
 
-def format_sms(yesterday_results, today_predictions, stats):
-    """Build the daily SMS text."""
+def format_sms(yesterday_results, today_predictions, stats, include_yesterday=True, include_today=True):
+    """Build the daily SMS text. The morning stage leaves today's picks out (they come later, after the injury
+    reports); the predict stage leaves yesterday's results out (the morning text already had them)."""
     yesterday = (date.today() - timedelta(days=1)).strftime('%b %d')
     today_str = date.today().strftime('%b %d')
 
-    lines = [f"🏀 NBA Daily Summary — {today_str}", ""]
+    lines = [f"🏀 NBA Daily Summary — {today_str}" if include_yesterday else f"🏀 NBA Picks — {today_str}", ""]
 
     # Yesterday's results
-    lines.append(f"Yesterday's Results ({yesterday}):")
-    if yesterday_results:
+    if include_yesterday:
+        lines.append(f"Yesterday's Results ({yesterday}):")
+    if include_yesterday and yesterday_results:
         for g in yesterday_results:
             mark = '✓' if g['correct'] else '✗'
             pl = g['profit_loss'] or 0
@@ -248,7 +252,7 @@ def format_sms(yesterday_results, today_predictions, stats):
                 f"  {mark} {g['away_team']} @ {g['home_team']} "
                 f"— predicted {g['predicted_winner']}, actual {g['actual_winner']}, P/L: {pl_str}"
             )
-    else:
+    elif include_yesterday:
         lines.append("  No completed results for yesterday.")
 
     if stats:
@@ -262,6 +266,9 @@ def format_sms(yesterday_results, today_predictions, stats):
     lines.append("")
 
     # Today's predictions
+    if not include_today:
+        lines.append("Today's picks follow later, after the injury reports.")
+        return "\n".join(lines)
     lines.append(f"Today's Predictions ({today_str}):")
     if today_predictions:
         for g in today_predictions:
@@ -311,51 +318,73 @@ def send_sms(body):
 # Main workflow
 # ---------------------------------------------------------------------------
 
-def run_workflow(send_text=True, trigger='schedule'):
+STAGES = ('full', 'morning', 'predict')
+# What src/predict.py prints when it has no new game to price (keep in sync with predict.run()).
+NOTHING_TO_PREDICT = ('No games today.', 'No games left to predict.', 'Every game today already has a prediction.')
+# workflow_log.kind per stage: the dashboard reads 'morning' (06:00 ET job) and 'predict' separately.
+STAGE_KIND = {'full': 'manual', 'morning': 'morning', 'predict': 'predict'}
+
+
+def run_workflow(send_text=True, trigger='schedule', stage='full'):
     """
-    Full daily workflow:
-      1. Run pipeline.bat
-      2. Run predict.bat
-      3. Build + send SMS summary
-      4. Log results to workflow_log
+    Daily workflow, in stages:
+      full     pipeline, then predictions, then SMS (Run now; the original behaviour)
+      morning  pipeline only (collect, settle yesterday, features), then the results SMS      06:00 ET
+      predict  predictions only (injury snapshot first), then the picks SMS                    evening
+    The predict stage runs after the evening injury reports so the availability model sees game-day statuses;
+    at 06:00 no report for tonight's games exists yet.
     trigger is 'schedule' from the CLI (Task Scheduler) and 'manual' from Run now.
     Returns a dict with status info.
     """
+    if stage not in STAGES:
+        raise ValueError(f"stage must be one of {STAGES}")
     run_date = date.today().strftime('%Y-%m-%d')
     started_at = datetime.now().astimezone().isoformat(timespec='seconds')
 
     print(f"\n{'='*50}")
-    print(f"NBA Daily Workflow — {run_date}")
+    print(f"NBA Daily Workflow — {run_date}" + ('' if stage == 'full' else f" ({stage} stage)"))
     print(f"{'='*50}\n")
 
+    pipeline_ok = predict_ok = True      # a stage that is not run counts as ok
+    pipeline_out = predict_out = ''
+
     # Step 1 — pipeline
-    print("▶ Running run_pipeline.bat...")
-    pipeline_rc, pipeline_out = run_bat(os.path.join(REPO_ROOT, 'run_pipeline.bat'))
-    pipeline_ok = pipeline_rc == 0
-    print(pipeline_out)
-    if pipeline_ok:
-        print("✓ Pipeline complete.\n")
-    else:
-        print(f"✗ Pipeline exited with code {pipeline_rc}.\n")
+    if stage in ('full', 'morning'):
+        print("▶ Running run_pipeline.bat...")
+        pipeline_rc, pipeline_out = run_bat(os.path.join(REPO_ROOT, 'run_pipeline.bat'))
+        pipeline_ok = pipeline_rc == 0
+        print(pipeline_out)
+        if pipeline_ok:
+            print("✓ Pipeline complete.\n")
+        else:
+            print(f"✗ Pipeline exited with code {pipeline_rc}.\n")
 
     # Step 2 — predictions
-    print("▶ Running run_predict.bat...")
-    predict_rc, predict_out = run_bat(os.path.join(REPO_ROOT, 'run_predict.bat'))
-    predict_ok = predict_rc == 0
-    print(predict_out)
-    if predict_ok:
-        print("✓ Predictions complete.\n")
-    else:
-        print(f"✗ Predictions exited with code {predict_rc}.\n")
+    if stage in ('full', 'predict'):
+        print("▶ Running run_predict.bat...")
+        predict_rc, predict_out = run_bat(os.path.join(REPO_ROOT, 'run_predict.bat'))
+        predict_ok = predict_rc == 0
+        print(predict_out)
+        if predict_ok:
+            print("✓ Predictions complete.\n")
+        else:
+            print(f"✗ Predictions exited with code {predict_rc}.\n")
+        if stage == 'predict' and predict_ok and any(m in predict_out for m in NOTHING_TO_PREDICT):
+            # a retry trigger (or a no-game day): no new picks, so no SMS and no extra workflow_log row
+            print("Nothing new to predict; no SMS, no log row.\n")
+            return {'run_date': run_date, 'started_at': started_at,
+                    'finished_at': datetime.now().astimezone().isoformat(timespec='seconds'),
+                    'status': 'success', 'pipeline_ok': True, 'predict_ok': True, 'sms_sent': False, 'noop': True}
 
     # Step 3 — SMS
     sms_sent = False
     if send_text:
-        yesterday_results = get_yesterdays_results()
-        today_predictions = get_todays_predictions()
+        yesterday_results = get_yesterdays_results() if stage != 'predict' else []
+        today_predictions = get_todays_predictions() if stage != 'morning' else []
         stats = get_overall_stats()
 
-        sms_body = format_sms(yesterday_results, today_predictions, stats)
+        sms_body = format_sms(yesterday_results, today_predictions, stats,
+                              include_yesterday=stage != 'predict', include_today=stage != 'morning')
         print("📱 Daily SMS:\n")
         print(sms_body)
         print()
@@ -365,7 +394,11 @@ def run_workflow(send_text=True, trigger='schedule'):
     # Step 4 — log
     finished_at = datetime.now().astimezone().isoformat(timespec='seconds')
     overall_status = 'success' if (pipeline_ok and predict_ok) else 'partial' if (pipeline_ok or predict_ok) else 'failed'
+    if stage != 'full' and not (pipeline_ok and predict_ok):
+        overall_status = 'failed'        # the only step of a single-step stage failed
     notes = []
+    if stage != 'full':
+        notes.append(f'{stage} stage')
     if not pipeline_ok:
         notes.append('pipeline failed')
     if not predict_ok:
@@ -375,7 +408,7 @@ def run_workflow(send_text=True, trigger='schedule'):
 
     log_run(run_date, started_at, finished_at, overall_status,
             pipeline_ok, predict_ok, sms_sent, ', '.join(notes),
-            kind='manual', trigger=trigger, log_tail=pipeline_out + predict_out)
+            kind=STAGE_KIND[stage], trigger=trigger, log_tail=pipeline_out + predict_out)
 
     result = {
         'run_date': run_date,
@@ -421,4 +454,9 @@ def _exit_code(result):
 
 
 if __name__ == '__main__':
-    sys.exit(_exit_code(run_workflow()))
+    import argparse
+
+    parser = argparse.ArgumentParser(description="NBA Predictor daily workflow")
+    parser.add_argument('--stage', choices=STAGES, default='full',
+                        help="full (default), morning (pipeline + results SMS) or predict (picks + SMS)")
+    sys.exit(_exit_code(run_workflow(stage=parser.parse_args().stage)))
