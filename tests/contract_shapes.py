@@ -116,7 +116,7 @@ DAYS = {
 }
 SPLIT = {"key": str, "bets": INT, "w": INT, "l": INT, "staked": NUM, "pl": NUM, "roi": Opt(NUM)}
 PERFORMANCE = {
-    **ENVELOPE, "season": Pattern(r"^(\d{4}-\d{2}|all)$"), "seasons": [SEASON],
+    **ENVELOPE, "season": Pattern(r"^(\d{4}-\d{2}|all)$"), "seasons": [SEASON], "beta_seasons": [SEASON],
     "kpis": {
         "bankroll": Opt(NUM), "start_bankroll": NUM, "net_pl": NUM, "roi": Opt(NUM),
         "staked": NUM, "bets": RECORD, "picks": RECORD, "accuracy": Opt(NUM),

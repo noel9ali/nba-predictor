@@ -185,11 +185,21 @@ def _prediction_dates():
     return dates
 
 
+def current_season():
+    return season_for(date.today())
+
+
 def available_seasons():
     seasons = list(dict.fromkeys(season_for(d) for d in _prediction_dates()))
-    if not seasons:
-        seasons = [season_for(date.today())]
+    current = current_season()
+    if current not in seasons:
+        seasons.insert(0, current)  # the live season is selectable (and the default) before its first pick
     return seasons
+
+
+def is_beta_season(season):
+    """Seasons before the live launch were beta testing; their bankroll is kept separate."""
+    return season < player_config.LIVE_FIRST_SEASON
 
 
 def available_prediction_dates(season):
@@ -838,7 +848,10 @@ def season_or_all_from_request():
 
 
 def season_or_all_filters(column, season):
-    return [] if season == "all" else season_filters(column, season)
+    # "all" is the live tally only; beta seasons are reached by naming the season.
+    if season == "all":
+        return [(column, "gte", player_config.LIVE_START_DATE)]
+    return season_filters(column, season)
 
 
 def money(value):
@@ -1536,6 +1549,7 @@ def api_performance():
     payload = {
         "season": season,
         "seasons": seasons,
+        "beta_seasons": [s for s in seasons if is_beta_season(s)],
         "kpis": kpis,
         "series": series,
         "splits": splits,

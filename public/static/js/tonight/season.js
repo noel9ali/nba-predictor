@@ -17,7 +17,8 @@ const spelled = n => (n >= 1 && n <= 12 ? word(n).charAt(0).toUpperCase() + word
 // ---------- board + step copy ----------
 function renderSeasonBoard() {
   const k = perf.kpis, first = perf.series && perf.series.length ? md(perf.series[0].date) : null;
-  $('[data-season-kick]').textContent = seasonLabel(perf.season === 'all' ? (store.slate && store.slate.season) || '' : perf.season) + ' season' + (first ? ' · since ' + first : '');
+  $('[data-season-kick]').textContent = seasonLabel(perf.season === 'all' ? (store.slate && store.slate.season) || '' : perf.season) + ' season' +
+    ((perf.beta_seasons || []).includes(perf.season) ? ' (beta)' : '') + (first ? ' · since ' + first : '');
   const dd = k.max_drawdown && k.max_drawdown.amount ? k.max_drawdown.amount : 0;
   renderBoard($('[data-testid=season-board]'), [
     { label: 'Bankroll', value: fmt.money(k.bankroll) },

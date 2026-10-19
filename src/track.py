@@ -2,6 +2,7 @@ import pandas as pd
 from datetime import date, timedelta
 from nba_api.stats.endpoints import scoreboardv3
 import betting
+from config import LIVE_START_DATE
 from console import force_utf8_stdio
 from database import (
     DatabaseError,
@@ -38,23 +39,27 @@ def _require_bankroll_table(callback):
 # setup_tables() verifies the migrated tables and seeds the initial bankroll row.
 def setup_tables():
     existing = _require_bankroll_table(
-        lambda: select_rows("bankroll", columns="date,balance", limit=1)
+        lambda: select_rows(
+            "bankroll", columns="date,balance",
+            filters=[("date", "gte", LIVE_START_DATE)], limit=1,
+        )
     )
     if len(existing) == 0:
         _require_bankroll_table(
             lambda: upsert_rows(
                 "bankroll",
-                [{"date": date.today().isoformat(), "balance": STARTING_BANKROLL}],
+                [{"date": LIVE_START_DATE, "balance": STARTING_BANKROLL}],
                 conflict_columns=["date"],
             )
         )
 
-# get_current_bankroll() looks up most recent balance from bankroll table
+# get_current_bankroll() looks up the most recent LIVE balance from bankroll table (beta rows are ignored)
 def get_current_bankroll():
     df = _require_bankroll_table(
         lambda: select_rows(
             "bankroll",
             columns="balance",
+            filters=[("date", "gte", LIVE_START_DATE)],
             order_by="date",
             descending=True,
             limit=1,
@@ -223,7 +228,7 @@ def _recompute_bankroll(affected_dates):
     completed = select_rows(
         "predictions",
         columns="game_date,profit_loss",
-        filters=[("profit_loss", "not_is", "null")],
+        filters=[("profit_loss", "not_is", "null"), ("game_date", "gte", LIVE_START_DATE)],
         order_by="game_date",
     )
     completed = completed.copy()
@@ -232,7 +237,8 @@ def _recompute_bankroll(affected_dates):
     running_balance = STARTING_BANKROLL + daily_totals.cumsum()
 
     earliest_affected = min(affected_dates)
-    stale_dates = sorted(d for d in running_balance.index if d >= earliest_affected)
+    # Beta-season dates settle without touching the live tally.
+    stale_dates = sorted(d for d in running_balance.index if d >= max(earliest_affected, LIVE_START_DATE))
     if not stale_dates:
         return
 
@@ -244,12 +250,13 @@ def _recompute_bankroll(affected_dates):
 def print_summary():
     preds = select_rows(
         "predictions",
-        filters=[("correct", "not_is", "null")],
+        filters=[("correct", "not_is", "null"), ("game_date", "gte", LIVE_START_DATE)],
         order_by="game_id",
     )
     bankroll = _require_bankroll_table(
         lambda: select_rows(
             "bankroll",
+            filters=[("date", "gte", LIVE_START_DATE)],
             order_by="date",
             descending=True,
             limit=1,
