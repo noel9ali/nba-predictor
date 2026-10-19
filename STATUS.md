@@ -12,15 +12,23 @@
 - **Scheduler**
   - `NBA-Predictor-Daily` 06:00 ET -> `run_daily.bat` -> `daily_workflow.py --stage morning` (collect, settle yesterday,
     features, results SMS; workflow_log kind `morning`). It no longer predicts.
-  - `NBA-Predictor-Predict` (new) every 30 min 10:00-22:00 -> `daily_workflow.py --stage predict`: injury snapshot, then
-    prices each game that tips within 120 min and has no prediction (workflow_log kind `predict`, picks SMS). A run with
-    nothing to price is silent (no SMS, no log row, no odds request). Never prices a started game.
+  - `NBA-Predictor-Predict` (new) every 15 min 10:05-22:05 -> `daily_workflow.py --stage predict`: injury snapshot, then
+    prices each game that tips within 75 min and has no prediction, i.e. 60-75 min before tip (workflow_log kind
+    `predict`, picks SMS). A tick with nothing to price is silent and cheap: no SMS, no log row, no odds request, no
+    Elo/games table reads. Never prices a started game. Odds API capped at 12 calls/day (`data\odds_budget.json`).
   - `NBA-Predictor-Injury-Snapshot` every 30 min 11:00-23:00 (unchanged).
 
 ## Why the schedule changed
 Tomorrow's slate is BOS@DET 3:00 PM, PHI@NYK 7:00 PM, OKC@SAS 9:30 PM ET. Teams submit injury reports during the day (the
 Oct 19 11:15 AM report lists all three games as "NOT YET SUBMITTED"), so a 06:00 prediction would treat unreported players
-as available, and one evening run would miss the 3 PM game. Each game is now priced ~1.5-2 h before its tip.
+as available, and one evening run would miss the 3 PM game. Each game is now priced 60-75 min before its tip (the
+timing the model was evaluated at: report from tip minus 60 min).
+
+## API budget (per day, 49 ticks)
+NBA ScoreboardV3 49 calls; injury PDFs on the NBA CDN 0-3 per snapshot (stops at the first slot already on disk, 0.4 s
+apart; ~75 snapshots a day incl. the injury task); Odds API 0 on quiet ticks, 1 credit per priced tick (typically 3-6 a
+game day, hard cap 12/day vs 500/month); Supabase 2 small reads per quiet tick, full Elo/games read only when pricing;
+Twilio 1 SMS per priced tick. `nba_api` schedule/player lookups are cached 24 h.
 
 ## What the model now does
 Candidate `lr-calibrated-availability-v1` (calibrated logistic regression: Elo, rolling form, rest + 6 player-availability
@@ -43,12 +51,17 @@ Rosters for the projection now come from today's `CommonAllPlayers` (not last se
 
 ## Tuesday checklist (Oct 20)
 - [ ] ~06:30 workflow_log: `morning` row, status success, SMS received (results only; says picks follow later)
-- [ ] ~13:00 BOS@DET prediction row (tip 3:00 PM), `model_name = lr-calibrated-availability-v1`, prob_range_low/high set
-- [ ] ~17:00 PHI@NYK; ~19:30 OKC@SAS; each with a picks SMS; `book_odds` rows for each
+- [ ] ~14:00-14:15 BOS@DET prediction row (tip 3:00 PM), `model_name = lr-calibrated-availability-v1`, prob_range_low/high set
+- [ ] ~18:00-18:15 PHI@NYK (7:00 PM); ~20:15-20:30 OKC@SAS (9:30 PM); each with a picks SMS; `book_odds` rows for each
 - [ ] 3 predictions total for the slate; no `skip_reason` unless an odds gap
 - [ ] `injury_snapshot.log` shows rows with matched players once teams submit
 - [ ] If anything fails: `logs\workflow.log`; to fall back, delete `NBA_PRODUCTION_MODEL` from `.env`
 
+## Model tuning (done, offline; see docs/model-tuning-2026-10-19.md)
+Keep `lr-calibrated-availability-v1` live. Tuned logistic, GB, RF, xgboost and an ensemble are all within noise of it
+(walk-forward: tuned lr 0.0010 Brier better, borderline); all availability models beat the production GB by ~0.009 Brier.
+At 06:00 the availability gain shrinks by ~0.005 Brier vs tip-60, which is why games are priced 60-75 min before tip.
+Do not use the isolated `home_star_out`/`away_star_out` columns as what-if levers (collinear; wrong sign alone).
+
 ## Open
-- Model tuning / re-evaluation is running offline (scratch dir, nothing published); results in the job report.
 - Dashboard (`/api/injuries`) still shows `migration_pending` (migration 0100 intentionally not applied).
