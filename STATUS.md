@@ -1,30 +1,54 @@
-# STATUS — Mon Oct 19, 2026 (pre-opening night)
+# STATUS — Mon Oct 19, 2026 (eve of opening night)
 
-## Verified (read-only)
-- Checkout `C:\Users\noel9\Desktop\nba-predictor`: main = origin/main = 97ddf29 (only untracked backups/archives). Fast-forward is a no-op.
-- Scheduler (both Ready; the .bat files point at this checkout):
-  - NBA-Predictor-Daily: daily 06:00 ET, next run Tue Oct 20 06:00. Last result 0xC000013A (terminated) at Oct 19 10:12; logs/workflow.log has no entry from that run (last write 01:46).
-  - NBA-Predictor-Injury-Snapshot: ALREADY registered; repeats from 11:00 today; not run yet.
-  - Both: WakeToRun = False, StartWhenAvailable = True, DisallowStartIfOnBatteries = True. A sleeping or on-battery laptop will not run the 06:00 job on time.
-- .env key names (all set, values not read): ODDS_API_KEY, TWILIO_API_SID, TWILIO_CLIENT_SECRET, TWILIO_ACCOUNT_SID, TWILIO_FROM, TWILIO_TO, FLASK_*, SUPABASE_URL / PUBLISHABLE_KEY / SECRET_KEY / JWKS_URL, NBA_SCHEMA_V2.
-- Power (Performance plan): sleep on AC = never; on battery the sleep timeout is short. Lid action not conclusively read (`powercfg /requests` needs admin).
-- Offline tests: `venv\Scripts\python.exe scripts\run_offline_tests.py` -> exit 0, "OK". Bare `python` is the Windows Store stub; use the venv.
+## Now live (all verified Oct 19)
+- **Supabase** `aopkwfeocvgkzejxjruw`: `beta_flag` (live bankroll row $1,000, 174 predictions + 23 bankroll rows flagged beta) and
+  `predict_availability` (= supabase/migrations/20261012000500: predictions.prob_range_low/high + status_changed_after_pred,
+  3 empty prediction_* tables, skip_reason check). Nothing else from the Oct 12 set is applied; player data stays in the
+  local sqlite mirror (`NBA_PLAYER_STORE` defaults to local).
+- **Production checkout** `C:\Users\noel9\Desktop\nba-predictor`: local `main` fast-forwarded to branch `worktree-status-oct19`
+  (not pushed to GitHub main). `.env` now has `NBA_PRODUCTION_MODEL=lr-calibrated-availability-v1`
+  (delete that line to go back to the gradient-boosting model; it never needs a restart).
+- **Vercel**: production deploy of the same SHA (see Deploys below).
+- **Scheduler**
+  - `NBA-Predictor-Daily` 06:00 ET -> `run_daily.bat` -> `daily_workflow.py --stage morning` (collect, settle yesterday,
+    features, results SMS; workflow_log kind `morning`). It no longer predicts.
+  - `NBA-Predictor-Predict` (new) every 30 min 10:00-22:00 -> `daily_workflow.py --stage predict`: injury snapshot, then
+    prices each game that tips within 120 min and has no prediction (workflow_log kind `predict`, picks SMS). A run with
+    nothing to price is silent (no SMS, no log row, no odds request). Never prices a started game.
+  - `NBA-Predictor-Injury-Snapshot` every 30 min 11:00-23:00 (unchanged).
 
-## Done after approval (Oct 19, ~10:55 ET)
-- Migration beta_flag applied to aopkwfeocvgkzejxjruw. Verified: bankroll 23 beta rows + 1 live row (2026-09-01, $1000, is_beta=false); predictions 174, all beta, none live.
-- Vercel production deploy dpl_Akef9UoR8yt7pgumbacCgEV5ckEp from 97ddf29: READY, aliased to nba-predictor-tau.vercel.app.
-- Live API vs tests/contract_shapes.py: SLATE, PERFORMANCE, FEATURED_PICK, LIVE_SCORES, INJURIES all OK (performance: season 2026-27, bankroll $1000, beta_seasons [2025-26]). Not checked live: MODEL, DAYS, PREDICTIONS, GAME_DETAIL (covered by offline tests).
-- /api/injuries reports migration_pending=true (expected: Oct 12 player-data migrations not applied, scope A). /api/featured-pick returns game_id 0022501197 while the slate is empty (offseason oddity, harmless).
-- Test SMS via Twilio API key: SID SM663a5499c508d80d63f61be0d829a0b8, status queued (confirm it reached your phone).
-- Odds API: HTTP 200, x-requests-remaining 500, used 0 (checked on /sports, no quota cost).
-- Player-data scope A: nothing applied or deployed.
+## Why the schedule changed
+Tomorrow's slate is BOS@DET 3:00 PM, PHI@NYK 7:00 PM, OKC@SAS 9:30 PM ET. Teams submit injury reports during the day (the
+Oct 19 11:15 AM report lists all three games as "NOT YET SUBMITTED"), so a 06:00 prediction would treat unreported players
+as available, and one evening run would miss the 3 PM game. Each game is now priced ~1.5-2 h before its tip.
 
-## Still open
-- Keep the laptop plugged in and awake overnight; WakeToRun is off and the task will not start on battery.
+## What the model now does
+Candidate `lr-calibrated-availability-v1` (calibrated logistic regression: Elo, rolling form, rest + 6 player-availability
+features from ratings x minutes x injury status) replaces the gradient-boosting pick/probability. Holdout (1,596 games from
+2025-02-25): Brier 0.1998 vs 0.2094, log loss 0.5834 vs 0.6075, AUC 0.753 vs 0.729, ECE 0.016 vs 0.035. Uncertain players
+are blended over present/absent scenarios and stored with a probability range; the availability gate stays off.
+Rosters for the projection now come from today's `CommonAllPlayers` (not last season's last 20 games).
 
-## Tuesday-morning checklist
-- [ ] workflow_log has a new success row for Oct 20
-- [ ] predictions rows = tonight's slate
-- [ ] book_odds filled for the slate
-- [ ] SMS received
-- [ ] live bankroll row $1,000 (2026-09-01, is_beta = false)
+## Verification done
+- Offline suite: 431 tests OK. `scripts/check_availability_ready.py` (read-only, works on copies): candidate verifies,
+  rosters for 30/30 teams, ratings for 687 players, 30/30 teams project, end-to-end score ok. Its only FAIL is "0 injury
+  rows" - expected until teams submit (reports so far hold only NOT YET SUBMITTED entries).
+- Contract/API: earlier checks OK; redeploy checked below.
+
+## Known limits (be aware)
+- Injury inputs only exist once teams submit; a game priced with no entries is a "full-strength roster" prediction.
+- The 06:00 pipeline still retrains the models each morning (`model.py`) and prints "configured production model
+  unavailable, falling back to leaderboard best" because the env var names the candidate: harmless.
+- Games that tip within 2 h of the scheduler gap (or before 10:00 ET) are not priced; the 10:00 start covers noon tips.
+
+## Tuesday checklist (Oct 20)
+- [ ] ~06:30 workflow_log: `morning` row, status success, SMS received (results only; says picks follow later)
+- [ ] ~13:00 BOS@DET prediction row (tip 3:00 PM), `model_name = lr-calibrated-availability-v1`, prob_range_low/high set
+- [ ] ~17:00 PHI@NYK; ~19:30 OKC@SAS; each with a picks SMS; `book_odds` rows for each
+- [ ] 3 predictions total for the slate; no `skip_reason` unless an odds gap
+- [ ] `injury_snapshot.log` shows rows with matched players once teams submit
+- [ ] If anything fails: `logs\workflow.log`; to fall back, delete `NBA_PRODUCTION_MODEL` from `.env`
+
+## Open
+- Model tuning / re-evaluation is running offline (scratch dir, nothing published); results in the job report.
+- Dashboard (`/api/injuries`) still shows `migration_pending` (migration 0100 intentionally not applied).
