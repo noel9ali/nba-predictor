@@ -1514,7 +1514,7 @@ def api_performance():
     staked = sum(bet_amount(r) for r in bets)
     net = sum(safe_float(r.get("profit_loss"), 0.0) or 0.0 for r in bets)
     picks_w, picks_l = win_loss(settled)
-    bankroll = series[-1]["bankroll"] if series else None
+    bankroll = series[-1]["bankroll"] if series else money(start_balance)  # no picks yet: the starting bankroll
     streaks = longest_streaks(settled)
 
     kpis = {

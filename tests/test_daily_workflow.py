@@ -17,7 +17,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import daily_workflow  # noqa: E402  (daily_workflow.py adds src/ to sys.path itself)
 from database import DatabaseError, MissingTableError  # noqa: E402
 
-TWILIO_VARS = ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM", "TWILIO_TO")
+TWILIO_VARS = ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_API_SID", "TWILIO_CLIENT_SECRET",
+               "TWILIO_FROM", "TWILIO_TO")
 
 
 class LogRunTests(unittest.TestCase):
@@ -113,6 +114,28 @@ class QueryAndSmsTests(unittest.TestCase):
         with patch.dict(os.environ, env), contextlib.redirect_stdout(io.StringIO()) as output:
             self.assertFalse(daily_workflow.send_sms("hello"))
         self.assertIn("SMS skipped", output.getvalue())
+
+    def test_send_sms_prefers_the_api_key_over_the_auth_token(self):
+        env = {"TWILIO_ACCOUNT_SID": "AC" + "0" * 32, "TWILIO_AUTH_TOKEN": "token",
+               "TWILIO_API_SID": "SK" + "0" * 32, "TWILIO_CLIENT_SECRET": "secret",
+               "TWILIO_FROM": "+15550100000", "TWILIO_TO": "+15550100001"}
+        made = {}
+
+        class FakeClient:
+            def __init__(self, username, password, account_sid):
+                made["auth"] = (username, password, account_sid)
+                self.messages = self
+
+            def create(self, **kw):
+                made["sent"] = kw
+                return type("M", (), {"sid": "SMfake"})()
+
+        with patch.dict(os.environ, env), patch.dict(sys.modules, {
+                "twilio": type(sys)("twilio"), "twilio.rest": type(sys)("twilio.rest")}),                 contextlib.redirect_stdout(io.StringIO()):
+            sys.modules["twilio.rest"].Client = FakeClient
+            self.assertTrue(daily_workflow.send_sms("hello"))
+        self.assertEqual(made["auth"], ("SK" + "0" * 32, "secret", "AC" + "0" * 32))
+        self.assertEqual(made["sent"]["body"], "hello")
 
     def test_redact_secrets_scrubs_twilio_identifiers(self):
         # Obviously-fake values -- never read from .env.

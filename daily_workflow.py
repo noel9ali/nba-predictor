@@ -39,6 +39,7 @@ load_dotenv()
 WORKFLOW_LOG_MIGRATION = 'supabase/migrations/20260923000500_workflow_log.sql'
 LOG_TAIL_CHARS = 4000
 SECRET_ENV_VARS = ('SUPABASE_SECRET_KEY', 'ODDS_API_KEY', 'TWILIO_AUTH_TOKEN',
+                    'TWILIO_API_SID', 'TWILIO_CLIENT_SECRET',
                     'TWILIO_ACCOUNT_SID', 'TWILIO_FROM', 'TWILIO_TO')
 DEFAULT_STEP_TIMEOUT_SECONDS = 7200  # 2 hours; overridable via WORKFLOW_STEP_TIMEOUT_SECONDS
 
@@ -284,17 +285,20 @@ def format_sms(yesterday_results, today_predictions, stats):
 def send_sms(body):
     """Send SMS via Twilio. Returns True on success."""
     account_sid = os.getenv('TWILIO_ACCOUNT_SID')
-    auth_token = os.getenv('TWILIO_AUTH_TOKEN')
     from_number = os.getenv('TWILIO_FROM')
     to_number = os.getenv('TWILIO_TO')
+    # An API key (TWILIO_API_SID + TWILIO_CLIENT_SECRET) is preferred over the account auth token.
+    api_sid, api_secret = os.getenv('TWILIO_API_SID'), os.getenv('TWILIO_CLIENT_SECRET')
+    auth_token = os.getenv('TWILIO_AUTH_TOKEN')
+    username, password = (api_sid, api_secret) if api_sid and api_secret else (account_sid, auth_token)
 
-    if not all([account_sid, auth_token, from_number, to_number]):
+    if not all([account_sid, username, password, from_number, to_number]):
         print("⚠ Twilio credentials not configured — SMS skipped.")
         return False
 
     try:
         from twilio.rest import Client
-        client = Client(account_sid, auth_token)
+        client = Client(username, password, account_sid)
         message = client.messages.create(body=body, from_=from_number, to=to_number)
         print(f"✓ SMS sent — SID: {message.sid}")
         return True
