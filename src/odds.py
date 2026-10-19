@@ -59,7 +59,7 @@ def get_tonights_odds():
     response = requests.get(url, params=params, timeout=(5, 30))
 
     if response.status_code != REQUEST_SUCCESS:
-        print(f"Error fetching odds: {response.status_code} - {response.text}")
+        print(f"ERROR fetching odds: {response.status_code} - {response.text}")
         return {}
 
     games = response.json()
@@ -129,9 +129,10 @@ def get_tonights_odds():
                                ('game_id', 'captured_at', 'bookmaker', 'market', 'selection', 'line'))
                 row['odds_id'] = int(hashlib.sha256(key.encode()).hexdigest()[:15], 16)
             write_moneyline_rows(generic_rows)
-    except Exception:
+    except Exception as exc:
         # Missing migration or a transient local-store problem must never
-        # make moneyline prediction fail.
+        # make moneyline prediction fail, but it must not be silent either.
+        print(f"ERROR: could not store generic moneyline rows: {type(exc).__name__}: {exc}")
         generic_rows = []
     print(f"Found odds for {len(odds_by_teams)} games")
     print(f"Requests used: {response.headers.get('x-requests-used')}")
