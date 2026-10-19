@@ -64,9 +64,11 @@ function setMeta(p, g) {
   if (g.home && g.home.record) addNW(' (' + wl(g.home.record) + ')');
   add(' · ');
 
-  // Time
-  addNW(fmt.time(g.tip_time_utc) + ' ET');
-  add(' · ');
+  // Time (older rows have no tip time: skip it rather than print a bare dash)
+  if (g.tip_time_utc) {
+    addNW(fmt.time(g.tip_time_utc) + ' ET');
+    add(' · ');
+  }
 
   // State and score
   const A = g.away.tricode, H = g.home.tricode, sc = () => dash(g.as) + NDASH + dash(g.hs);
@@ -76,10 +78,12 @@ function setMeta(p, g) {
     addNW(sc());
     add(' ' + H);
   } else if (g.state === 'final') {
-    add('Final ');
-    add(A + ' ');
-    addNW(sc());
-    add(' ' + H);
+    add('Final');
+    if (g.as != null && g.hs != null) {  // older rows were never given a score
+      add(' ' + A + ' ');
+      addNW(sc());
+      add(' ' + H);
+    }
   } else if (g.state === 'postponed') {
     add('Postponed');
   } else if (g.state === 'void') {
