@@ -23,6 +23,7 @@ REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(REPO_ROOT, 'src'))
 
 from console import force_utf8_stdio  # noqa: E402
+from config import LIVE_START_DATE  # noqa: E402
 from database import DatabaseError, MissingTableError, insert_rows, select_rows  # noqa: E402
 
 # Must run before any print(): stdout/stderr aren't always a real UTF-8
@@ -193,12 +194,13 @@ def get_overall_stats():
         preds = select_rows(
             'predictions',
             columns='correct,profit_loss',
-            filters=[('correct', 'not_is', 'null')],
+            filters=[('correct', 'not_is', 'null'), ('game_date', 'gte', LIVE_START_DATE)],
             order_by='game_id',
         )
         try:
             bankroll_row = select_rows(
-                'bankroll', columns='balance', order_by='date', descending=True, limit=1
+                'bankroll', columns='balance', filters=[('date', 'gte', LIVE_START_DATE)],
+                order_by='date', descending=True, limit=1
             )
         except MissingTableError:
             bankroll_row = pd.DataFrame()

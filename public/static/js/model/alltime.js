@@ -63,8 +63,10 @@ export function initAlltime(section, { model, perfAll } = {}) {
     buttons.set(key, b);
     bar.append(b);
   };
-  addBtn('all', 'All time');
-  seasons.forEach(s => addBtn(s, seasonLabel(s)));
+  const beta = new Set(Array.isArray(perfAll.beta_seasons) ? perfAll.beta_seasons : []);
+  const nameOf = key => key === 'all' ? 'Live' : seasonLabel(key) + (beta.has(key) ? ' (beta)' : '');
+  addBtn('all', nameOf('all'));
+  seasons.forEach(s => addBtn(s, nameOf(s)));
 
   const alertSlot = el('div');
   const status = el('p', { class: 'sr', role: 'status' });
@@ -175,7 +177,7 @@ export function initAlltime(section, { model, perfAll } = {}) {
     renderCards(perf);
     const k = perf.kpis || {};
     const [pw, pl] = parseWL(k.picks);
-    const label = key === 'all' ? 'All time' : seasonLabel(key);
+    const label = nameOf(key);
     status.textContent = 'Showing ' + label + ': ' + pw + NDASH + pl + ' picks' +
       (isNum(k.accuracy) && pw + pl > 0 ? ', ' + pct1(k.accuracy) + '% right.' : '.');
   }

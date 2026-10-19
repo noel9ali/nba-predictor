@@ -9,6 +9,18 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.dirname(__file__))
 
 import app as dashboard  # noqa: E402
+
+
+# These tests use 2025-26 fixtures; pin the clock's season so the live 2026-27 default does not apply.
+_season_patch = patch.object(dashboard, "current_season", return_value="2025-26")
+
+
+def setUpModule():
+    _season_patch.start()
+
+
+def tearDownModule():
+    _season_patch.stop()
 from contract_shapes import GAME_DETAIL, INJURIES, MODEL, PERFORMANCE, SLATE, check  # noqa: E402
 from database import MissingTableError  # noqa: E402
 from test_api_v2 import TODAY, NOW, V2_OFF, V2_ON, season_tables  # noqa: E402

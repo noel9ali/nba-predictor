@@ -134,6 +134,14 @@ RATING_UNRATED_VALUE = -1.0                # players without any rating yet (jus
 REST_DAYS_CAP = 7                          # season opener and long breaks (All-Star) are capped here
 
 # ---------------------------------------------------------------------------
+# Live tally. Seasons before LIVE_FIRST_SEASON were beta testing (flagged is_beta in the database) and
+# keep their own bankroll history. The live bankroll starts fresh at the starting bankroll on
+# LIVE_START_DATE and never carries the beta balance over.
+# ---------------------------------------------------------------------------
+LIVE_FIRST_SEASON = "2026-27"
+LIVE_START_DATE = "2026-09-01"   # first day of LIVE_FIRST_SEASON's window (app.season_bounds)
+
+# ---------------------------------------------------------------------------
 # Betting (phase 6; src/betting.py). Same values as the original track.kelly_bet.
 # ---------------------------------------------------------------------------
 KELLY_FRACTION = 0.25

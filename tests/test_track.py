@@ -50,6 +50,8 @@ def _apply_fake_filters(rows, filters):
                 keep = actual == value
             elif op == "lt":
                 keep = actual is not None and actual < value
+            elif op == "gte":
+                keep = actual is not None and actual >= value
             elif op == "is" and value == "null":
                 keep = actual is None
             elif op == "not_is" and value == "null":

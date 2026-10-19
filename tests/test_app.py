@@ -9,6 +9,18 @@ import pandas as pd
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import app as dashboard  # noqa: E402  (app.py adds src/ to sys.path itself)
+
+
+# These tests use 2025-26 fixtures; pin the clock's season so the live 2026-27 default does not apply.
+_season_patch = patch.object(dashboard, "current_season", return_value="2025-26")
+
+
+def setUpModule():
+    _season_patch.start()
+
+
+def tearDownModule():
+    _season_patch.stop()
 import daily_workflow  # noqa: E402
 from database import DatabaseError, MissingTableError  # noqa: E402
 
