@@ -693,6 +693,19 @@ class ModelExtrasTests(ApiTestCase):
         self.assertEqual(body["training"], TRAINING_BLOCK)
         self.assertFalse(body["migration_pending"])
 
+    def test_training_seasons_omit_the_hidden_beta_season_unless_hiding_is_off(self):
+        block = {**TRAINING_BLOCK, "seasons": [
+            {"season": "2024-25", "games": 1225, "train": 854, "test": 371},
+            {"season": "2025-26", "games": 1225, "train": 0, "test": 1225},
+        ]}
+        self.db.tables["model_runs"][0]["training"] = block
+        with patch.dict(os.environ, {"HIDE_BETA": "1"}):
+            seasons = self.model()["training"]["seasons"]
+        self.assertEqual([s["season"] for s in seasons], ["2024-25"])
+        with patch.dict(os.environ, {"HIDE_BETA": "0"}):
+            seasons = self.model()["training"]["seasons"]
+        self.assertEqual([s["season"] for s in seasons], ["2024-25", "2025-26"])
+
     def test_a_database_without_the_training_column_falls_back_and_flags_it(self):
         real = self.db
         calls = []

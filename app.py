@@ -174,6 +174,10 @@ def hide_beta():
     return os.environ.get("HIDE_BETA", "1").strip().lower() not in ("0", "false", "no", "off")
 
 
+# Seasons whose results are hidden while HIDE_BETA is on (named wherever a payload lists seasons).
+HIDDEN_RESULT_SEASONS = ("2025-26",)
+
+
 def is_hidden_day(day):
     return hide_beta() and str(day)[:10] < player_config.LIVE_START_DATE
 
@@ -1917,6 +1921,11 @@ def api_model():
     if mine_signal:
         payload["feature_importance"] = mine_signal
     if isinstance(training, dict):
+        if hide_beta() and isinstance(training.get("seasons"), list):
+            training = {**training, "seasons": [
+                s for s in training["seasons"]
+                if not (isinstance(s, dict) and s.get("season") in HIDDEN_RESULT_SEASONS)
+            ]}
         payload["training"] = training
     return api_response(payload, CACHE_MODEL)
 
