@@ -196,6 +196,8 @@ class GameAvailability:
         ratings = af.RatingLookup(config.RATING_PRIMARY, conn=conn).for_day(cutoff)
         self.ratings = ratings
         rosters = rosters or {}
+        if getattr(config, "P_PLAY_SOURCE", "status_table") == "learned_table":
+            self.p_play = self._learned_p_play(statuses, rosters)
         self.projection = {}
         self.rest = {}
         season = self.pg["season"].max() if not self.pg.empty else None
@@ -210,6 +212,35 @@ class GameAvailability:
             dates = self.pg[(self.pg["team_id"] == team) & (self.pg["season"] == season)]["game_date"].unique() \
                 if same_season else []
             self.rest[team] = af.rest_features(list(dates), self.game_date)
+
+    def _learned_p_play(self, statuses: pd.DataFrame, rosters: dict) -> dict:
+        """PROPOSAL (config.P_PLAY_SOURCE = 'learned_table', default off): replace the hand-set status table by the
+        fitted mapping in src/pplay.py for every rostered player, listed or not. Falls back to the hand table per
+        player when the mapping file is missing or a player has no recent game log with the team. Only data known
+        at as_of is used (report status/reason, EWMA minutes, appearances in the team's previous 10 games)."""
+        import pplay
+        from minutes import p_play_for_status, project_team
+
+        mapping = pplay.load_mapping()
+        if mapping is None:
+            print("P_PLAY_SOURCE='learned_table' but no mapping file; using the hand-set table")
+            return dict(self.p_play)
+        reason_of = {}
+        if statuses is not None and not statuses.empty and "reason" in statuses:
+            reason_of = {int(p): r for p, r in zip(statuses["player_id"], statuses["reason"]) if pd.notna(p)}
+        out = dict(self.p_play)
+        for team in (self.home, self.away):
+            proj = project_team(self.pg, team, {}, rosters.get(team))          # base minutes only (everyone p=1)
+            if proj.empty:
+                continue
+            ids = [int(p) for p in proj["player_id"]]
+            app = pplay.appearances_last10(self.pg, team, ids)
+            for pid, base in zip(ids, proj["base_min"]):
+                status = self.status_of.get(pid)
+                if status is None and pid not in app:
+                    continue                                                    # no history here: hand table (1.0)
+                out[pid] = pplay.lookup(mapping, status, reason_of.get(pid), float(base), app.get(pid))
+        return out
 
     def team_feats(self, team: int, overrides: dict | None = None) -> dict:
         import availability_features as af
@@ -297,7 +328,7 @@ def score_with_candidate(ga: GameAvailability, base_row: dict, candidate: dict, 
             if r["p_play"] < 1 and abs(lost) > 1e-6:
                 sign = 1 if team == ga.away else -1        # a home player missing hurts the home side
                 split.append((f"{names.get(int(r['player_id']), int(r['player_id']))} "
-                              f"{ga.status_of.get(int(r['player_id']), 'out')}", sign * lost))
+                              f"{ga.status_of.get(int(r['player_id']), 'not listed')}", sign * lost))
     rows = explain(model, scaler, x_for({})[0], feats, blended, base_rate, availability_split=split or None)
     return {"home_win_prob": blended, "prob_range_low": low, "prob_range_high": high, "scenarios": scored,
             "factors": rows}

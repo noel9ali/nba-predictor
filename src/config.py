@@ -68,6 +68,12 @@ INJURY_STATUS_MAP = {
 INJURY_STATUS_FALLBACK = "questionable"   # unknown strings: uncertain, logged for review
 INJURY_STATUSES = ("out", "doubtful", "questionable", "probable", "available")
 
+# Where p_play comes from. "status_table" (default, production) = STATUS_TO_P_PLAY below. "learned_table" = the
+# empirical-Bayes mapping in data/pplay/pplay_mapping_v1.json (src/pplay.py): proposal only, see docs/pplay-learned.md.
+# Switching it changes every availability feature and the scenario ranges, so the candidate must be re-validated first.
+P_PLAY_SOURCE = "status_table"
+P_PLAY_MAPPING_PATH = os.path.join(DATA_DIR, "pplay", "pplay_mapping_v1.json")
+
 # Status -> probability the player plays (phase 3 uses this; defined here so phase 2 can expose it).
 STATUS_TO_P_PLAY = {
     "out": 0.0,
