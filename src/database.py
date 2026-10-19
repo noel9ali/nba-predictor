@@ -360,6 +360,7 @@ def call_rpc(function: str, params: dict[str, Any]) -> pd.DataFrame:
     response = _run(
         f"Calling {function}",
         lambda: get_client().rpc(function, params).execute(),
+        retry_stale=True,  # callers only use read-only functions
     )
     return pd.DataFrame(response.data or [])
 

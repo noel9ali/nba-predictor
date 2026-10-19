@@ -8,6 +8,8 @@ import unittest
 from datetime import date, datetime, timezone
 from unittest.mock import patch
 
+import pandas as pd
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -438,6 +440,73 @@ class WorkflowStatusTests(ApiTestCase):
                 environ_overrides={"REMOTE_ADDR": "127.0.0.1"},
             )
         self.assertFalse(response.get_json()["controls_allowed"])
+
+
+class DbViewTests(ApiTestCase):
+    """Migration 0012: team_form() feeds the slate's records and v_nightly feeds /api/days."""
+    env = V2_ON
+
+    def tables(self):
+        tables = v2_tables()
+        tables["v_nightly"] = [
+            {"game_date": "2026-04-10", "season": "2025-26", "games": 3, "picks_won": 2,
+             "picks_lost": 1, "bets": 2, "bets_won": 1, "bets_lost": 1, "staked": 80.58,
+             "net_pl": 27.93},
+            {"game_date": "2026-04-11", "season": "2025-26", "games": 2, "picks_won": 1,
+             "picks_lost": 1, "bets": 2, "bets_won": 1, "bets_lost": 1, "staked": 70.0,
+             "net_pl": 18.0},
+            {"game_date": "2026-04-12", "season": "2025-26", "games": 2, "picks_won": 0,
+             "picks_lost": 0, "bets": 1, "bets_won": 0, "bets_lost": 0, "staked": 20.0,
+             "net_pl": 0},
+        ]
+        return tables
+
+    def patch_rpc(self, rows=None, error=None):
+        calls = []
+
+        def fake(function, params):
+            calls.append((function, params))
+            if error:
+                raise error
+            return pd.DataFrame(rows)
+
+        patcher = patch.object(dashboard, "call_rpc", fake)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return calls
+
+    def test_slate_records_come_from_one_team_form_call(self):
+        calls = self.patch_rpc([
+            {"team_id": 1, "tricode": "SAC", "wins": 8, "losses": 4, "last10": "WLWWLWWLWL"},
+            {"team_id": 2, "tricode": "ZZZ", "wins": 1, "losses": 0, "last10": "W"},
+        ])
+        game = next(g for g in self.get("/api/slate?date=2026-04-10").get_json()["games"]
+                    if g["game_id"] == "0022501100")
+        self.assertEqual(game["home"]["record"], "8-4")
+        self.assertEqual(game["home"]["l10"], "LWLWWLWWLW")  # oldest first, as before
+        self.assertEqual(calls, [("team_form", {"p_season": "2025-26", "p_before": "2026-04-10"})])
+        self.assertNotIn("games", [table for table, _ in self.db.calls])
+
+    def test_slate_falls_back_to_reading_games_when_the_function_is_missing(self):
+        self.patch_rpc(error=DatabaseError("Calling team_form failed (PGRST202)"))
+        game = next(g for g in self.get("/api/slate?date=2026-04-10").get_json()["games"]
+                    if g["game_id"] == "0022501100")
+        self.assertEqual(game["home"]["record"], "8-4")
+        self.assertEqual(game["home"]["l10"], "LWLWWLWWLW")
+
+    def test_days_come_from_v_nightly_with_pending_derived(self):
+        body = self.get("/api/days").get_json()
+        self.assertEqual(body["days"][0], {"date": "2026-04-12", "games": 2, "picks": "0-0",
+                                           "bets": "0-0", "net_pl": 0.0, "pending": 2})
+        self.assertEqual(body["days"][-1], {"date": "2026-04-10", "games": 3, "picks": "2-1",
+                                            "bets": "1-1", "net_pl": 27.93, "pending": 0})
+        self.assertIn("v_nightly", [table for table, _ in self.db.calls])
+
+    def test_days_fall_back_to_predictions_when_the_view_is_missing(self):
+        self.db.errors["v_nightly"] = MissingTableError("view missing")
+        body = self.get("/api/days").get_json()
+        self.assertEqual(body["days"][-1], {"date": "2026-04-10", "games": 3, "picks": "2-1",
+                                            "bets": "1-1", "net_pl": 27.93, "pending": 0})
 
 
 class PostMigrationTests(ApiTestCase):

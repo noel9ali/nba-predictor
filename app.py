@@ -24,6 +24,7 @@ from database import (  # noqa: E402  (needs the src/ path above)
     DatabaseError,
     MissingColumnError,
     MissingTableError,
+    call_rpc,
     normalize_game_id,
     schema_v2_enabled,
     select_rows,
@@ -1030,6 +1031,20 @@ def team_forms_for(teams, season, before_date):
     teams = sorted({t for t in teams if t})
     if not teams:
         return {}
+    if schema_v2_enabled():
+        try:
+            # One call to public.team_form (migration 0012) instead of paging a season of games.
+            wanted = set(teams)
+            rows = records(call_rpc("team_form", {"p_season": season, "p_before": before_date}))
+            return {
+                r["tricode"]: {
+                    "record": record_text(as_int(r.get("wins")), as_int(r.get("losses"))),
+                    "l10": (r.get("last10") or "")[::-1],  # the function lists newest first
+                }
+                for r in rows if r.get("tricode") in wanted
+            }
+        except DatabaseError as exc:
+            app.logger.warning("team_form unavailable (%s); reading games directly", type(exc).__name__)
     rows = records(read_v2_rows(
         "games",
         columns="GAME_DATE,TEAM_ABBREVIATION,WL",
@@ -1381,6 +1396,20 @@ def game_availability_block(game, model_name):
     return block
 
 
+def nightly_totals(dates):
+    """Per-night totals from the v_nightly view (migration 0012), by date; None when the view
+    isn't there (before the migration) so the caller reads predictions directly."""
+    if not schema_v2_enabled():
+        return None
+    try:
+        # select_rows, not read_rows: a missing view must raise so the caller can fall back.
+        rows = records(select_rows("v_nightly", filters=[("game_date", "in", dates)]))
+    except DatabaseError as exc:
+        app.logger.warning("v_nightly unavailable (%s); reading predictions directly", type(exc).__name__)
+        return None
+    return {str(r.get("game_date"))[:10]: r for r in rows}
+
+
 @app.route("/api/days")
 def api_days():
     raw_end = (request.args.get("end") or "").strip()
@@ -1395,7 +1424,21 @@ def api_days():
     all_dates = sorted(set(d for d in _prediction_dates() if d <= end.isoformat()), reverse=True)
     dates = all_dates[:n]
     days = []
-    if dates:
+    nightly = nightly_totals(dates) if dates else None
+    if nightly is not None:
+        for day in dates:
+            row = nightly.get(day, {})
+            games = as_int(row.get("games")) or 0
+            won, lost = as_int(row.get("picks_won")) or 0, as_int(row.get("picks_lost")) or 0
+            days.append({
+                "date": day,
+                "games": games,
+                "picks": record_text(won, lost),
+                "bets": record_text(as_int(row.get("bets_won")) or 0, as_int(row.get("bets_lost")) or 0),
+                "net_pl": money(safe_float(row.get("net_pl"), 0.0) or 0.0),
+                "pending": games - won - lost,
+            })
+    elif dates:
         rows = records(read_rows(
             "predictions",
             columns="game_date,correct,bet_amount,profit_loss",
