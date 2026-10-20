@@ -69,7 +69,7 @@ function sentence(s) {
   if (phase === 'offseason') return 'Offseason';
   if (phase === 'before_predictions') {
     return store.games.some(g => g.provisional)
-      ? 'Temporary picks from the 6 AM run. Final picks post about an hour before each tip.'
+      ? 'Temporary picks. Finals post about an hour before tip.'
       : 'Picks post about an hour before the first tip.';
   }
   if (phase === 'prediction_failed') return "Tonight's picks didn't post.";
@@ -131,6 +131,7 @@ export function renderLede(s, { error = false } = {}) {
     sep.hidden = false;
   }
   setHTML(h1, sentence(s));
+  h1.classList.toggle('oneline', phase === 'before_predictions');   // the wait message never wraps
   board.hidden = NOBOARD.includes(phase);
   if (!board.hidden) renderBoard(board, boardCells(s));
   if (phase === 'no_games' || phase === 'offseason') {

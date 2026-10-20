@@ -62,6 +62,7 @@ function renderStatus() {
     else { state = 'none'; text = 'No picks yet'; }
   }
   if (!text) { state = 'none'; text = 'No picks yet'; }
+  if (state === 'none' && slateInfo && slateInfo.temporary) text = 'Temporary picks';
   el.dataset.state = state;
   el.querySelector('[data-status-text]').textContent = text;
   el.hidden = false;
@@ -92,8 +93,9 @@ export function initShell(o) {
   loadStatus();
 }
 
-export function setPageDate(slate) {
-  slateInfo = { date: slate.date, is_past: !!slate.is_past, last_slate_date: slate.last_slate_date || null };
+export function setPageDate(slate, hasTemporaryPicks) {
+  slateInfo = { date: slate.date, is_past: !!slate.is_past, last_slate_date: slate.last_slate_date || null,
+    temporary: !!hasTemporaryPicks };
   if (opts) { renderTabs(); renderStatus(); }
 }
 
