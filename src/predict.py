@@ -87,6 +87,39 @@ def record_schedule(games):
         print(f"Could not record today's schedule ({type(exc).__name__}); the site will not list pending games.")
 
 
+def provisional_mode():
+    """NBA_PREDICT_PROVISIONAL=1 (set by the 6 AM stage): save temporary picks to provisional_predictions instead
+    of real predictions. No window, no bets, no bankroll, and nothing is written to predictions."""
+    return os.getenv('NBA_PREDICT_PROVISIONAL', '').strip() == '1'
+
+
+def save_provisional(game, home_prob, away_prob, predicted_winner, game_odds, model_name):
+    """Upsert one temporary pick with the best-book price on the picked side (price fields None without odds)."""
+    odds = book = implied = edge = None
+    if game_odds:
+        home_side = predicted_winner == game['HOME_TEAM_ABBREVIATION']
+        odds = game_odds['home_odds'] if home_side else game_odds['away_odds']
+        book = game_odds['home_book'] if home_side else game_odds['away_book']
+        implied = implied_prob(odds)
+        edge = (home_prob if home_side else away_prob) - implied
+    row = {
+        'game_id': str(game['gameId']),
+        'game_date': str(date.today()),
+        'home_team': game['HOME_TEAM_ABBREVIATION'],
+        'away_team': game['VISITOR_TEAM_ABBREVIATION'],
+        'home_win_prob': float(home_prob),
+        'away_win_prob': float(away_prob),
+        'predicted_winner': predicted_winner,
+        'odds': int(odds) if odds is not None else None,
+        'bookmaker': book,
+        'implied_prob': float(implied) if implied is not None else None,
+        'edge': float(edge) if edge is not None else None,
+        'model_name': model_name,
+        'predicted_at': pd.Timestamp.now(tz='UTC').isoformat(),
+    }
+    upsert_rows('provisional_predictions', [row], conflict_columns=['game_id'])
+
+
 def not_yet_predicted(games):
     """Drop games that already have a predictions row. A failed lookup keeps every game: the per-game
     duplicate check in save_prediction is still the safety net."""
@@ -352,7 +385,8 @@ def run():
     maybe_capture_closing(scheduled)      # OFF by default (config.ODDS_CLOSING_CAPTURE); never raises
 
     # the evening stage prices each game shortly before its tip, with the newest injury report
-    window = predict_window_minutes()
+    provisional = provisional_mode()
+    window = None if provisional else predict_window_minutes()
     if window:
         in_window = within_window(games, window)
         if len(in_window) < len(games):
@@ -379,10 +413,19 @@ def run():
     # fetch real-time odds from The Odds API (one credit returns the whole slate)
     if not odds_call_allowed():
         print(f"Odds request budget for today ({ODDS_DAILY_CALL_CAP} calls) is used up; no odds fetched.")
-        return
-    record_odds_call()
-    print("Fetching odds...")
-    odds_dict = get_tonights_odds()
+        if not provisional:
+            return
+        odds_dict = {}      # a temporary pick is still worth showing without a price
+    else:
+        record_odds_call()
+        print("Fetching odds...")
+        try:
+            odds_dict = get_tonights_odds()
+        except Exception as exc:
+            if not provisional:
+                raise
+            print(f"Odds fetch failed ({type(exc).__name__}); temporary picks will have no price.")
+            odds_dict = {}
     try:
         import odds_archive
         odds_archive.link_game_ids(scheduled)     # NBA game ids onto the archived rows (non-fatal)
@@ -460,8 +503,9 @@ def run():
         extra = {}
         if ap is not None:
             try:
-                avail = ap.run_for_game(str(game['gameId']), str(date.today()), int(home_id), int(away_id), row,
-                                        candidate=candidate, names=player_names)
+                run_avail = ap.provisional_for_game if provisional else ap.run_for_game
+                avail = run_avail(str(game['gameId']), str(date.today()), int(home_id), int(away_id), row,
+                                  candidate=candidate, names=player_names)
                 if avail and candidate and ap.production_uses_candidate(candidate['name']):
                     home_prob = avail['home_win_prob'] * 100
                     away_prob = 100 - home_prob
@@ -476,6 +520,20 @@ def run():
 
         # look up real odds for this game
         game_odds = match_odds(home_abbr, away_abbr, odds_dict)
+
+        if provisional:
+            # temporary pick: never a bet, never in predictions; the pre-tip run makes the real prediction
+            try:
+                save_provisional(game, home_prob / 100, away_prob / 100, predicted_winner, game_odds,
+                                 extra.get('model_name'))
+            except Exception as exc:
+                print(f"{away_abbr} @ {home_abbr} - temporary pick not saved: {type(exc).__name__}: {exc}")
+                continue
+            line = f"{game_odds['home_odds'] if predicted_winner == home_abbr else game_odds['away_odds']}"                 if game_odds else "no odds yet"
+            print(f"{away_abbr} @ {home_abbr}: TEMPORARY pick {predicted_winner} "
+                  f"({max(home_prob, away_prob):.1f}%), line {line}")
+            saved += 1
+            continue
 
         if game_odds:
             # use real odds and calculate edge
@@ -530,6 +588,9 @@ def run():
         if inserted is not False:     # a skipped duplicate returns False; anything else was stored
             saved += 1
 
+    if provisional:
+        print(f"Saved {saved} temporary prediction(s).")     # worded so the workflow's picks-SMS check ignores it
+        return
     # the workflow reads this line: no new predictions means no picks SMS
     print(f"Saved {saved} prediction(s).")
 

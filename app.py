@@ -1006,6 +1006,7 @@ def build_game(row, grids=None, forms=None):
         ),
         "skip_reason": row.get("skip_reason"),
         "book_grid": build_book_grid(grids.get(game_id)),
+        **({"provisional": True} if row.get("provisional") else {}),
     }
 
 
@@ -1148,18 +1149,31 @@ def add_availability_summaries(games):
 
 
 def unpredicted_today(rows, day):
-    """Today's games from schedule (written by the predict stage) that have no predictions row yet, shaped
-    as predictions rows so build_game lists them with no pick. Picks post about an hour before each tip,
-    so until then the slate would otherwise be empty."""
+    """Today's games with no predictions row yet, shaped as predictions rows so build_game lists them. The games
+    come from schedule (written by the predict stage); a game the 6 AM run made a temporary pick for also
+    carries that pick and its price, flagged provisional. Picks post about an hour before each tip, so until then
+    the slate would otherwise be empty."""
     have = {normalize_game_id(r.get("game_id")) for r in rows}
-    return [
-        {"game_id": normalize_game_id(s["game_id"]), "game_date": day, "home_team": s["home_team"],
-         "away_team": s["away_team"], "tip_time_utc": s.get("tip_time_utc"), "status": "scheduled"}
-        for s in records(read_v2_rows(
+    games = {}
+    for s in records(read_v2_rows(
             "schedule", columns="game_id,home_team,away_team,tip_time_utc",
-            filters=[("game_date", "eq", day)], order_by="game_id"))
-        if normalize_game_id(s["game_id"]) not in have and s["home_team"] in TEAMS and s["away_team"] in TEAMS
-    ]
+            filters=[("game_date", "eq", day)], order_by="game_id")):
+        games[normalize_game_id(s["game_id"])] = {
+            "game_id": normalize_game_id(s["game_id"]), "game_date": day, "home_team": s["home_team"],
+            "away_team": s["away_team"], "tip_time_utc": s.get("tip_time_utc"), "status": "scheduled"}
+    for p in records(read_v2_rows(
+            "provisional_predictions",
+            columns="game_id,home_team,away_team,home_win_prob,away_win_prob,predicted_winner,odds,bookmaker,"
+                    "implied_prob,edge",
+            filters=[("game_date", "eq", day)], order_by="game_id")):
+        game_id = normalize_game_id(p["game_id"])
+        base = games.setdefault(game_id, {
+            "game_id": game_id, "game_date": day, "home_team": p["home_team"], "away_team": p["away_team"],
+            "tip_time_utc": None, "status": "scheduled"})
+        base.update({k: p.get(k) for k in ("home_win_prob", "away_win_prob", "predicted_winner", "odds",
+                                           "bookmaker", "implied_prob", "edge")}, provisional=True)
+    return [g for gid, g in games.items()
+            if gid not in have and g["home_team"] in TEAMS and g["away_team"] in TEAMS]
 
 
 @app.route("/api/slate")
@@ -1176,7 +1190,7 @@ def api_slate():
     latest_date = latest_prediction_date_before(day)
     season = season_for(day)
     unpredicted = [] if is_hidden_day(day) or day != today.isoformat() else unpredicted_today(rows, day)
-    grids = book_grids_for(r["game_id"] for r in rows) if rows else {}
+    grids = book_grids_for(r["game_id"] for r in rows + unpredicted) if rows or unpredicted else {}
     forms = team_forms_for(
         [t for r in rows + unpredicted for t in (r.get("home_team"), r.get("away_team"))], season, day
     ) if rows or unpredicted else {}

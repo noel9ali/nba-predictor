@@ -80,7 +80,9 @@ function ariaLabel(g, info) {
   parts.push(matchup + ', ' + timeStatus + '.');
 
   // 2. Pick/bet
-  if (g.pick == null && !g.bet && !g.skip_reason) {
+  if (g.provisional) {
+    parts.push('Temporary pick ' + g.pick + (g.odds != null ? ' at ' + fmt.odds(g.odds) : '') + ', not final, no bet yet.');
+  } else if (g.pick == null && !g.bet && !g.skip_reason) {
     // Pick pending
     parts.push('Pick pending.');
   } else if (g.bet && g.odds != null && g.bet.amount != null) {
@@ -124,7 +126,7 @@ function teamRow(g, side) {
   let score;
   if (g.state === 'scheduled') score = '<span class="score pre-tip">' + esc(fmt.pct(t.win_prob, 0)) + '</span>';
   else score = '<span class="score' + (ld && ld !== side ? ' trail' : '') + '" data-score="' + esc(g.game_id + '-' + side) + '">' + (sc == null ? '—' : esc(sc)) + '</span>';
-  const tag = isPick ? '<span class="bet-tag' + (g.bet ? '' : ' nobet') + '">' + (g.bet ? 'Bet on' : 'Pick') + '</span>' : '';
+  const tag = isPick ? '<span class="bet-tag' + (g.bet ? '' : ' nobet') + '">' + (g.bet ? 'Bet on' : g.provisional ? 'Temp pick' : 'Pick') + '</span>' : '';
   let name = '';
   if (t.name) {
     name = '<span class="tname">';
@@ -140,6 +142,7 @@ function stubHTML(g, no) {
   const b = g.bet, pending = g.pick == null && !b && !g.skip_reason;
   let who, pick, odds, stake, win;
   if (pending) { who = 'Pick pending'; pick = '—'; odds = '—'; stake = '—'; win = '—'; }
+  else if (g.provisional) { who = 'Temporary pick'; pick = esc(g.pick); odds = fmt.odds(g.odds); stake = '—'; win = '—'; }
   else {
     who = b ? 'Bet on' : 'Pick<span class="who-sep"> · </span><span class="who-2">no bet</span>';
     pick = g.pick == null ? '—' : esc(g.pick);
@@ -158,6 +161,13 @@ function linesHTML(g) {
     return '<dl class="lines"><dt>Moneyline</dt><dd><b>' + esc(g.pick) + ' ' + esc(fmt.odds(g.odds)) + '</b>' + (g.bookmaker ? ' · ' + esc(g.bookmaker) : '') +
       '</dd><dt>Risk</dt><dd>' + esc(money(b.amount)) + ' to win ' + esc(money(payoutOf(g))) +
       '</dd><dt>Model · market</dt><dd>' + esc(fmt.pct(g.pick_prob)) + ' vs ' + esc(fmt.pct(g.implied_prob)) + edge + '</dd></dl>';
+  }
+  if (g.provisional) {
+    const edge = g.edge != null ? ' · <span class="edge">edge ' + esc(fmt.pts(g.edge)) + '</span>' : '';
+    return '<dl class="lines"><dt>Temporary pick</dt><dd><b>' + esc(g.pick) + (g.pick_prob != null ? ' ' + esc(fmt.pct(g.pick_prob)) : '') + '</b></dd>' +
+      '<dt>Moneyline</dt><dd>' + (g.odds != null ? '<b>' + esc(fmt.odds(g.odds)) + '</b>' + (g.bookmaker ? ' · ' + esc(g.bookmaker) : '') : 'No odds yet') + '</dd>' +
+      (g.implied_prob != null ? '<dt>Model · market</dt><dd>' + esc(fmt.pct(g.pick_prob)) + ' vs ' + esc(fmt.pct(g.implied_prob)) + edge + '</dd>' : '') +
+      '<dt>Status</dt><dd>Temporary 6 AM pick. The final pick and any bet post about an hour before the first tip</dd></dl>';
   }
   if (g.pick == null && !g.skip_reason) {
     return '<dl class="lines"><dt>Pick</dt><dd>Pending</dd><dt>Status</dt><dd>Picks post about an hour before the first tip</dd></dl>';

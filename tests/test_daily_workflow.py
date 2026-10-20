@@ -83,11 +83,30 @@ class LogRunTests(unittest.TestCase):
             result = daily_workflow.run_workflow(send_text=False, trigger="schedule", stage=stage)
         return result, calls, insert_rows.call_args.args[1][0]
 
-    def test_morning_stage_runs_only_the_pipeline_and_logs_kind_morning(self):
+    def test_morning_stage_runs_the_pipeline_then_temporary_predictions_and_logs_kind_morning(self):
         result, calls, row = self.run_stage("morning")
-        self.assertEqual(calls, ["run_pipeline.bat"])
+        self.assertEqual(calls, ["run_pipeline.bat", "run_predict.bat"])
+        self.assertEqual(self.envs["run_predict.bat"], {"NBA_PREDICT_PROVISIONAL": "1"})
         self.assertEqual((result["status"], row["kind"]), ("success", "morning"))
         self.assertIn("morning stage", row["notes"])
+
+    def test_a_failed_temporary_step_does_not_fail_the_morning_stage(self):
+        calls = []
+
+        def fake_bat(path, timeout=None, extra_env=None):
+            calls.append(os.path.basename(path))
+            return (1, "boom\n") if calls[-1] == "run_predict.bat" else (0, "out\n")
+
+        with patch.object(daily_workflow, "run_bat", side_effect=fake_bat), \
+                patch.object(daily_workflow, "insert_rows") as insert_rows, \
+                contextlib.redirect_stdout(io.StringIO()):
+            result = daily_workflow.run_workflow(send_text=False, trigger="schedule", stage="morning")
+        row = insert_rows.call_args.args[1][0]
+        self.assertEqual((result["status"], row["status"]), ("success", "success"))
+        self.assertIn("temporary predictions failed", row["notes"])
+
+    def test_the_picks_sms_check_ignores_temporary_predictions(self):
+        self.assertEqual(daily_workflow.saved_predictions("Saved 3 temporary prediction(s).\n"), 0)
 
     def test_predict_stage_runs_only_predictions_and_logs_kind_predict(self):
         result, calls, row = self.run_stage("predict")

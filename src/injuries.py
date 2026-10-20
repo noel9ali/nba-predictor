@@ -732,6 +732,39 @@ def latest_status(game_id: str, as_of, *, conn=None, backend: str | None = None)
     return newest_per_player(df, as_of)
 
 
+def previous_status(team_ids, before_date, days: int, *, conn=None, backend: str | None = None) -> pd.DataFrame:
+    """Newest report row per matched player for these teams from reports about games on the `days` days before
+    before_date (game_date < before_date). Used to carry an earlier status forward when today's report for a game
+    does not list a player yet. Empty when nothing is archived."""
+    if backend is None:
+        backend = "supabase" if os.getenv("NBA_PLAYER_STORE", "local").strip().lower() == "supabase" else "local"
+    ids = sorted({int(t) for t in team_ids})
+    end = date.fromisoformat(str(before_date)[:10])
+    start = (end - timedelta(days=days)).isoformat()
+    if backend == "supabase":
+        from database import select_rows
+
+        df = select_rows("injury_snapshots", filters=[("team_id", "in", ids), ("game_date", "lt", end.isoformat()),
+                                                      ("game_date", "gte", start)],
+                         order_by=["report_time", "snapshot_id"])
+    else:
+        own = conn is None
+        conn = conn or connect()
+        try:
+            marks = ",".join("?" * len(ids))
+            df = pd.read_sql_query(
+                f"select * from injury_snapshots where team_id in ({marks}) and game_date < ? and game_date >= ? "
+                "order by report_time", conn, params=(*ids, end.isoformat(), start))
+        finally:
+            if own:
+                conn.close()
+    if df.empty:
+        return df
+    df = df[df["player_id"].notna()].copy()
+    df["player_id"] = df["player_id"].astype("int64")
+    return df.sort_values(["player_id", "report_time"]).groupby("player_id", as_index=False).tail(1)         .reset_index(drop=True)
+
+
 # ---------------------------------------------------------------------------
 # Push the local sink to Supabase (after Noel applies the migration)
 # ---------------------------------------------------------------------------

@@ -193,6 +193,22 @@ def get_todays_predictions():
         return []
 
 
+def get_todays_temporary_picks():
+    """Today's temporary 6 AM picks (provisional_predictions), [] when there are none or the read fails."""
+    today = date.today().strftime('%Y-%m-%d')
+    try:
+        df = select_rows(
+            'provisional_predictions',
+            columns='home_team,away_team,home_win_prob,away_win_prob,predicted_winner,odds,bookmaker',
+            filters=[('game_date', 'eq', today)],
+            order_by='game_id',
+        )
+        return _records(df, ('home_win_prob', 'away_win_prob', 'odds'))
+    except Exception as exc:
+        print(f"⚠ get_todays_temporary_picks failed: {type(exc).__name__}")
+        return []
+
+
 def get_overall_stats():
     """Return overall prediction accuracy and bankroll info."""
     try:
@@ -234,9 +250,15 @@ def get_overall_stats():
 # SMS formatting & sending
 # ---------------------------------------------------------------------------
 
-def format_sms(yesterday_results, today_predictions, stats, include_yesterday=True, include_today=True):
-    """Build the daily SMS text. The morning stage leaves today's picks out (they come later, after the injury
-    reports); the predict stage leaves yesterday's results out (the morning text already had them)."""
+TENTATIVE_NOTE = ("These are tentative: early injury reports and morning odds, so they can change. "
+                  "Final picks (and any bets) follow about an hour before each tip.")
+
+
+def format_sms(yesterday_results, today_predictions, stats, include_yesterday=True, include_today=True,
+               temporary_picks=None):
+    """Build the daily SMS text. The morning stage shows today's temporary picks as tentative (the real picks come
+    later, after the injury reports); the predict stage leaves yesterday's results out (the morning text already
+    had them)."""
     yesterday = (date.today() - timedelta(days=1)).strftime('%b %d')
     today_str = date.today().strftime('%b %d')
 
@@ -269,7 +291,21 @@ def format_sms(yesterday_results, today_predictions, stats, include_yesterday=Tr
 
     # Today's predictions
     if not include_today:
-        lines.append("Today's picks follow later, after the injury reports.")
+        if temporary_picks:
+            lines.append(f"TENTATIVE picks ({today_str}):")
+            for g in temporary_picks:
+                win_prob = g['home_win_prob'] if g['predicted_winner'] == g['home_team'] else g['away_win_prob']
+                prob_pct = f"{win_prob:.0%}" if win_prob else "?"
+                odds = g.get('odds')
+                if odds:
+                    odds = int(odds)
+                    line = f" | {'+' if odds > 0 else ''}{odds}" + (f" ({g['bookmaker']})" if g.get('bookmaker') else "")
+                else:
+                    line = " | no odds yet"
+                lines.append(f"  {g['away_team']} @ {g['home_team']} — {g['predicted_winner']} ({prob_pct}){line}")
+            lines.append(TENTATIVE_NOTE)
+        else:
+            lines.append("Today's picks follow later, after the injury reports.")
         return "\n".join(lines)
     lines.append(f"Today's Predictions ({today_str}):")
     if today_predictions:
@@ -368,6 +404,19 @@ def run_workflow(send_text=True, trigger='schedule', stage='full'):
         else:
             print(f"✗ Pipeline exited with code {pipeline_rc}.\n")
 
+    # Step 1b — temporary picks (6 AM): a first model pass with the morning odds, shown on the site as temporary.
+    # Never a bet and never in predictions, so a failure here must not fail the morning stage.
+    temp_ok = True
+    if stage == 'morning' and pipeline_ok:
+        print("▶ Running temporary predictions (run_predict.bat, provisional)...")
+        temp_rc, temp_out = run_bat(os.path.join(REPO_ROOT, 'run_predict.bat'),
+                                    extra_env={'NBA_PREDICT_PROVISIONAL': '1'})
+        temp_ok = temp_rc == 0
+        print(temp_out)
+        print("✓ Temporary predictions complete.\n" if temp_ok
+              else f"✗ Temporary predictions exited with code {temp_rc}; the site just shows no temporary picks.\n")
+        pipeline_out += temp_out
+
     # Step 2 — predictions
     if stage in ('full', 'predict'):
         print("▶ Running run_predict.bat...")
@@ -393,9 +442,11 @@ def run_workflow(send_text=True, trigger='schedule', stage='full'):
         yesterday_results = get_yesterdays_results() if stage != 'predict' else []
         today_predictions = get_todays_predictions() if stage != 'morning' else []
         stats = get_overall_stats()
+        temporary_picks = get_todays_temporary_picks() if stage == 'morning' else []
 
         sms_body = format_sms(yesterday_results, today_predictions, stats,
-                              include_yesterday=stage != 'predict', include_today=stage != 'morning')
+                              include_yesterday=stage != 'predict', include_today=stage != 'morning',
+                              temporary_picks=temporary_picks)
         print("📱 Daily SMS:\n")
         print(sms_body)
         print()
@@ -414,6 +465,8 @@ def run_workflow(send_text=True, trigger='schedule', stage='full'):
         notes.append('pipeline failed')
     if not predict_ok:
         notes.append('predict failed')
+    if not temp_ok:
+        notes.append('temporary predictions failed')
     if send_text and not sms_sent:
         notes.append('sms not sent')
 

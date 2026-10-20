@@ -172,7 +172,7 @@ class GameAvailability:
 
     def __init__(self, game_id: str, game_date: str, home_team_id: int, away_team_id: int, as_of: datetime, *,
                  pg_all: pd.DataFrame | None = None, statuses: pd.DataFrame | None = None, conn=None,
-                 rosters: dict | None = None):
+                 rosters: dict | None = None, p_play_override=None):
         import availability_features as af
         import injuries
         from minutes import p_play_for_status, project_team
@@ -198,6 +198,8 @@ class GameAvailability:
         rosters = rosters or {}
         if getattr(config, "P_PLAY_SOURCE", "status_table") == "learned_table":
             self.p_play = self._learned_p_play(statuses, rosters)
+        if p_play_override is not None:           # temporary 6 AM picks: statuses as probabilities (see below)
+            self.p_play = p_play_override(self)
         self.projection = {}
         self.rest = {}
         season = self.pg["season"].max() if not self.pg.empty else None
@@ -402,6 +404,42 @@ def run_for_game(game_id: str, game_date: str, home_team_id: int, away_team_id: 
     result = score_with_candidate(ga, base_row, candidate, names=names) if candidate else None
     store_results(ga, result, candidate["name"] if candidate else None, conn=conn)
     return result
+
+
+def provisional_p_play(ga: "GameAvailability") -> dict:
+    """p_play for a temporary 6 AM pick. Today's report statuses become probabilities (config.PROVISIONAL_P_PLAY),
+    since they change before tip. A player not on today's report but on an earlier one (config.PROVISIONAL_CARRY_DAYS)
+    keeps a probability from that previous status (config.PROVISIONAL_CARRY_P_PLAY), unless he has played since."""
+    import injuries
+
+    p = {pid: config.PROVISIONAL_P_PLAY.get(s, 1.0) for pid, s in ga.status_of.items()}
+    try:
+        prior = injuries.previous_status(
+            [ga.home, ga.away], ga.game_date, config.PROVISIONAL_CARRY_DAYS,
+            backend="supabase" if player_store.backend() == "supabase" else "local")
+    except Exception as exc:                       # no archive yet: today's statuses alone
+        print(f"  earlier-report statuses unavailable: {type(exc).__name__}: {exc}")
+        return p
+    last_played = ga.pg.groupby("player_id")["game_date"].max().astype(str).to_dict() if not ga.pg.empty else {}
+    for r in prior.to_dict("records"):
+        pid = int(r["player_id"])
+        if pid in p or last_played.get(pid, "") >= str(r["game_date"])[:10]:
+            continue
+        p[pid] = config.PROVISIONAL_CARRY_P_PLAY.get(r["status"], 1.0)
+    return p
+
+
+def provisional_for_game(game_id: str, game_date: str, home_team_id: int, away_team_id: int, base_row: dict, *,
+                         candidate: dict | None = None, names: dict | None = None,
+                         rosters: dict | None = None) -> dict | None:
+    """run_for_game without the writes: the candidate's probability for a temporary pick. Storing here would
+    put a morning snapshot into the availability tables that status-change flags compare against."""
+    if not candidate:
+        return None
+    rosters = current_rosters() if rosters is None else rosters
+    ga = GameAvailability(game_id, game_date, home_team_id, away_team_id, datetime.now(timezone.utc),
+                          rosters=rosters, p_play_override=provisional_p_play)
+    return score_with_candidate(ga, base_row, candidate, names=names)
 
 
 # ---------------------------------------------------------------------------

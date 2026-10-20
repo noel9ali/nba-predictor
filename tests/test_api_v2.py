@@ -548,6 +548,44 @@ class SchedulePendingTests(ApiTestCase):
         self.assertIn("0022600001", ids)
         self.assertEqual(body["phase"], "picks_posted")
 
+    def test_a_temporary_pick_carries_its_price_and_is_flagged_provisional(self):
+        self.db.tables["schedule"] = [
+            {"game_id": "0022600001", "game_date": "2026-09-24", "home_team": "DET", "away_team": "BOS",
+             "tip_time_utc": "2026-09-24T19:00:00Z"},
+            {"game_id": "0022600002", "game_date": "2026-09-24", "home_team": "NYK", "away_team": "PHI",
+             "tip_time_utc": "2026-09-24T23:00:00Z"}]
+        self.db.tables["provisional_predictions"] = [
+            {"game_id": "0022600001", "game_date": "2026-09-24", "home_team": "DET", "away_team": "BOS",
+             "home_win_prob": 0.4, "away_win_prob": 0.6, "predicted_winner": "BOS", "odds": 120,
+             "bookmaker": "FanDuel", "implied_prob": 0.4545, "edge": 0.1455},
+            {"game_id": "0022600002", "game_date": "2026-09-23", "home_team": "NYK", "away_team": "PHI",
+             "home_win_prob": 0.7, "away_win_prob": 0.3, "predicted_winner": "NYK", "odds": None,
+             "bookmaker": None, "implied_prob": None, "edge": None}]
+        body = self.get("/api/slate").get_json()
+        first, second = body["games"]
+        self.assertTrue(first["provisional"])
+        self.assertEqual((first["pick"], first["odds"], first["bookmaker"]), ("BOS", 120, "FanDuel"))
+        self.assertAlmostEqual(first["pick_prob"], 0.6)
+        self.assertAlmostEqual(first["edge"], 0.1455)
+        self.assertIsNone(first["bet"])                      # a temporary pick is never a bet
+        self.assertNotIn("provisional", second)              # yesterday's temporary row is ignored
+        self.assertIsNone(second["pick"])
+        self.assertEqual(body["phase"], "before_predictions")
+
+    def test_a_real_prediction_replaces_the_temporary_pick(self):
+        self.db.tables["schedule"] = [
+            {"game_id": "0022501100", "game_date": "2026-04-10", "home_team": "SAC", "away_team": "GSW",
+             "tip_time_utc": None}]
+        self.db.tables["provisional_predictions"] = [
+            {"game_id": "0022501100", "game_date": "2026-04-10", "home_team": "SAC", "away_team": "GSW",
+             "home_win_prob": 0.1, "away_win_prob": 0.9, "predicted_winner": "GSW", "odds": 100,
+             "bookmaker": "X", "implied_prob": 0.5, "edge": 0.4}]
+        with patch.object(dashboard, "today_et", lambda: date(2026, 4, 10)):
+            games = self.get("/api/slate").get_json()["games"]
+        game = next(g for g in games if g["game_id"] == "0022501100")
+        self.assertNotIn("provisional", game)
+        self.assertEqual(game["pick"], "SAC")
+
     def test_a_past_date_never_lists_schedule_games(self):
         self.db.tables["schedule"] = [
             {"game_id": "0022600001", "game_date": "2026-04-10", "home_team": "DET", "away_team": "BOS",

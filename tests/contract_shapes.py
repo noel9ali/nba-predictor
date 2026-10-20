@@ -74,6 +74,7 @@ GAME = {
     "skip_reason": Opt(Enum("no_odds", "missing_data", "availability_uncertain")),
     "book_grid": Opt(BOOK_GRID),
     "availability_summary": Maybe(AVAIL_SUMMARY),
+    "provisional": Maybe(bool),   # true only for a temporary 6 AM pick; absent once the real prediction posts
 }
 BET_REF = {"game_id": GAME_ID, "profit_loss": NUM}
 RECAP = {

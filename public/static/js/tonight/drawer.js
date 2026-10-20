@@ -126,6 +126,13 @@ function mathSection(g) {
   const why = text => dl.append(el('dd', 'why', text));
   const b = g.bet, pick = g.pick || (b && b.side) || null, o = g.odds;
   const modelLabel = pick ? 'Model: ' + pick + ' wins' : 'Model';
+  if (g.provisional) {
+    row(modelLabel + ' (temporary)', fmt.pct(g.pick_prob));
+    row('Market: ' + (o == null ? 'no odds yet' : fmt.odds(o) + (g.bookmaker ? ' ' + g.bookmaker : '')), o == null ? '—' : fmt.pct(g.implied_prob));
+    row('Edge', o == null ? '—' : fmt.pts(g.edge) + ' pts', true);
+    why('Temporary pick from the 6 AM run, using the morning odds. It can change. No bet is placed until the final pick posts about an hour before the first tip.');
+    return dl;
+  }
   if (!b) {
     const skip = g.skip_reason;
     row(modelLabel, skip === 'missing_data' ? '—' : fmt.pct(g.pick_prob));

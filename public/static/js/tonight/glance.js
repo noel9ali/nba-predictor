@@ -67,7 +67,11 @@ function sentence(s) {
   const phase = phaseOf();
   if (phase === 'no_games') return 'No games tonight';
   if (phase === 'offseason') return 'Offseason';
-  if (phase === 'before_predictions') return 'Picks post about an hour before the first tip.';
+  if (phase === 'before_predictions') {
+    return store.games.some(g => g.provisional)
+      ? 'Temporary picks from the 6 AM run. Final picks post about an hour before each tip.'
+      : 'Picks post about an hour before the first tip.';
+  }
   if (phase === 'prediction_failed') return "Tonight's picks didn't post.";
   const allDone = store.games.length > 0 && store.games.every(done);
   if (allDone) {
@@ -162,6 +166,8 @@ function stateHTML(g) {
 function rowLabel(g) {
   const ps = pickSide(g), A = g.away.tricode, H = g.home.tricode;
   if (!ps) return A + ' at ' + H + '. Pick pending. Open details';
+  if (g.provisional) return A + ' at ' + H + '. Temporary pick ' + g.pick + ', ' + fmt.pct(g.pick_prob) +
+    (g.odds != null ? ', ' + fmt.odds(g.odds) : '') + '. Not final, no bet yet. Open details';
   const m = g.implied_prob;
   return A + ' at ' + H + '. Model ' + fmt.pct(g.pick_prob) + ' for ' + g.pick +
     (m != null ? ', market ' + fmt.pct(m) + ', edge ' + fmt.pts(g.edge) + ' points' : '') + '. ' +
@@ -176,6 +182,11 @@ function labHTML(g) {
   }
   const opp = ps === 'away' ? g.home.tricode : g.away.tricode;
   const em = g.edge != null && g.implied_prob != null ? fmt.pts(g.edge) : '';
+  if (g.provisional) {
+    return '<span class="who">Temporary pick</span><b>' + esc(g.pick) + ' <em class="' + (g.edge > 0 ? 'pe' : 'ne') + '">' + esc(em) + '</em></b>' +
+      '<span class="sub">' + (ps === 'away' ? 'at ' : 'vs ') + esc(opp) + ' · ' +
+      (g.odds != null ? esc(fmt.odds(g.odds)) + (g.bookmaker ? ' ' + esc(g.bookmaker) : '') : 'no odds yet') + ' · not final</span>';
+  }
   return '<span class="who">' + (g.bet ? 'Bet on' : 'Pick · no bet') + '</span>' +
     '<b>' + esc(g.pick) + ' <em class="' + (g.edge > 0 ? 'pe' : 'ne') + '">' + esc(em) + '</em></b>' +
     '<span class="sub">' + (ps === 'away' ? 'at ' : 'vs ') + esc(opp) + ' · ' +

@@ -84,6 +84,16 @@ STATUS_TO_P_PLAY = {
     None: 1.0,          # no report entry
 }
 
+# Temporary 6 AM picks (predict.py with NBA_PREDICT_PROVISIONAL=1). Reports at 6 AM are early and change before
+# tip, so a status is a probability, not a fact. Hand-set best judgement, not fitted; revisit once a few weeks of
+# 6 AM reports and tip-time outcomes are archived.
+# Probability the player plays, by the status on today's report for this game:
+PROVISIONAL_P_PLAY = {"out": 0.03, "doubtful": 0.15, "questionable": 0.5, "probable": 0.9, "available": 0.97}
+# A player missing from today's report but on an earlier one (within PROVISIONAL_CARRY_DAYS, and who has not played
+# since) by that earlier status: injuries persist, but coming off the report usually means improving.
+PROVISIONAL_CARRY_P_PLAY = {"out": 0.25, "doubtful": 0.4, "questionable": 0.8, "probable": 0.95, "available": 1.0}
+PROVISIONAL_CARRY_DAYS = 7
+
 # ---------------------------------------------------------------------------
 # Player data foundation (phase 1)
 # ---------------------------------------------------------------------------

@@ -266,13 +266,13 @@ function setSlateMeta(slate) {
 
 function scheduleBeforeRefetch() {
   clearTimeout(refetchTimer);
-  const awaitingPicks = store.games.some(g => g.pick == null && !g.bet && !g.skip_reason && g.state === 'scheduled');
+  const awaitingPicks = store.games.some(g => (g.pick == null || g.provisional) && !g.bet && !g.skip_reason && g.state === 'scheduled');
   if (!store.slate || store.isPast || (store.slate.phase !== 'before_predictions' && !awaitingPicks)) return;
   refetchTimer = setTimeout(async () => {
     if (document.hidden) { scheduleBeforeRefetch(); return; }
     try {
       const s = await api.slate(store.date || undefined);
-      const changed = s.phase !== store.slate.phase || (s.games || []).some(sg => { const o = game(sg.game_id); return !o || o.pick !== sg.pick || !!o.bet !== !!sg.bet; });
+      const changed = s.phase !== store.slate.phase || (s.games || []).some(sg => { const o = game(sg.game_id); return !o || o.pick !== sg.pick || !!o.bet !== !!sg.bet || !!o.provisional !== !!sg.provisional; });
       if (changed) { reconcile(s); emit([{ type: 'slate', refetch: true }]); }
     } catch { /* try again next minute */ }
     scheduleBeforeRefetch();
