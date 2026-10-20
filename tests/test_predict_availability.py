@@ -140,6 +140,7 @@ class PredictDryRunTests(unittest.TestCase):
                 patch.object(predict, "get_current_ratings", return_value={DEN: 1600, LAL: 1500}), \
                 patch.object(predict, "get_todays_games", return_value=slate), \
                 patch.object(predict, "not_yet_predicted", side_effect=lambda g: g), \
+                patch.object(predict, "record_schedule"), \
                 patch.object(predict, "odds_call_allowed", return_value=True), \
                 patch.object(predict, "record_odds_call"), \
                 patch.object(predict, "get_tonights_odds", return_value={}), \

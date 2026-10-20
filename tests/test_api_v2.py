@@ -509,6 +509,53 @@ class DbViewTests(ApiTestCase):
                                             "bets": "1-1", "net_pl": 27.93, "pending": 0})
 
 
+class SchedulePendingTests(ApiTestCase):
+    """Games the predict stage recorded in schedule are listed "pick pending" until predictions exist."""
+    env = V2_ON
+
+    def tables(self):
+        return v2_tables()
+
+    def test_todays_unpredicted_games_are_listed_as_pick_pending(self):
+        self.db.tables["schedule"] = [
+            {"game_id": "0022600001", "game_date": "2026-09-24", "home_team": "DET", "away_team": "BOS",
+             "tip_time_utc": "2026-09-24T19:00:00Z"},
+            {"game_id": "0022600002", "game_date": "2026-09-24", "home_team": "LAL", "away_team": "DEN",
+             "tip_time_utc": "2026-09-24T23:30:00Z"},
+            {"game_id": "0022600009", "game_date": "2026-09-23", "home_team": "NYK", "away_team": "MIA",
+             "tip_time_utc": "2026-09-23T23:30:00Z"}]
+        body = self.get("/api/slate").get_json()
+        self.assertEqual(body["phase"], "before_predictions")
+        self.assertFalse(body["offseason"])
+        self.assertEqual([g["game_id"] for g in body["games"]], ["0022600001", "0022600002"])
+        first = body["games"][0]
+        self.assertEqual((first["home"]["tricode"], first["away"]["tricode"]), ("DET", "BOS"))
+        self.assertEqual(first["status"], "scheduled")
+        for field in ("pick", "bet", "skip_reason"):
+            self.assertIsNone(first[field])
+        self.assertEqual(body["summary"]["games"], 2)
+
+    def test_a_game_with_a_prediction_is_not_also_listed_as_pending(self):
+        self.db.tables["schedule"] = [
+            {"game_id": "0022501100", "game_date": "2026-04-10", "home_team": "SAC", "away_team": "LAL",
+             "tip_time_utc": None},
+            {"game_id": "0022600001", "game_date": "2026-04-10", "home_team": "DET", "away_team": "BOS",
+             "tip_time_utc": None}]
+        with patch.object(dashboard, "today_et", lambda: date(2026, 4, 10)):
+            body = self.get("/api/slate").get_json()
+        ids = [g["game_id"] for g in body["games"]]
+        self.assertEqual(ids.count("0022501100"), 1)
+        self.assertIn("0022600001", ids)
+        self.assertEqual(body["phase"], "picks_posted")
+
+    def test_a_past_date_never_lists_schedule_games(self):
+        self.db.tables["schedule"] = [
+            {"game_id": "0022600001", "game_date": "2026-04-10", "home_team": "DET", "away_team": "BOS",
+             "tip_time_utc": None}]
+        ids = [g["game_id"] for g in self.get("/api/slate?date=2026-04-10").get_json()["games"]]
+        self.assertNotIn("0022600001", ids)
+
+
 class PostMigrationTests(ApiTestCase):
     env = V2_ON
 

@@ -9,7 +9,7 @@
     "random-forest-gridsearch",
     "lstm-gridsearch"
   ],
-  "trained_at": "2026-10-07T05:09:34.120013+00:00",
+  "trained_at": "2026-10-20T10:05:48.899515+00:00",
   "cutoff_date": "2025-02-25",
   "features": [
     "HOME_roll_PTS",

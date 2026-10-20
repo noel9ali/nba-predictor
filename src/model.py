@@ -465,6 +465,14 @@ def _save_leaderboard(leaderboard, best_model_name, cutoff, training=None):
     }
     if training is not None:
         metadata["training"] = training
+    # The candidates block is written by scripts/evaluate_availability.py, not by training; keep it.
+    try:
+        with open(METADATA_PATH, encoding="utf-8") as handle:
+            previous = json.load(handle)
+    except (OSError, ValueError):
+        previous = {}
+    if isinstance(previous, dict) and previous.get("candidates"):
+        metadata["candidates"] = previous["candidates"]
     with open(METADATA_PATH, "w", encoding="utf-8") as handle:
         json.dump(metadata, handle, indent=2)
 
@@ -528,6 +536,13 @@ def run():
     fitted_lookup = {item["model_name"]: item["model"] for item in fitted}
     if production_model_name in fitted_lookup:
         best_model_name = production_model_name
+    elif production_model_name.startswith("lr-calibrated-availability-"):
+        # Served at predict time from data/candidates (src/availability_predict.py); model.pkl stays the base model.
+        print(
+            f"Production model '{production_model_name}' is an availability candidate applied at predict time; "
+            f"saving leaderboard best '{leaderboard_best}' as the base model."
+        )
+        best_model_name = leaderboard_best
     else:
         print(
             f"Configured production model '{production_model_name}' is unavailable. "

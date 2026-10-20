@@ -1147,6 +1147,21 @@ def add_availability_summaries(games):
         x["availability_summary"] = api_availability.summary(a, status_changed=flag) if has_data else None
 
 
+def unpredicted_today(rows, day):
+    """Today's games from schedule (written by the predict stage) that have no predictions row yet, shaped
+    as predictions rows so build_game lists them with no pick. Picks post about an hour before each tip,
+    so until then the slate would otherwise be empty."""
+    have = {normalize_game_id(r.get("game_id")) for r in rows}
+    return [
+        {"game_id": normalize_game_id(s["game_id"]), "game_date": day, "home_team": s["home_team"],
+         "away_team": s["away_team"], "tip_time_utc": s.get("tip_time_utc"), "status": "scheduled"}
+        for s in records(read_v2_rows(
+            "schedule", columns="game_id,home_team,away_team,tip_time_utc",
+            filters=[("game_date", "eq", day)], order_by="game_id"))
+        if normalize_game_id(s["game_id"]) not in have and s["home_team"] in TEAMS and s["away_team"] in TEAMS
+    ]
+
+
 @app.route("/api/slate")
 def api_slate():
     today = today_et()
@@ -1160,14 +1175,17 @@ def api_slate():
         read_predictions(filters=[("game_date", "eq", day)], order_by="game_id"))
     latest_date = latest_prediction_date_before(day)
     season = season_for(day)
+    unpredicted = [] if is_hidden_day(day) or day != today.isoformat() else unpredicted_today(rows, day)
     grids = book_grids_for(r["game_id"] for r in rows) if rows else {}
     forms = team_forms_for(
-        [t for r in rows for t in (r.get("home_team"), r.get("away_team"))], season, day
-    ) if rows else {}
-    games = sorted((build_game(r, grids, forms) for r in rows), key=tip_order_key)
+        [t for r in rows + unpredicted for t in (r.get("home_team"), r.get("away_team"))], season, day
+    ) if rows or unpredicted else {}
+    games = sorted((build_game(r, grids, forms) for r in rows + unpredicted), key=tip_order_key)
     add_availability_summaries(games)
 
     phase = slate_phase(games, day, today, latest_date)
+    if unpredicted and not rows:
+        phase = "before_predictions"  # every game is a "pick pending" placeholder
     is_past = day < today.isoformat()
     settled_bets = [r for r in rows if is_settled(r) and bet_amount(r) > 0]
     days_since_last = (

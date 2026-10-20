@@ -8,7 +8,7 @@ from console import force_utf8_stdio
 from track import setup_tables, save_prediction, kelly_bet, get_current_bankroll
 from odds import get_tonights_odds
 from elo import get_current_ratings
-from database import select_rows
+from database import select_rows, upsert_rows
 
 # --- Config ---
 FEATURES = [
@@ -69,6 +69,22 @@ def within_window(games, minutes, now=None):
     tip = pd.to_datetime(games['TIP_UTC'], utc=True, errors='coerce')
     soon = tip.isna() | (tip <= now + pd.Timedelta(minutes=minutes))
     return games[soon].reset_index(drop=True)
+
+
+def record_schedule(games):
+    """Upsert today's slate to schedule so the site can list games whose picks haven't posted yet.
+    Best effort: a failure here must never stop predictions."""
+    try:
+        rows = [{
+            'game_id': str(g['gameId']),
+            'game_date': str(date.today()),
+            'home_team': g['HOME_TEAM_ABBREVIATION'],
+            'away_team': g['VISITOR_TEAM_ABBREVIATION'],
+            'tip_time_utc': g.get('TIP_UTC') if isinstance(g.get('TIP_UTC'), str) else None,
+        } for g in games.to_dict('records') if g['HOME_TEAM_ABBREVIATION'] and g['VISITOR_TEAM_ABBREVIATION']]
+        upsert_rows('schedule', rows, conflict_columns=['game_id'])
+    except Exception as exc:
+        print(f"Could not record today's schedule ({type(exc).__name__}); the site will not list pending games.")
 
 
 def not_yet_predicted(games):
@@ -323,6 +339,7 @@ def run():
     if len(games) == 0:
         print("No games today.")
         return
+    record_schedule(games)
 
     # skip games already in progress or finished (a late-day run, or a manual re-run)
     scheduled = not_started(games)

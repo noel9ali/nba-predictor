@@ -266,7 +266,8 @@ function setSlateMeta(slate) {
 
 function scheduleBeforeRefetch() {
   clearTimeout(refetchTimer);
-  if (!store.slate || store.slate.phase !== 'before_predictions' || store.isPast) return;
+  const awaitingPicks = store.games.some(g => g.pick == null && !g.bet && !g.skip_reason && g.state === 'scheduled');
+  if (!store.slate || store.isPast || (store.slate.phase !== 'before_predictions' && !awaitingPicks)) return;
   refetchTimer = setTimeout(async () => {
     if (document.hidden) { scheduleBeforeRefetch(); return; }
     try {
