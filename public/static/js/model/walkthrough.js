@@ -144,7 +144,7 @@ export function buildWalkModel({ detail, model } = {}) {
   else if (prod.includes('xgboost')) modelPhrase = 'a gradient-boosted set of decision trees';
   else if (prod.includes('lstm')) modelPhrase = 'an LSTM network';
   const p100 = Math.round(P * 100);
-  s4.text = `All ${FEATURE_COUNT} numbers are put on the same scale, weighed, and turned into one probability by ${modelPhrase}.`
+  s4.text = `All ${FEATURE_COUNT} numbers ${how}`
     + (prod.includes('calibrated') ? ` A calibration step then adjusts it so that "${p100}%" means about ${p100} out of 100 such games.` : '');
   s4.math = [`Model: ${pickTri} wins ${pct1(P)}%`];
   if (pElo != null) {

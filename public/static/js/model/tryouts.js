@@ -34,7 +34,7 @@ function findProduction(rows, productionModel) {
 const ceil1 = x => Math.ceil(x * 10 - 1e-9) / 10;
 
 function familyOf(key) {
-  const k = String(key).toLowerCase().replace(/^legacy-/, '').replace(/^(calibrated|current)-/, '');
+  const k = String(key).toLowerCase().replace(/^legacy-/, '').replace(/-gridsearch$/, '').replace(/^(calibrated|current)-/, '');
   const map = { logistic: 'logistic', 'gradient-boosting': 'gradient boosting', 'random-forest': 'random forest', lstm: 'LSTM', xgboost: 'XGBoost' };
   return Object.prototype.hasOwnProperty.call(map, k) ? map[k] : k.replace(/[-_]+/g, ' ');
 }

@@ -7,10 +7,6 @@ import { onScrollFrame, replay } from '../reveal.js';
 const $ = (s, r = document) => r.querySelector(s);
 let pin, head, scrolly, court, txt = null, wired = false;
 
-export function etDate(iso) {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: TZ });
-}
-
 function buildTitle(h1, k) {
   h1.textContent = '';
   const w = document.createElement('span');

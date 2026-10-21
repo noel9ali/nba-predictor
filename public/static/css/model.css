@@ -60,7 +60,7 @@ body.page-model section.chapter{padding-block:clamp(64px,8vw,104px) 0}
 /* ---- Chapter 1: season switcher, board, compare cards ---- */
 .seasonbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
 .seasonbar span{font:600 11px/1 var(--mono);text-transform:uppercase;letter-spacing:.12em;color:var(--ink-2);margin-right:6px}
-.seasonbar button{min-height:40px;padding:0 14px;border:2px solid var(--line);background:transparent;color:var(--ink-2);
+.seasonbar button{min-height:44px;padding:0 14px;border:2px solid var(--line);background:transparent;color:var(--ink-2);
   font:700 12px/1 var(--body);text-transform:uppercase;letter-spacing:.08em;cursor:pointer}
 .seasonbar button[aria-pressed="true"]{border-color:var(--paint);color:var(--ink)}
 
@@ -99,7 +99,7 @@ body.page-model section.chapter{padding-block:clamp(64px,8vw,104px) 0}
   .wts .val{font-size:12px}
 }
 /* M7: bars grow from the left */
-.wts .w .tr i{transform-origin:left center;transition:transform .9s cubic-bezier(.2,.8,.2,1)}
+.wts .w .tr i{transform-origin:left center;transition:transform .7s cubic-bezier(.2,.8,.2,1)}
 .js .wts:not(.in) .w .tr i{transform:scaleX(0)}
 .wts .w:nth-child(2) .tr i{transition-delay:.08s}
 .wts .w:nth-child(3) .tr i{transition-delay:.16s}
@@ -145,10 +145,10 @@ body.page-model section.chapter{padding-block:clamp(64px,8vw,104px) 0}
 .why p{margin:0;color:var(--t-ink-2);max-width:72ch}
 
 /* M8: lines draw left to right, production last; nodes and values fade in */
-.bump .ln{stroke-dasharray:1;stroke-dashoffset:0;transition:stroke-dashoffset 1.4s cubic-bezier(.4,0,.2,1)}
+.bump .ln{stroke-dasharray:1;stroke-dashoffset:0;transition:stroke-dashoffset .9s cubic-bezier(.4,0,.2,1)}
 .js .bump:not(.in) .ln{stroke-dashoffset:1}
-.bump g.prod .ln{transition-delay:.5s;transition-duration:1.6s}
-.bump .nd,.bump .vl{transition:opacity .4s 1.2s}
+.bump g.prod .ln{transition-delay:.15s;transition-duration:1s}
+.bump .nd,.bump .vl{transition:opacity .4s .7s}
 .js .bump:not(.in) .nd,.js .bump:not(.in) .vl{opacity:0}
 .js .bump.rv:not(.in){opacity:1;transform:none}
 
@@ -204,7 +204,7 @@ body.page-model section.chapter{padding-block:clamp(64px,8vw,104px) 0}
 .pin2[data-state="all"] .lg-test{opacity:.35}
 
 /* deal-in (only under html.js) */
-.js .sz{animation:szin .6s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--n) * 90ms);animation-play-state:paused}
+.js .sz{animation:szin .6s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(min(var(--n), 5) * 70ms);animation-play-state:paused}
 .js .pin2.lit .sz{animation-play-state:running}
 @keyframes szin{from{transform:scaleX(0);opacity:0}}
 
@@ -217,9 +217,11 @@ body.page-model section.chapter{padding-block:clamp(64px,8vw,104px) 0}
   .pin2[data-state="all"] .splitflag i{transform:translate(-84%,-14px)}
 }
 
-@media (max-width:560px){
+@media (max-width:900px){
   .slabels .l-full{display:none}
   .slabels .l-short{display:inline}
+}
+@media (max-width:560px){
   .scounts .c-b{display:block}
 }
 
@@ -280,7 +282,8 @@ body.page-model section.chapter{padding-block:clamp(64px,8vw,104px) 0}
 /* step 1: Elo */
 .walk .elo{display:grid;gap:14px}
 .walk .elo .r{display:grid;grid-template-columns:52px minmax(0,1fr) 70px;gap:12px;align-items:center;font:500 13px/1 var(--mono)}
-.walk .elo .r b{font:400 20px/1 var(--jersey)}
+.walk .elo .r b{font:400 20px/1 var(--jersey);white-space:nowrap}
+.walk .tth b{white-space:nowrap}
 .walk .elo .v{text-align:right}
 .walk .elo .track{position:relative;height:30px;background:linear-gradient(90deg,var(--edge) 1px,transparent 1px) 0 0/10% 100%;border-bottom:2px solid var(--line)}
 .walk .elo .fill{position:absolute;left:0;top:4px;bottom:4px;background:var(--paint-wash);border-right:3px solid var(--paint)}
@@ -304,7 +307,7 @@ body.page-model section.chapter{padding-block:clamp(64px,8vw,104px) 0}
 /* step 3: rest */
 .walk .rest{display:grid;gap:12px}
 .walk .rest .r{display:grid;grid-template-columns:52px repeat(4,minmax(0,1fr));gap:6px;align-items:center}
-.walk .rest .r b{font:400 20px/1 var(--jersey)}
+.walk .rest .r b{font:400 20px/1 var(--jersey);white-space:nowrap}
 .walk .rest .cap{margin:0}
 .walk .rest .d{height:44px;border:2px solid var(--line);display:grid;place-items:center;font:500 11px/1.2 var(--mono);color:var(--ink-2);text-align:center;min-width:0}
 .walk .rest .d.g{background:var(--panel);border-color:var(--ink-2);color:var(--ink)}
@@ -339,6 +342,8 @@ body.page-model section.chapter{padding-block:clamp(64px,8vw,104px) 0}
 .walk .mini-stamp small{display:block;font:600 12px/1.2 var(--mono);margin-top:4px;white-space:nowrap}
 @media (max-width:420px){
   .walk .mini-ticket{grid-template-columns:80px minmax(0,1fr)}
+  .walk .mini-ticket .stub{padding:16px 8px}
+  .walk .mini-ticket .stub b{font-size:22px}
   .walk .mini-ticket .body{padding:16px 14px}
   .walk .mini-ticket .sp{height:110px}
   .walk .mini-stamp{right:12px;bottom:48px}

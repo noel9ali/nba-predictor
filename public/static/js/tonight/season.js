@@ -137,7 +137,10 @@ function renderBankroll(step) {
   const tx = xs(N);
   if (store.isPast && store.slate) {
     const i = S.findIndex(x => x.date === store.slate.date);
-    if (i >= 0) s += '<g class="ov pn"><circle class="tnp" cx="' + r1(pts[i][0]) + '" cy="' + r1(pts[i][1]) + '" r="7"/><text class="tnt" x="' + r1(pts[i][0]) + '" y="' + r1(pts[i][1] - 14) + '" text-anchor="middle">' + md(S[i].date) + ' ' + fmt.money(S[i].nightly_pl, true) + '</text></g>';
+    if (i >= 0) {
+      const text = md(S[i].date) + ' ' + fmt.money(S[i].nightly_pl, true), at = fitAnchor(pts[i][0], labelWidth(text), pad.l, W - pad.r);
+      s += '<g class="ov pn"><circle class="tnp" cx="' + r1(pts[i][0]) + '" cy="' + r1(pts[i][1]) + '" r="7"/><text class="tnt" x="' + r1(at.x) + '" y="' + r1(pts[i][1] - 14) + '" text-anchor="' + at.anchor + '">' + text + '</text></g>';
+    }
   } else if (tonightOn) {
     const yN = yv(tnNow), yHi = yv(tnHi), yLo = yv(tnLo), ranged = tonightOn && sm.open > 0;
     let o = '<g class="ov tn">';
@@ -147,8 +150,10 @@ function renderBankroll(step) {
       '<text class="tnt" x="' + r1(tx - 12) + '" y="' + r1(yN - 12) + '" text-anchor="end">Tonight ' + fmt.money(tnNow) + '</text>';
     // Designer ruling 9: hide a range label that would sit within 18px of the Tonight label.
     const tY = yN - 12;
-    if (ranged && Math.abs((yHi + 4) - tY) >= 18) o += '<text class="tns" x="' + r1(tx - 8) + '" y="' + r1(yHi + 4) + '" text-anchor="end">all cash ' + fmt.money(tnHi) + '</text>';
-    if (ranged && Math.abs((yLo + 4) - tY) >= 18) o += '<text class="tns" x="' + r1(tx - 8) + '" y="' + r1(yLo + 4) + '" text-anchor="end">all lose ' + fmt.money(tnLo) + '</text>';
+    // The start-bankroll rule is dashed too, so a range label keeps clear of it.
+    const rules = [yv(start)], yHiL = nudgeClear(yHi, rules) + 4, yLoL = nudgeClear(yLo, rules) + 4;
+    if (ranged && Math.abs(yHiL - tY) >= 18) o += '<text class="tns" x="' + r1(tx - 8) + '" y="' + r1(yHiL) + '" text-anchor="end">all cash ' + fmt.money(tnHi) + '</text>';
+    if (ranged && Math.abs(yLoL - tY) >= 18) o += '<text class="tns" x="' + r1(tx - 8) + '" y="' + r1(yLoL) + '" text-anchor="end">all lose ' + fmt.money(tnLo) + '</text>';
     s += o + '</g>';
   }
   const ticks = (N === 2 ? [0, 1] : [0, Math.floor(N / 2), N - 1]).map(i => '<text class="ax" x="' + r1(xs(i)) + '" y="' + (H - 6) + '" text-anchor="' + (i === 0 ? 'start' : i === N - 1 ? 'end' : 'middle') + '">' + md(S[i].date) + '</text>').join('');
