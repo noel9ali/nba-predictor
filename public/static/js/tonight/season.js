@@ -1,6 +1,7 @@
 // "How the model is doing": season board, pinned bankroll chart with three scroll steps
 // (T13–T15), the last-33 W/L strip (T16) and the calibration card with model facts (T17).
 import { fmt, esc, wl, MINUS, word, seasonLabel, modelLabel } from '../format.js';
+import { labelWidth, fitAnchor, nudgeClear } from '../labels.js';
 import { renderBoard, signCls } from '../board.js';
 import { renderCalibration } from '../calibration-chart.js';
 import { watch, motionOn, replay } from '../reveal.js';
