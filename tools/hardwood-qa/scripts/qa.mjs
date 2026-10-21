@@ -240,7 +240,11 @@ async function openPage(browser, base, def, width, opts = {}) {
   const ctx = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: opts.reduced ? 'reduce' : 'no-preference' });
   const page = await ctx.newPage();
   const log = [];
-  page.on('console', m => { if (m.type() === 'error') log.push(m.text()); });
+  // The page wraps each section in safe(), which reports a crash as a warning ("hero failed ..."), so
+  // warnings that name a failure or a script error count too.
+  page.on('console', m => {
+    if (m.type() === 'error' || (m.type() === 'warning' && /\bfailed\b|is not defined|Error:/.test(m.text()))) log.push(m.text());
+  });
   page.on('response', r => { if (r.status() >= 400 && !/\/api\/(game\/|workflow-status)/.test(r.url())) log.push(`${r.status()} ${r.url().replace(/^https?:\/\/[^/]+/, '')}`); });
   page.on('pageerror', e => log.push(String(e)));
   await page.addInitScript(() => {

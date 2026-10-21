@@ -113,24 +113,6 @@ perfP.then(async perfAll => {
 
 modelP.then(m => { if (m) { renderModelChapters(m); observeReveals(); } });
 
-// Chapter 3 never hides: when the featured game can't load, a visible card stands in so the
-// chapter numbers stay fixed and the reader knows something is missing.
-function walkFallback(section) {
-  const body = section.querySelector('[data-body]');
-  body.textContent = '';
-  const lede = section.querySelector('.ch p');
-  if (lede) lede.textContent = 'This chapter follows one settled pick from ratings to a stamped ticket.';
-  const card = document.createElement('div');
-  card.className = 'card walk-fallback';
-  card.setAttribute('role', 'status');
-  card.dataset.walkFallback = '';
-  const p = document.createElement('p');
-  p.textContent = "Walkthrough unavailable: the featured game couldn't load.";
-  card.append(p);
-  body.append(card);
-  section.hidden = false;
-  numberChapters();
-}
 
 Promise.all([detailP, first]).then(([d, m]) => {
   detail = d;
