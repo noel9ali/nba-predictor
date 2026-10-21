@@ -2,7 +2,7 @@
 daily_workflow.py — NBA Predictor daily automation orchestrator.
 
 Runs the morning pipeline (collect → elo → features → model → track) and
-evening predictions, then sends a Twilio SMS summary and logs the run.
+evening predictions, then notifies (ntfy for picks and results, email for the daily summary) and logs the run.
 
 Can be invoked directly:
     python daily_workflow.py                    # everything in one go
@@ -12,11 +12,13 @@ Can be invoked directly:
 Or triggered via the Flask API (POST /api/run-workflow).
 """
 
+import json
 import os
 import re
 import sys
 import subprocess
 import threading
+import time
 from datetime import date, datetime, timedelta
 
 import pandas as pd
@@ -43,7 +45,8 @@ WORKFLOW_LOG_MIGRATION = 'supabase/migrations/20260923000500_workflow_log.sql'
 LOG_TAIL_CHARS = 4000
 SECRET_ENV_VARS = ('SUPABASE_SECRET_KEY', 'ODDS_API_KEY', 'TWILIO_AUTH_TOKEN',
                     'TWILIO_API_SID', 'TWILIO_CLIENT_SECRET',
-                    'TWILIO_ACCOUNT_SID', 'TWILIO_FROM', 'TWILIO_TO')
+                    'TWILIO_ACCOUNT_SID', 'TWILIO_FROM', 'TWILIO_TO',
+                    'NTFY_TOKEN', 'SMTP_USER', 'SMTP_PASSWORD', 'ALERT_EMAIL_TO', 'ALERT_EMAIL_FROM')
 DEFAULT_STEP_TIMEOUT_SECONDS = 7200  # 2 hours; overridable via WORKFLOW_STEP_TIMEOUT_SECONDS
 
 
@@ -327,29 +330,208 @@ def format_sms(yesterday_results, today_predictions, stats, include_yesterday=Tr
     return "\n".join(lines)
 
 
-def send_sms(body):
-    """Send SMS via Twilio. Returns True on success."""
-    account_sid = os.getenv('TWILIO_ACCOUNT_SID')
-    from_number = os.getenv('TWILIO_FROM')
-    to_number = os.getenv('TWILIO_TO')
-    # An API key (TWILIO_API_SID + TWILIO_CLIENT_SECRET) is preferred over the account auth token.
-    api_sid, api_secret = os.getenv('TWILIO_API_SID'), os.getenv('TWILIO_CLIENT_SECRET')
-    auth_token = os.getenv('TWILIO_AUTH_TOKEN')
-    username, password = (api_sid, api_secret) if api_sid and api_secret else (account_sid, auth_token)
+# ---------------------------------------------------------------------------
+# Notifications: picks and results over ntfy (public topic), daily summary by email
+# ---------------------------------------------------------------------------
+# Twilio SMS was dropped: carriers filtered the odds/picks text (error 30007) while the log said "sent".
+# Every channel here returns a result dict and never raises, so a messaging failure cannot fail the pipeline.
 
-    if not all([account_sid, username, password, from_number, to_number]):
-        print("⚠ Twilio credentials not configured — SMS skipped.")
-        return False
+NTFY_DEFAULT_SERVER = 'https://ntfy.sh'
+NTFY_DEFAULT_TOPIC = 'nba-predictor-picks'
+NTFY_DISCLAIMER = "Not financial advice. 21+, gamble responsibly."
+RETRY_BACKOFF_SECONDS = (10, 30)         # waits before attempt 2 and 3
+MAX_ATTEMPTS = 3
+SENT_KEEP_DAYS = 14
+_sleep = time.sleep                      # patched in tests
+
+
+def _result(channel, status, detail=''):
+    """status: sent | skipped | failed."""
+    return {'channel': channel, 'status': status, 'detail': redact_secrets(str(detail))}
+
+
+def _with_retries(attempt):
+    """Run attempt() -> (ok, transient, detail) up to MAX_ATTEMPTS times; only transient failures are retried."""
+    detail = ''
+    for n in range(MAX_ATTEMPTS):
+        ok, transient, detail = attempt()
+        if ok:
+            return True, detail
+        if not transient or n == MAX_ATTEMPTS - 1:
+            break
+        _sleep(RETRY_BACKOFF_SECONDS[n])
+    return False, detail
+
+
+def send_ntfy(title, message, tags=None, click=None):
+    """Publish one push to the ntfy topic. 429, 5xx and network errors are retried; other 4xx are not."""
+    import requests
+    server = (os.getenv('NTFY_SERVER') or NTFY_DEFAULT_SERVER).rstrip('/')
+    topic = os.getenv('NTFY_TOPIC') or NTFY_DEFAULT_TOPIC
+    token = os.getenv('NTFY_TOKEN')
+    payload = {'topic': topic, 'title': title, 'message': message}
+    if tags:
+        payload['tags'] = list(tags)
+    if click:
+        payload['click'] = click
+    headers = {'Authorization': f'Bearer {token}'} if token else {}
+
+    def attempt():
+        try:
+            resp = requests.post(server, json=payload, headers=headers, timeout=15)
+        except requests.RequestException as exc:
+            return False, True, f'network error {type(exc).__name__}'
+        if resp.status_code == 200:
+            return True, False, ''
+        return False, resp.status_code == 429 or resp.status_code >= 500, f'HTTP {resp.status_code}'
 
     try:
-        from twilio.rest import Client
-        client = Client(username, password, account_sid)
-        message = client.messages.create(body=body, from_=from_number, to=to_number)
-        print(f"✓ SMS sent — SID: {message.sid}")
-        return True
-    except Exception as e:
-        print(f"✗ SMS failed: {e}")
-        return False
+        ok, detail = _with_retries(attempt)
+    except Exception as exc:  # never let a push take the workflow down
+        return _result('ntfy', 'failed', f'unexpected {type(exc).__name__}')
+    return _result('ntfy', 'sent' if ok else 'failed', detail)
+
+
+def send_email(subject, body):
+    """Send the summary by SMTP. Skipped (and said so) when the SMTP_* / ALERT_EMAIL_TO variables are missing."""
+    host, user, password = os.getenv('SMTP_HOST'), os.getenv('SMTP_USER'), os.getenv('SMTP_PASSWORD')
+    to_addr = os.getenv('ALERT_EMAIL_TO')
+    if not all([host, user, password, to_addr]):
+        return _result('email', 'skipped', 'SMTP not configured')
+    try:
+        port = int(os.getenv('SMTP_PORT') or 587)
+    except ValueError:
+        return _result('email', 'failed', 'SMTP_PORT is not a number')
+
+    import smtplib
+    from email.message import EmailMessage
+    msg = EmailMessage()
+    msg['Subject'] = subject
+    msg['From'] = os.getenv('ALERT_EMAIL_FROM') or user
+    msg['To'] = to_addr
+    msg.set_content(body)
+
+    def attempt():
+        try:
+            if port == 465:
+                server = smtplib.SMTP_SSL(host, port, timeout=30)
+            else:
+                server = smtplib.SMTP(host, port, timeout=30)
+            with server:
+                if port != 465:
+                    server.starttls()
+                server.login(user, password)
+                server.send_message(msg)
+            return True, False, ''
+        except smtplib.SMTPAuthenticationError:
+            return False, False, 'SMTP login rejected'
+        except smtplib.SMTPResponseException as exc:
+            return False, 400 <= exc.smtp_code < 500, f'SMTP {exc.smtp_code}'
+        except (smtplib.SMTPException, OSError) as exc:
+            return False, True, f'network error {type(exc).__name__}'
+
+    try:
+        ok, detail = _with_retries(attempt)
+    except Exception as exc:
+        return _result('email', 'failed', f'unexpected {type(exc).__name__}')
+    return _result('email', 'sent' if ok else 'failed', detail)
+
+
+def _sent_path():
+    return os.getenv('NTFY_SENT_PATH') or os.path.join(REPO_ROOT, 'data', 'ntfy_sent.json')
+
+
+def _load_sent():
+    try:
+        with open(_sent_path(), encoding='utf-8') as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_sent(sent):
+    cutoff = (date.today() - timedelta(days=SENT_KEEP_DAYS)).strftime('%Y-%m-%d')
+    sent = {k: v for k, v in sent.items() if v >= cutoff}
+    try:
+        os.makedirs(os.path.dirname(_sent_path()), exist_ok=True)
+        with open(_sent_path(), 'w', encoding='utf-8') as f:
+            json.dump(sent, f)
+    except OSError as exc:
+        print(f"⚠ ntfy dedupe state not saved ({type(exc).__name__}); picks may repeat on the next run")
+
+
+def _odds_str(odds):
+    try:
+        odds = int(odds)
+    except (TypeError, ValueError):
+        return None
+    return f"+{odds}" if odds > 0 else str(odds)
+
+
+def _money(amount):
+    return f"+${amount:.2f}" if amount >= 0 else f"-${abs(amount):.2f}"
+
+
+def push_picks(predictions):
+    """One push per pick not announced yet (tracked in data/ntfy_sent.json). Returns the pushes attempted."""
+    today = date.today().strftime('%Y-%m-%d')
+    sent, results = _load_sent(), []
+    for g in predictions:
+        key = f"pick|{today}|{g['away_team']}|{g['home_team']}"
+        if key in sent or not g.get('predicted_winner'):
+            continue
+        win_prob = g['home_win_prob'] if g['predicted_winner'] == g['home_team'] else g['away_win_prob']
+        line = f"{g['away_team']} @ {g['home_team']}: {g['predicted_winner']}" + (f" ({win_prob:.0%})" if win_prob else "")
+        odds = _odds_str(g.get('odds'))
+        if odds:
+            line += f" @ {odds}"
+        if g.get('bet_amount') and float(g['bet_amount']) > 0:
+            line += f", bet ${float(g['bet_amount']):.2f}"
+        res = send_ntfy(f"Pick: {g['predicted_winner']}", f"{line}\n{NTFY_DISCLAIMER}", tags=['basketball'])
+        results.append(res)
+        if res['status'] == 'sent':
+            sent[key] = today
+    if results:
+        _save_sent(sent)
+    return results
+
+
+def push_results(yesterday_results):
+    """One push with yesterday's settled picks, wins and losses alike. Sent once per day."""
+    if not yesterday_results:
+        return []
+    key = f"results|{(date.today() - timedelta(days=1)).strftime('%Y-%m-%d')}"
+    sent = _load_sent()
+    if key in sent:
+        return []
+    wins = sum(1 for g in yesterday_results if g['correct'])
+    total_pl = sum(g['profit_loss'] or 0 for g in yesterday_results)
+    lines = []
+    for g in yesterday_results:
+        line = f"{'✓' if g['correct'] else '✗'} {g['away_team']} @ {g['home_team']}: picked {g['predicted_winner']}, won {g['actual_winner']}"
+        if g.get('bet_amount') and float(g['bet_amount']) > 0:
+            line += f" ({_money(g['profit_loss'] or 0)})"
+        lines.append(line)
+    title = f"Results {wins}-{len(yesterday_results) - wins}, P/L {_money(total_pl)}"
+    res = send_ntfy(title, "\n".join(lines + [NTFY_DISCLAIMER]), tags=['chart_with_upwards_trend'])
+    if res['status'] == 'sent':
+        sent[key] = date.today().strftime('%Y-%m-%d')
+        _save_sent(sent)
+    return [res]
+
+
+def describe_outcomes(outcomes):
+    """Compact note text, e.g. 'ntfy 3 sent; email skipped (SMTP not configured)'."""
+    parts = []
+    for channel in ('ntfy', 'email'):
+        mine = [o for o in outcomes if o['channel'] == channel]
+        for status in ('sent', 'failed', 'skipped'):
+            group = [o for o in mine if o['status'] == status]
+            if group:
+                detail = next((o['detail'] for o in group if o['detail']), '')
+                parts.append(f"{channel} {len(group)} {status}" + (f" ({detail})" if detail else ''))
+    return '; '.join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -430,14 +612,15 @@ def run_workflow(send_text=True, trigger='schedule', stage='full'):
         else:
             print(f"✗ Predictions exited with code {predict_rc}.\n")
         if stage == 'predict' and predict_ok and saved_predictions(predict_out) == 0:
-            # the common case (every 15-min tick between games): no new picks, so no SMS and no workflow_log row
-            print("Nothing new predicted; no SMS, no log row.\n")
+            # the common case (every 15-min tick between games): no new picks, so no push and no workflow_log row
+            print("Nothing new predicted; no notifications, no log row.\n")
             return {'run_date': run_date, 'started_at': started_at,
                     'finished_at': datetime.now().astimezone().isoformat(timespec='seconds'),
                     'status': 'success', 'pipeline_ok': True, 'predict_ok': True, 'sms_sent': False, 'noop': True}
 
-    # Step 3 — SMS
+    # Step 3 — notifications
     sms_sent = False
+    outcomes = []
     if send_text:
         yesterday_results = get_yesterdays_results() if stage != 'predict' else []
         today_predictions = get_todays_predictions() if stage != 'morning' else []
@@ -447,11 +630,22 @@ def run_workflow(send_text=True, trigger='schedule', stage='full'):
         sms_body = format_sms(yesterday_results, today_predictions, stats,
                               include_yesterday=stage != 'predict', include_today=stage != 'morning',
                               temporary_picks=temporary_picks)
-        print("📱 Daily SMS:\n")
+        print("📱 Daily summary:\n")
         print(sms_body)
         print()
 
-        sms_sent = send_sms(sms_body)
+        # Picks and results by ntfy, the daily summary by email. Nothing here may fail the pipeline or the predict stage.
+        try:
+            if stage in ('full', 'predict'):
+                outcomes += push_picks(today_predictions)
+            if stage in ('full', 'morning'):
+                outcomes += push_results(yesterday_results)
+                outcomes.append(send_email(f"NBA Daily Summary — {date.today().strftime('%b %d')}", sms_body))
+        except Exception as exc:
+            outcomes.append(_result('ntfy', 'failed', f'unexpected {type(exc).__name__}'))
+        # workflow_log.sms_sent (column name kept): True only when every channel attempted this run delivered
+        sms_sent = bool(outcomes) and all(o['status'] == 'sent' for o in outcomes)
+        print(f"Notifications: {describe_outcomes(outcomes) or 'nothing new to send'}\n")
 
     # Step 4 — log
     finished_at = datetime.now().astimezone().isoformat(timespec='seconds')
@@ -467,11 +661,11 @@ def run_workflow(send_text=True, trigger='schedule', stage='full'):
         notes.append('predict failed')
     if not temp_ok:
         notes.append('temporary predictions failed')
-    if send_text and not sms_sent:
-        notes.append('sms not sent')
+    if send_text:
+        notes.append(describe_outcomes(outcomes) or 'no notifications sent')
 
     log_run(run_date, started_at, finished_at, overall_status,
-            pipeline_ok, predict_ok, sms_sent, ', '.join(notes),
+            pipeline_ok, predict_ok, sms_sent, redact_secrets(', '.join(notes)),
             kind=STAGE_KIND[stage], trigger=trigger, log_tail=pipeline_out + predict_out)
 
     result = {
