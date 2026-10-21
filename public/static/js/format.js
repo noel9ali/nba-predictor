@@ -40,6 +40,11 @@ export function esc(s) {
 export const pct1 = v => (Math.round(v * 10000) / 100).toFixed(1);       // 0.6811 -> "68.1"
 export const fmtInt = n => (n == null ? '—' : Math.round(n).toLocaleString('en-US'));
 // "2025-02-25" -> "Feb 25, 2025"
+// "Oct 21, 2026": the day a training run finished, in Eastern time. Every "retrained" label reads this.
+export function trainedOn(iso) {
+  if (!iso || Number.isNaN(Date.parse(iso))) return '';
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: TZ });
+}
 export function fmtDate(iso) {
   if (!iso) return '';
   return new Date(String(iso).slice(0, 10) + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
@@ -52,6 +57,8 @@ export function parseWL(s) {
   return m ? [Number(m[1]), Number(m[2])] : [0, 0];
 }
 export const seasonLabel = s => String(s || '').replace('-', NDASH);
+// "2020-21" -> "20–21", for strips too narrow to carry the full label.
+export const seasonShort = s => seasonLabel(s).replace(/^\d\d(\d\d)/, '$1');
 
 // A Date as YYYY-MM-DD in America/New_York.
 export function dateET(d) {
@@ -119,9 +126,12 @@ export const MODEL_LABELS = {
   'random-forest': 'Random forest',
   logistic: 'Calibrated logistic'
 };
+// The training run stores names like "gradient-boosting-gridsearch" and "legacy-calibrated-logistic".
+export const modelKey = key => String(key).toLowerCase().replace(/^legacy-/, '').replace(/-gridsearch$/, '').replace(/^calibrated-logistic$/, 'logistic');
 export function modelLabel(key) {
   if (key == null) return '';
-  if (Object.prototype.hasOwnProperty.call(MODEL_LABELS, key)) return MODEL_LABELS[key];
+  const k = modelKey(key);
+  if (Object.prototype.hasOwnProperty.call(MODEL_LABELS, k)) return MODEL_LABELS[k];
   const s = String(key).replace(/[-_]+/g, ' ');
   return s.charAt(0).toUpperCase() + s.slice(1);
 }

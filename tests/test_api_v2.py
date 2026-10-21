@@ -599,6 +599,16 @@ class ModelExtrasTests(ApiTestCase):
                                   {"feature": "HOME_ELO", "label": "Home team's rating",
                                    "share": 0.25}])
 
+    def test_a_stored_top_five_keeps_its_own_shares(self):
+        # The run stores only the top five importances; they are shares of 1, not of their sum.
+        top5 = [{"feature": f, "importance": v} for f, v in [
+            ("ELO_DIFF", 0.7237), ("HOME_ELO", 0.0831), ("HOME_roll_PTS", 0.0384),
+            ("rest_diff", 0.0255), ("AWAY_roll_TOV", 0.0204)]]
+        shares = dashboard.feature_importance(top5)
+        self.assertEqual([r["share"] for r in shares], [0.7237, 0.0831, 0.0384, 0.0255, 0.0204, 0.1089])
+        self.assertEqual(shares[-1]["feature"], "other")
+        self.assertAlmostEqual(sum(r["share"] for r in shares), 1.0)
+
     def test_elo_constants_match_src_elo(self):
         import elo
         self.assertEqual(self.model()["elo"], {

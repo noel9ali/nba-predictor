@@ -1,6 +1,7 @@
 // "How the model is doing": season board, pinned bankroll chart with three scroll steps
 // (T13–T15), the last-33 W/L strip (T16) and the calibration card with model facts (T17).
-import { fmt, esc, wl, MINUS, word, seasonLabel } from '../format.js';
+import { fmt, esc, wl, MINUS, word, seasonLabel, modelLabel, trainedOn } from '../format.js';
+import { clampCenter, labelWidth, fitAnchor, nudgeClear } from '../labels.js';
 import { renderBoard, signCls } from '../board.js';
 import { renderCalibration } from '../calibration-chart.js';
 import { watch, motionOn, replay } from '../reveal.js';
@@ -53,7 +54,7 @@ function stepText(S, base) {
   const sm = summary(), phase = store.slate && (store.slate.offseason ? 'offseason' : store.slate.phase);
   if (store.isPast && store.slate) {
     const night = S.find(x => x.date === store.slate.date);
-    set(3, 'That night', night ? 'On ' + md(night.date) + ' the bankroll moved ' + fmt.money(night.nightly_pl, true) + ' (bets ' + night.bets + ', picks ' + night.picks + ').' : 'No bankroll change recorded for that night.');
+    set(3, 'That night', night ? 'On ' + md(night.date) + ' the bankroll moved ' + fmt.money(night.nightly_pl, true) + ' (bets ' + wl(night.bets) + ', picks ' + wl(night.picks) + ').' : 'No bankroll change recorded for that night.');
   } else if (!store.slate || sm.bets === 0 || ['no_games', 'offseason'].includes(phase)) {
     set(3, 'Nothing on the line tonight', 'No bets tonight, so the bankroll holds at ' + fmt.money(base) + '.');
   } else if (sm.open === 0) {
@@ -109,7 +110,10 @@ function renderBankroll() {
   const tx = xs(N);
   if (store.isPast && store.slate) {
     const i = S.findIndex(x => x.date === store.slate.date);
-    if (i >= 0) s += '<g class="ov pn"><circle class="tnp" cx="' + r1(pts[i][0]) + '" cy="' + r1(pts[i][1]) + '" r="7"/><text class="tnt" x="' + r1(pts[i][0]) + '" y="' + r1(pts[i][1] - 14) + '" text-anchor="middle">' + md(S[i].date) + ' ' + fmt.money(S[i].nightly_pl, true) + '</text></g>';
+    if (i >= 0) {
+      const text = md(S[i].date) + ' ' + fmt.money(S[i].nightly_pl, true), at = fitAnchor(pts[i][0], labelWidth(text), pad.l, W - pad.r);
+      s += '<g class="ov pn"><circle class="tnp" cx="' + r1(pts[i][0]) + '" cy="' + r1(pts[i][1]) + '" r="7"/><text class="tnt" x="' + r1(at.x) + '" y="' + r1(pts[i][1] - 14) + '" text-anchor="' + at.anchor + '">' + text + '</text></g>';
+    }
   } else if (tonightOn) {
     const yN = yv(tnNow), yHi = yv(tnHi), yLo = yv(tnLo), ranged = tonightOn && sm.open > 0;
     let o = '<g class="ov tn">';
@@ -119,8 +123,10 @@ function renderBankroll() {
       '<text class="tnt" x="' + r1(tx - 12) + '" y="' + r1(yN - 12) + '" text-anchor="end">Tonight ' + fmt.money(tnNow) + '</text>';
     // Designer ruling 9: hide a range label that would sit within 18px of the Tonight label.
     const tY = yN - 12;
-    if (ranged && Math.abs((yHi + 4) - tY) >= 18) o += '<text class="tns" x="' + r1(tx - 8) + '" y="' + r1(yHi + 4) + '" text-anchor="end">all cash ' + fmt.money(tnHi) + '</text>';
-    if (ranged && Math.abs((yLo + 4) - tY) >= 18) o += '<text class="tns" x="' + r1(tx - 8) + '" y="' + r1(yLo + 4) + '" text-anchor="end">all lose ' + fmt.money(tnLo) + '</text>';
+    // The start-bankroll rule is dashed too, so a range label keeps clear of it.
+    const rules = [yv(start)], yHiL = nudgeClear(yHi, rules) + 4, yLoL = nudgeClear(yLo, rules) + 4;
+    if (ranged && Math.abs(yHiL - tY) >= 18) o += '<text class="tns" x="' + r1(tx - 8) + '" y="' + r1(yHiL) + '" text-anchor="end">all cash ' + fmt.money(tnHi) + '</text>';
+    if (ranged && Math.abs(yLoL - tY) >= 18) o += '<text class="tns" x="' + r1(tx - 8) + '" y="' + r1(yLoL) + '" text-anchor="end">all lose ' + fmt.money(tnLo) + '</text>';
     s += o + '</g>';
   }
   const ticks = (N === 2 ? [0, 1] : [0, Math.floor(N / 2), N - 1]).map(i => '<text class="ax" x="' + r1(xs(i)) + '" y="' + (H - 6) + '" text-anchor="' + (i === 0 ? 'start' : i === N - 1 ? 'end' : 'middle') + '">' + md(S[i].date) + '</text>').join('');
@@ -140,7 +146,7 @@ function renderBankroll() {
 function tipContent(x) {
   return ['<b>' + esc(fmt.date(x.date, { weekday: 'short', month: 'short', day: 'numeric' })) + '</b>',
     'Bankroll ' + esc(fmt.money(x.bankroll)),
-    'Night ' + esc(fmt.money(x.nightly_pl, true)) + ' · bets ' + esc(x.bets) + ' · picks ' + esc(x.picks)];
+    'Night ' + esc(fmt.money(x.nightly_pl, true)) + ' · bets ' + esc(wl(x.bets)) + ' · picks ' + esc(wl(x.picks))];
 }
 function show(i, announce) {
   if (!geo) return;
@@ -148,11 +154,11 @@ function show(i, announce) {
   const x = geo.S[i], p = geo.pts[i], cross = host.querySelector('.cross'), tip = host.querySelector('.tip');
   cross.setAttribute('x1', p[0]); cross.setAttribute('x2', p[0]); cross.setAttribute('visibility', 'visible');
   const sc = host.clientWidth / geo.W;
-  tip.hidden = false;
-  tip.style.left = Math.min(Math.max(p[0] * sc, 90), host.clientWidth - 90) + 'px';
-  tip.style.top = (p[1] * sc) + 'px';
   const parts = tipContent(x);
   tip.innerHTML = parts.join('<br>');
+  tip.hidden = false;
+  tip.style.setProperty('left', clampCenter(p[0] * sc, tip.offsetWidth, host.clientWidth) + 'px');
+  tip.style.setProperty('top', (p[1] * sc) + 'px');
   if (announce) $('[data-chart-live]').textContent = parts.map(t => t.replace(/<[^>]+>/g, '')).join('. ');
 }
 function hide() {
@@ -293,8 +299,8 @@ export function mountModelCard(m) {
   }
   const T = m.test || {}, live = m.season_live || {};
   const rows = [
-    ['Live model', m.production_model || '—'],
-    ['Retrained', m.trained_at ? new Date(m.trained_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' }) : '—'],
+    ['Live model', m.production_model ? modelLabel(m.production_model) : '—'],
+    ['Retrained', trainedOn(m.trained_at) || '—'],
     ['This season', live.accuracy != null ? fmt.pct(live.accuracy) + ' of ' + (live.picks ?? 0) : '—', 'sep'],
     ['Test set', T.accuracy != null ? fmt.pct(T.accuracy) + ' of ' + (T.games != null ? T.games.toLocaleString('en-US') : '—') : '—'],
     ['Always pick home', T.baseline_home_win_rate != null ? fmt.pct(T.baseline_home_win_rate) : '—'],

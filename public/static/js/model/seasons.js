@@ -1,7 +1,7 @@
 // Chapter 2, "What it studied": the pinned season strip (all games, then the held-back test set),
 // the five-number strip and three plain-language notes. Every value is placed through the CSSOM
 // (setProperty) or textContent; nothing here writes a style="" attribute or API markup.
-import { fmtDate, pct1, fmtInt, Word, joinAnd, seasonLabel, FEATURE_COUNT, PANDEMIC_2019_20_GAMES, FULL_SEASON_GAMES } from '../format.js';
+import { fmtDate, pct1, fmtInt, Word, joinAnd, seasonLabel, seasonShort, FEATURE_COUNT, PANDEMIC_2019_20_GAMES, FULL_SEASON_GAMES } from '../format.js';
 import { motionOn, hasIO, onScrollFrame, replay } from '../reveal.js';
 
 function el(tag, cls, text) {
@@ -75,7 +75,8 @@ function buildStrip(card, t, d) {
   strip.setAttribute('aria-label', stripLabel(t, d));
   d.seasons.forEach((s, i) => {
     const g = String(s.games);
-    const lab = el('span', null, seasonLabel(s.season)); lab.style.setProperty('--g', g);
+    const lab = el('span'); lab.style.setProperty('--g', g);
+    lab.append(el('i', 'full', seasonLabel(s.season)), el('i', 'short', seasonShort(s.season)));
     const cnt = el('span', null, s.train > 0 && s.test > 0 ? `${num(s.train)} + ${num(s.test)}` : num(s.games)); cnt.style.setProperty('--g', g);
     const sz = el('span', 'sz');
     sz.style.setProperty('--g', g);

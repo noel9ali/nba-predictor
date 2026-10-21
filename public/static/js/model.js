@@ -3,7 +3,7 @@
 import { initShell } from './shell.js';
 import { initAmbient } from './ambient.js';
 import { api, SAMPLE, SCENE } from './api.js';
-import { fmtDate, TZ } from './format.js';
+import { fmtDate, TZ, trainedOn, modelLabel } from './format.js';
 import { observeReveals } from './reveal.js';
 import { initClaim } from './model/claim.js';
 import { initAlltime } from './model/alltime.js';
@@ -40,11 +40,11 @@ function safe(fn, section, what) {
 // ---------- footer ----------
 function footer(model) {
   const parts = [];
-  if (model.production_model) parts.push('Model ' + model.production_model);
+  if (model.production_model) parts.push('Model ' + modelLabel(model.production_model));
   if (model.trained_at && !Number.isNaN(Date.parse(model.trained_at))) {
     const d = new Date(model.trained_at);
     const t = d.toLocaleTimeString('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit' }).replace(/[  ]/g, ' ');
-    parts.push('retrained ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: TZ }) + ', ' + t + ' ET');
+    parts.push('retrained ' + trainedOn(model.trained_at) + ', ' + t + ' ET');
   }
   const tr = model.training || {};
   const cutoff = tr.cutoff_date || model.cutoff_date;
@@ -114,10 +114,29 @@ perfP.then(async perfAll => {
 
 modelP.then(m => { if (m) { renderModelChapters(m); observeReveals(); } });
 
+// Chapter 3 never hides: when the featured game can't load, a visible card stands in so the
+// chapter numbers stay fixed and the reader knows something is missing.
+function walkFallback(section) {
+  const body = section.querySelector('[data-body]');
+  body.textContent = '';
+  const lede = section.querySelector('.ch p');
+  if (lede) lede.textContent = 'This chapter follows one settled pick from ratings to a stamped ticket.';
+  const card = document.createElement('div');
+  card.className = 'card walk-fallback';
+  card.setAttribute('role', 'status');
+  card.dataset.walkFallback = '';
+  const p = document.createElement('p');
+  p.textContent = "Walkthrough unavailable: the featured game couldn't load.";
+  card.append(p);
+  body.append(card);
+  section.hidden = false;
+  numberChapters();
+}
+
 Promise.all([detailP, first]).then(([d, m]) => {
   detail = d;
-  const ok = !!d && !!safe(() => initWalkthrough(ch(3), d, m || {}), ch(3), 'chapter 3');
-  show(ch(3), ok);
+  const ok = !!d && !!safe(() => initWalkthrough(ch(3), d, m || {}), null, 'chapter 3');
+  if (ok) show(ch(3), true); else walkFallback(ch(3));
   if (d && seasons && seasons.rowCardMount) {
     safe(() => renderRowCard(seasons.rowCardMount, { detail: d, rollingWindow: (m && m.training && m.training.rolling_window) || 10 }), null, 'row card');
   }

@@ -1,15 +1,11 @@
 // Model hero (M1/M2): one pinned court. At 30% of the pinned range the hatched gain pops out of the
 // home-team baseline and the h1 swaps to the claim. Reversible; reduced motion switches instantly.
-import { fmtDate, fmtInt, TZ } from '../format.js';
+import { fmtDate, fmtInt, trainedOn, modelLabel } from '../format.js';
 import { claimCourt, updateClaimCourt } from '../court.js';
 import { onScrollFrame, replay } from '../reveal.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 let pin, head, scrolly, court, txt = null, wired = false;
-
-export function etDate(iso) {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: TZ });
-}
 
 function buildTitle(h1, k) {
   h1.textContent = '';
@@ -65,9 +61,10 @@ function onScroll(animate = true) {
 export function initClaim(model) {
   pin = $('.claim .pin'); head = $('.pin__head', pin); scrolly = $('[data-scrolly]');
   const kick = $('[data-kicker]');
-  const parts = ['The model'];
-  if (model && model.production_model) parts.push(model.production_model);
-  if (model && model.trained_at && !Number.isNaN(Date.parse(model.trained_at))) parts.push('retrained ' + etDate(model.trained_at));
+  const parts = [];
+  if (model && model.production_model) parts.push('The model', modelLabel(model.production_model));
+  else parts.push('Production model unavailable');
+  if (model && model.trained_at && !Number.isNaN(Date.parse(model.trained_at))) parts.push('retrained ' + trainedOn(model.trained_at));
   kick.textContent = parts.join(' · ');
   const T = model && model.test;
   if (!T || T.accuracy == null || T.baseline_home_win_rate == null) {

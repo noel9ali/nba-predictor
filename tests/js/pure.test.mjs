@@ -2,8 +2,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { fmt, pct1, wl, seasonOf } from '../../public/static/js/format.js';
-import { normalize, applyLive, summarize, nextUpOf, visibleOf, countsOf, pl, result, pickMargin, marginLabel } from '../../public/static/js/state.js';
+import { fmt, pct1, wl, seasonOf, seasonShort } from '../../public/static/js/format.js';
+import { clampCenter, labelWidth, fitAnchor, nudgeClear } from '../../public/static/js/labels.js';
+import { normalize, applyLive, summarize, nextUpOf, visibleOf, countsOf, pl, result, pickMargin, marginLabel, liveLine } from '../../public/static/js/state.js';
 import { courtGeometry } from '../../public/static/js/court.js';
 
 const sample = f => JSON.parse(fs.readFileSync(new URL('../../public/sample/' + f + '.json', import.meta.url)));
@@ -81,4 +82,60 @@ test('merge safety', () => {
   applyLive(g, back, false);
   assert.equal(g[1].state, 'live');
   assert.equal(g[0].state, 'final');
+});
+
+test('each final carries the settled total as of that game', () => {
+  const g = night();
+  applyLive(g, sample('live-replay-0'), true);
+  let run = summarize(g).settled, seen = 0;   // finals already in the silent first merge count too
+  for (let i = 1; i <= 6; i++) {
+    for (const c of applyLive(g, sample('live-replay-' + i), false).filter(x => x.type === 'final')) {
+      if (c.pl != null) run += c.pl;
+      close(c.settled, run); seen++;
+    }
+  }
+  assert.equal(seen, 5);
+  close(run, summarize(g).settled);
+});
+
+test('next up is a bet that has not tipped yet', () => {
+  const g = night();
+  const tips = g.filter(x => x.tip_time_utc).map(x => Date.parse(x.tip_time_utc)).sort((a, b) => a - b);
+  assert.ok(nextUpOf(g, tips[0] - 60000));                       // before the first tip: there is one
+  assert.equal(nextUpOf(g, tips[tips.length - 1] + 60000), null); // feed down after every tip: none
+  const early = nextUpOf(g, tips[0] - 60000);
+  assert.ok(Date.parse(early.tip_time_utc) > tips[0] - 60000);
+});
+
+test('liveLine: bets-ahead count only when a live game has a bet', () => {
+  assert.equal(liveLine({ live: 1, liveBets: 0, ahead: 0, upcoming: 2 }), '1 live');
+  assert.equal(liveLine({ live: 2, liveBets: 3, ahead: 1, upcoming: 0 }), '2 live · 1 of 3 bets ahead');
+  assert.equal(liveLine({ live: 0, liveBets: 0, ahead: 0, upcoming: 4 }), '4 to come');
+  assert.equal(liveLine({ live: 0, liveBets: 0, ahead: 0, upcoming: 0 }), 'All final');
+});
+
+test('clampCenter keeps a box inside its host', () => {
+  assert.equal(clampCenter(50, 200, 800), 100);
+  assert.equal(clampCenter(790, 200, 800), 700);
+  assert.equal(clampCenter(400, 200, 800), 400);
+  assert.equal(clampCenter(10, 900, 800), 400);
+});
+
+test('seasonShort drops the century and keeps the en dash', () => {
+  assert.equal(seasonShort('2020-21'), '20–21');
+  assert.equal(seasonShort('2019–20'), '19–20');
+  assert.equal(seasonShort(''), '');
+});
+
+test('fitAnchor flips a label that would leave the chart', () => {
+  assert.deepEqual(fitAnchor(200, 100, 58, 384), { x: 200, anchor: 'middle' });
+  assert.deepEqual(fitAnchor(370, 100, 58, 384), { x: 384, anchor: 'end' });
+  assert.deepEqual(fitAnchor(70, 100, 58, 384), { x: 58, anchor: 'start' });
+  assert.ok(labelWidth('Nov 16 +$25.47') > 90);
+});
+
+test('nudgeClear moves a label off a rule and leaves clear labels alone', () => {
+  assert.equal(nudgeClear(100, [200]), 100);
+  assert.equal(nudgeClear(203, [200]), 209);
+  assert.equal(nudgeClear(197, [200]), 191);
 });

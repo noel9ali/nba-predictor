@@ -136,9 +136,11 @@ export function buildWalkModel({ detail, model } = {}) {
 
   // ---- Step 4: make the call
   const s4 = { title: 'Make the call' };
-  const modelPhrase = prod.includes('logistic') ? 'a logistic regression' : 'the model';
+  const how = prod.includes('logistic') ? 'are put on the same scale, weighed, and turned into one probability by a logistic regression.'
+    : prod.includes('gradient') ? 'go through a stack of small decision trees, each correcting the one before, and come out as one probability.'
+      : 'are turned into one probability by the model.';
   const p100 = Math.round(P * 100);
-  s4.text = `All ${FEATURE_COUNT} numbers are put on the same scale, weighed, and turned into one probability by ${modelPhrase}.`
+  s4.text = `All ${FEATURE_COUNT} numbers ${how}`
     + (prod.includes('calibrated') ? ` A calibration step then adjusts it so that "${p100}%" means about ${p100} out of 100 such games.` : '');
   s4.math = [`Model: ${pickTri} wins ${pct1(P)}%`];
   if (pElo != null) {

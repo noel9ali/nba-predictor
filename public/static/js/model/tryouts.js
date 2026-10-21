@@ -34,7 +34,7 @@ function findProduction(rows, productionModel) {
 const ceil1 = x => Math.ceil(x * 10 - 1e-9) / 10;
 
 function familyOf(key) {
-  const k = String(key).toLowerCase().replace(/^legacy-/, '').replace(/^(calibrated|current)-/, '');
+  const k = String(key).toLowerCase().replace(/^legacy-/, '').replace(/-gridsearch$/, '').replace(/^(calibrated|current)-/, '');
   const map = { logistic: 'logistic', 'gradient-boosting': 'gradient boosting', 'random-forest': 'random forest', lstm: 'LSTM', xgboost: 'XGBoost' };
   return Object.prototype.hasOwnProperty.call(map, k) ? map[k] : k.replace(/[-_]+/g, ' ');
 }
@@ -166,7 +166,7 @@ export function initTryouts(section, model) {
     const W = Math.max(300, Math.round(host.clientWidth));
     drawnW = W;
     const narrow = W < 560;
-    const H = narrow ? 300 : 350, L = narrow ? 96 : 170, R = narrow ? 24 : 170, T = narrow ? 40 : 58, B = narrow ? 16 : 30;
+    const H = narrow ? 300 : 362, L = narrow ? 96 : 170, R = narrow ? 24 : 170, T = narrow ? 40 : 70, B = narrow ? 16 : 30;
     const cx = j => L + j * (W - L - R) / (C - 1);
     const ry = r => T + (r - 1) * (H - T - B) / (N - 1);
     const label = r => (narrow ? abbreviate(r.name) : r.name);

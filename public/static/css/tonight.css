@@ -2,7 +2,7 @@
 
 /* ---------- 1 · the night at a glance ---------- */
 .lede h1{margin:0;font:600 clamp(28px,4.4vw,50px)/1.14 var(--body);letter-spacing:-.02em;text-wrap:balance;max-width:24ch}
-.lede h1 .n{font:400 1em/1 var(--jersey);letter-spacing:0}
+.lede h1 .n{font:400 1em/1 var(--jersey);letter-spacing:0;white-space:nowrap}
 .lede h1 .n.e{color:var(--ball)}
 .lede .board{margin:clamp(28px,4vw,40px) 0 0}
 .lede > .btn{margin-top:18px}
@@ -37,11 +37,12 @@
 .js .gl.pre .edge-line{opacity:0}
 .js .gl.pre .mk{transform:scaleY(0)}
 .js .gl.pre .tag{opacity:0}
-.js .gl .seg.paint{transition:transform .8s cubic-bezier(.2,.75,.2,1) calc(var(--i) * 90ms)}
-.js .gl .edge-line{transition:opacity .2s calc(var(--i) * 90ms + .7s)}
-.js .gl .seg.hat,.js .gl .seg.short{transition:transform .5s cubic-bezier(.2,.75,.2,1) calc(var(--i) * 90ms + .75s)}
-.js .gl .mk{transition:transform .45s cubic-bezier(.3,.7,.2,1) calc(var(--i) * 90ms + .45s)}
-.js .gl .tag{transition:opacity .35s calc(var(--i) * 90ms + .9s)}
+/* Stagger is capped at the fourth row so the whole reveal lands inside 1.2s. */
+.js .gl .seg.paint{transition:transform .6s cubic-bezier(.2,.75,.2,1) calc(min(var(--i), 3) * 40ms)}
+.js .gl .edge-line{transition:opacity .2s calc(min(var(--i), 3) * 40ms + .5s)}
+.js .gl .seg.hat,.js .gl .seg.short{transition:transform .4s cubic-bezier(.2,.75,.2,1) calc(min(var(--i), 3) * 40ms + .5s)}
+.js .gl .mk{transition:transform .35s cubic-bezier(.3,.7,.2,1) calc(min(var(--i), 3) * 40ms + .35s)}
+.js .gl .tag{transition:opacity .3s calc(min(var(--i), 3) * 40ms + .6s)}
 
 /* banners (feed down; prediction failed) */
 .banner{background:var(--stock);color:var(--t-ink);padding:13px 16px;border-left:6px solid var(--t-lost);font:500 14px/1.45 var(--body);
@@ -117,13 +118,13 @@
 .chart[data-testid="bankroll"]{touch-action:pan-y}
 .js .chart.pre .ln{stroke-dashoffset:var(--len)}
 .js .chart.pre .ar,.js .chart.pre .pk,.js .chart.pre .lbl{opacity:0}
-.js .chart .ln{stroke-dasharray:var(--len);transition:stroke-dashoffset 1.6s cubic-bezier(.4,0,.2,1),opacity .5s}
-.js .chart .ar,.js .chart .pk,.js .chart .lbl{transition:opacity .5s 1.3s}
-.chart .ov{opacity:0;transition:opacity .5s}
-.chart[data-step="2"] .ov.dd,.chart[data-step="3"] .ov.tn,.chart[data-step="3"] .ov.pn{opacity:1}
+.js .chart .ln{stroke-dasharray:var(--len);transition:stroke-dashoffset 1s cubic-bezier(.4,0,.2,1),opacity .5s}
+.js .chart .ar,.js .chart .pk,.js .chart .lbl{transition:opacity .4s .7s}
+.chart .ov{opacity:0;visibility:hidden;transition:opacity .5s,visibility 0s .5s}
+.chart[data-step="2"] .ov.dd,.chart[data-step="3"] .ov.tn,.chart[data-step="3"] .ov.pn{opacity:1;visibility:visible;transition:opacity .5s}
 .chart[data-step="2"] .ln{opacity:.45}
-.chart .endg{transition:opacity .3s}
-.chart[data-step="3"] .endg{opacity:0}
+.chart .endg{transition:opacity .3s,visibility 0s}
+.chart[data-step="3"] .endg{opacity:0;visibility:hidden;transition:opacity .3s,visibility 0s .3s}
 .chart .ddr{fill:rgba(255,141,132,.10)}
 .chart .ddl{fill:none;stroke:var(--loss);stroke-width:3;stroke-linejoin:round}
 .chart .ddb{stroke:var(--loss);stroke-width:1.5}
@@ -142,12 +143,12 @@
 .wl i.W{background:var(--win)}
 .wl i.L{background:transparent;color:var(--loss);box-shadow:inset 0 0 0 2px var(--loss)}
 .js .wl.pre i{transform:scale(0)}
-.js .wl i{transition:transform .3s cubic-bezier(.2,.9,.3,1.4) calc(var(--k) * 28ms)}
+.js .wl i{transition:transform .3s cubic-bezier(.2,.9,.3,1.4) calc(min(var(--k), 24) * 28ms)}
 
 /* calibration card (T17) and model facts */
 .calib .dot{transform-box:fill-box;transform-origin:center}
 .js .calib.pre .dot{opacity:0;transform:scale(.3)}
-.js .calib .dot{transition:opacity .4s calc(var(--k) * 90ms),transform .4s cubic-bezier(.2,.9,.3,1.4) calc(var(--k) * 90ms)}
+.js .calib .dot{transition:opacity .4s calc(min(var(--k), 6) * 60ms),transform .4s cubic-bezier(.2,.9,.3,1.4) calc(min(var(--k), 6) * 60ms)}
 .mfacts{display:grid;grid-template-columns:1fr auto;margin:0;font:400 14px/2 var(--body)}
 .mfacts dt{color:var(--ink-2)}
 .mfacts dd{margin:0;text-align:right;font:500 14px/2 var(--mono);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
@@ -218,5 +219,9 @@ html.drawer-open{overflow:hidden}
 #tonight.loading [data-testid=grid]{min-height:110vh}
 @media (max-width:760px){#tonight.loading .courts{min-height:900px}}
 #tonight.loading .lede h1{min-height:calc(3 * 1.14em)}
+/* The board is one, two or three rows of cells (about 53px of padding and label plus the number). */
+#tonight.loading .lede .board{--row:calc(53.2px + clamp(20px,2.4vw,28px));visibility:hidden;min-height:calc(6px + var(--row))}
+@media (max-width:960px){#tonight.loading .lede .board{min-height:calc(8px + 2 * var(--row))}}
+@media (max-width:520px){#tonight.loading .lede .board{min-height:calc(10px + 3 * var(--row))}}
 .lede .kick{min-height:12px}
 @media (max-width:600px){.lede .kick{min-height:24px}}

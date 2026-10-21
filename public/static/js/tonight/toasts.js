@@ -33,7 +33,8 @@ function finalSentence(g, rec) {
   const head = (g.as == null || g.hs == null) ? 'Final: ' + A + ' at ' + H + '.' : 'Final: ' + A + ' ' + g.as + ', ' + H + ' ' + g.hs + '.';
   let tail = '';
   if (g.bet) {
-    const tonight = ' Tonight ' + fmt.money(summary().settled, true) + '.';
+    // The total as of this game, not the end of the batch: several games can finish in one poll.
+    const tonight = ' Tonight ' + fmt.money(rec.settled != null ? rec.settled : summary().settled, true) + '.';
     if (rec.result === 'hit') tail = 'Cashed ' + fmt.money(rec.pl, true) + '.' + tonight;
     else if (rec.result === 'miss') tail = 'Lost ' + fmt.money(rec.pl, true) + '.' + tonight;
   } else if (rec.result === 'hit') tail = 'Pick right, no bet.';

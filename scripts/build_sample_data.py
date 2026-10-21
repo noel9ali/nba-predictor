@@ -19,7 +19,7 @@ Hardwood Tickets additions (handoff/api-integration.md sec3, backend items B1-B4
 - model.json carries the B1 leaderboard extras and feature_importance, the B2 training block
   and the B3 Elo constants, all emitted by the real /api/model route from the fake model_runs
   row (FEATURE_SIGNAL, TRAINING); only the production row's key is shortened afterwards
-  (shorten_production_model);
+  (check_model_payload);
 - featured-pick.json is the real /api/featured-pick response over the settled fixture below;
 - game-0022600195.json is a SETTLED fixture (SAC 118-110 GSW, bet hit +$52.93) for the Model
   page's walkthrough; the Nov 17 slate still lists that game as scheduled;
@@ -48,7 +48,7 @@ os.environ.pop("VERCEL", None)
 
 import app as dashboard  # noqa: E402
 
-OUT = os.path.join(ROOT, "public", "sample")
+OUT = os.environ.get("SAMPLE_OUT") or os.path.join(ROOT, "public", "sample")
 SEASON = "2026-27"
 FIRST_NIGHT = date(2026, 10, 21)
 LAST_NIGHT = date(2026, 11, 16)
@@ -394,45 +394,47 @@ TONIGHT_GAMES = [
 TONIGHT_BANKROLL = 1111.67
 
 
-# The latest training run (model_runs row). Six models graded on the same 1,596 test games,
-# ranked by log loss as the real leaderboard CSV is (rank 1 = best log loss). The production
-# model is stored under its real name so /api/model derives `test` from it; the leaderboard
-# key is shortened to "logistic" for the page by shorten_production_model().
-PRODUCTION = "legacy-calibrated-logistic"
+# The latest training run (model_runs row id 7, trained the morning of Oct 21, 2026, the day
+# before the sample season opens). Six models graded on the same 1,597 test games, ranked by log
+# loss as the real leaderboard is (rank 1 = best log loss). Names are the real stored keys.
+# The production model is gradient-boosting-gridsearch; /api/model derives `test` from its row.
+PRODUCTION = "gradient-boosting-gridsearch"
 LEADERBOARD = [  # (key, accuracy, brier, log loss, auc, calibration error)
-    ("gradient-boosting", 0.6792, 0.2094, 0.6075, 0.7295, 0.035),
-    ("calibrated-xgboost", 0.6779, 0.2099, 0.6085, 0.7250, 0.031),
-    ("current-xgboost", 0.6736, 0.2100, 0.6086, 0.7244, 0.026),
-    ("lstm", 0.6805, 0.2098, 0.6087, 0.7258, 0.027),
-    ("random-forest", 0.6817, 0.2102, 0.6092, 0.7285, 0.042),
-    (PRODUCTION, 0.6811, 0.2091, 0.6325, 0.7293, 0.031),
+    (PRODUCTION, 0.6788, 0.2096, 0.6080, 0.7289, 0.034),
+    ("current-xgboost", 0.6769, 0.2101, 0.6090, 0.7246, 0.029),
+    ("lstm-gridsearch", 0.6825, 0.2102, 0.6095, 0.7247, 0.028),
+    ("random-forest-gridsearch", 0.6763, 0.2103, 0.6095, 0.7274, 0.034),
+    ("calibrated-xgboost", 0.6738, 0.2106, 0.6100, 0.7237, 0.027),
+    ("legacy-calibrated-logistic", 0.6794, 0.2092, 0.6326, 0.7288, 0.031),
 ]
-# The production model's feature_signal, as the training run stores it. The API turns it into
-# feature_importance: top five as shares of the total (.296/.244/.183/.078/.072), then
-# "The other 11 inputs" (.127). Raw importances already sum to 1.
+# The production model's feature_signal. The real run stores only the top five importances
+# (.7237/.0831/.0384/.0255/.0204); the sample spreads the remaining .1089 evenly over the other
+# 11 inputs so the shares add to 1 and the API emits "The other 11 inputs".
 FEATURE_SIGNAL = [{"feature": f, "importance": v} for f, v in [
-    ("ELO_DIFF", 0.296), ("HOME_ELO", 0.244), ("AWAY_ELO", 0.183), ("AWAY_roll_TOV", 0.078),
-    ("HOME_roll_REB", 0.072), ("HOME_roll_PTS", 0.012), ("HOME_roll_FG_PCT", 0.012),
-    ("HOME_roll_AST", 0.012), ("HOME_roll_TOV", 0.012), ("HOME_roll_STOCKS", 0.012),
-    ("AWAY_roll_PTS", 0.012), ("AWAY_roll_FG_PCT", 0.012), ("AWAY_roll_REB", 0.012),
-    ("AWAY_roll_AST", 0.012), ("AWAY_roll_STOCKS", 0.012), ("rest_diff", 0.007)]]
-# B2 training block (the repo's verified values: 7,979 = 6,383 + 1,596, split Feb 25 2025).
+    ("ELO_DIFF", 0.7237), ("HOME_ELO", 0.0831), ("HOME_roll_PTS", 0.0384), ("rest_diff", 0.0255),
+    ("AWAY_roll_TOV", 0.0204), ("HOME_roll_FG_PCT", 0.0099), ("HOME_roll_REB", 0.0099),
+    ("HOME_roll_AST", 0.0099), ("HOME_roll_TOV", 0.0099), ("HOME_roll_STOCKS", 0.0099),
+    ("AWAY_roll_PTS", 0.0099), ("AWAY_roll_FG_PCT", 0.0099), ("AWAY_roll_REB", 0.0099),
+    ("AWAY_roll_AST", 0.0099), ("AWAY_roll_STOCKS", 0.0099), ("AWAY_ELO", 0.0099)]]
+# B2 training block, copied from model_runs row 7: 7,982 = 6,385 + 1,597, split Feb 25 2025.
+# New games always land in the test set, so the three 2026-27 games before the run sit there.
 TRAINING = {
-    "first_game_date": "2019-11-22", "cutoff_date": "2025-02-25", "last_game_date": "2026-04-12",
-    "games_total": 7979, "train_games": 6383, "test_games": 1596, "home_win_rate": 0.5501,
+    "first_game_date": "2019-11-22", "cutoff_date": "2025-02-25", "last_game_date": "2026-10-20",
+    "games_total": 7982, "train_games": 6385, "test_games": 1597, "home_win_rate": 0.55,
     "rolling_window": 10,
     "seasons": [{"season": s, "games": g, "train": tr, "test": te} for s, g, tr, te in [
         ("2019-20", 759, 759, 0), ("2020-21", 1080, 1080, 0), ("2021-22", 1230, 1230, 0),
-        ("2022-23", 1230, 1230, 0), ("2023-24", 1230, 1230, 0), ("2024-25", 1225, 854, 371),
-        ("2025-26", 1225, 0, 1225)]],
+        ("2022-23", 1230, 1230, 0), ("2023-24", 1230, 1230, 0), ("2024-25", 1225, 856, 369),
+        ("2025-26", 1225, 0, 1225), ("2026-27", 3, 0, 3)]],
 }
+BASELINE = 0.5498  # home-win rate on the test set (0.54978...)
 MODEL_RUN = {
-    "trained_at": "2026-10-06T02:05:00Z", "production_model": PRODUCTION,
-    "cutoff_date": "2025-02-25", "test_games": 1596, "training": TRAINING,
+    "trained_at": "2026-10-21T10:54:44Z", "production_model": PRODUCTION,
+    "cutoff_date": "2025-02-25", "test_games": 1597, "training": TRAINING,
     "leaderboard": [
-        {"rank": i, "model": key, "test_games": 1596, "accuracy": acc, "log_loss": ll,
+        {"rank": i, "model": key, "test_games": 1597, "accuracy": acc, "log_loss": ll,
          "brier_score": brier, "roc_auc": auc, "calibration_ece": ece,
-         "baseline_home_win_rate": 0.5501,
+         "baseline_home_win_rate": BASELINE,
          **({"feature_signal": FEATURE_SIGNAL} if key == PRODUCTION else {})}
         for i, (key, acc, brier, ll, auc, ece) in enumerate(LEADERBOARD, start=1)],
 }
@@ -511,7 +513,7 @@ def prediction_row(g, status, bankroll_at_bet, with_kelly):
         "bankroll_at_bet": bankroll_at_bet if g.bet else None,
         "kelly_full": round(kelly_full(g.p_pick, g.price), 4) if (g.bet and with_kelly) else None,
         "kelly_fraction": 0.25 if (g.bet and with_kelly) else None,
-        "model_name": "legacy-calibrated-logistic",
+        "model_name": PRODUCTION,
         "predicted_at": utc(g.day, 18, 31), "status": status,
         "home_score": None, "away_score": None, "skip_reason": None,
     }
@@ -690,15 +692,11 @@ def all_predictions(tables, today=TONIGHT):
 
 
 # ---------------------------------------------------------------------------- Hardwood stubs
-def shorten_production_model(body):
-    """The page matches the production row to production_model by suffix, so the sample's
-    leaderboard key for it is shortened to "logistic" (rank-bump-chart.md sec1). Everything
-    else in /api/model (B1-B3) comes straight from the route; this only sanity-checks it."""
+def check_model_payload(body):
+    """/api/model (B1-B3) comes straight from the route; this only sanity-checks it. The
+    leaderboard keeps the real stored names, so the page's label mapping is exercised too."""
     board = body["leaderboard"]
     assert len(board) == len(MODEL_RUN["leaderboard"])
-    for row in board:
-        if row["is_production"]:
-            row["model"] = "logistic"
     assert sum(row["is_production"] for row in board) == 1
     assert abs(sum(r["share"] for r in body["feature_importance"]) - 1.0) < 1e-9
     assert body["training"] == TRAINING and body["elo"]["k"] == 20
@@ -855,7 +853,7 @@ def main():
     write("performance", fetch(tables, f"/api/performance?season={SEASON}"))
     write("predictions", all_predictions(tables))
     # The Model page: B1-B4 all come from the real routes.
-    write("model", shorten_production_model(fetch(tables, f"/api/model?season={SEASON}")))
+    write("model", check_model_payload(fetch(tables, f"/api/model?season={SEASON}")))
     featured_id, featured_detail, featured_pick = settled_featured_game(tables)
     assert featured_pick["game_id"] == featured_id
     write(f"game-{featured_id}", featured_detail)

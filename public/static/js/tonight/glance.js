@@ -1,5 +1,5 @@
 // The night at a glance: kicker, the h1 sentence, the six-cell board, and one mini court per game.
-import { fmt, esc } from '../format.js';
+import { fmt, esc, MINUS } from '../format.js';
 import { renderBoard, signCls } from '../board.js';
 import { glanceCourt, countUp } from '../court.js';
 import { watch, motionOn } from '../reveal.js';
@@ -25,12 +25,21 @@ function isOfficial() {
   return bets.length > 0 && bets.every(g => g.bet.result != null);
 }
 
+// The fourth cell follows the night: live picks while anything is live, then what the open bets
+// can still pay, then the return on what was staked. It never reads "0 of 0".
+function fourthCell(s) {
+  if (s.liveBets > 0) return { label: 'Live picks ahead', value: s.ahead + ' of ' + s.liveBets };
+  if (s.open > 0) return { label: 'Open bets could pay', value: fmt.money(s.toWinOpen, true), cls: 'pos' };
+  const r = s.staked > 0 ? Math.round((s.settled / s.staked) * 1000) / 10 : 0;
+  return { label: 'Return on staked', value: (r > 0 ? '+' : r < 0 ? MINUS : '±') + Math.abs(r).toFixed(1) + '%', cls: signCls(r) };
+}
+
 export function boardCells(s) {
   return [
     { label: 'At risk', value: fmt.money(s.staked) },
     { label: 'Settled', value: fmt.money(s.settled, true), cls: signCls(s.settled), testid: 'settled' },
     { label: 'If it ended now', value: fmt.money(s.ifEnded, true), cls: signCls(s.ifEnded) },
-    { label: 'Live picks ahead', value: s.ahead + ' of ' + s.liveBets },
+    fourthCell(s),
     { label: 'Bets W–L', value: s.betW + '–' + s.betL },
     { label: 'Picks W–L', value: s.pickW + '–' + s.pickL }
   ];
@@ -96,7 +105,8 @@ export function renderLede(s, { error = false } = {}) {
     sep.hidden = false;
   }
   setHTML(h1, sentence(s));
-  board.hidden = NOBOARD.includes(phase);
+  // With no bets the headline already says so; a board of zeros adds nothing.
+  board.hidden = NOBOARD.includes(phase) || s.bets === 0;
   if (!board.hidden) renderBoard(board, boardCells(s));
   if (phase === 'no_games' || phase === 'offseason') {
     const last = store.slate.last_slate_date;
