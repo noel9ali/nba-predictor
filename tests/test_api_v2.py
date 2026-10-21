@@ -136,6 +136,12 @@ def v2_tables():
     return tables
 
 
+def no_rpc(function, params):
+    """Stand-in for call_rpc: never reach a real database. team_form falls back to the fake games
+    table, as it does when the function is missing. Tests of the RPC path patch call_rpc themselves."""
+    raise DatabaseError(f"Calling {function} failed (not stubbed in tests)")
+
+
 class ApiTestCase(unittest.TestCase):
     env = V2_OFF
 
@@ -143,7 +149,7 @@ class ApiTestCase(unittest.TestCase):
         self.client = dashboard.app.test_client()
         self.db = FakeDB(self.tables())
         for target, value in (("select_rows", self.db), ("today_et", lambda: TODAY),
-                              ("now_utc", lambda: NOW)):
+                              ("now_utc", lambda: NOW), ("call_rpc", no_rpc)):
             patcher = patch.object(dashboard, target, value)
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -899,6 +905,7 @@ class QueryBudgetTests(unittest.TestCase):
         env = {**(V2_ON if v2 else V2_OFF), "ALLOW_RUN_WORKFLOW": "false"}
         with patch.object(dashboard, "select_rows", counting), \
                 patch.object(dashboard, "today_et", lambda: TODAY), \
+                patch.object(dashboard, "call_rpc", no_rpc), \
                 patch.dict(os.environ, env):
             response = dashboard.app.test_client().get(url)
         self.assertEqual(response.status_code, 200, url)
