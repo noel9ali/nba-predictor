@@ -62,13 +62,13 @@ would treat those players as available.
 
 | Task | When | Runs | Does |
 |---|---|---|---|
-| `NBA-Predictor-Daily` | 6:00 AM | `run_daily.bat` = `daily_workflow.py --stage morning` | collect, settle yesterday, features, results SMS (`workflow_log.kind = 'morning'`) |
-| `NBA-Predictor-Predict` | every 15 min, 10:05-22:05 | `run_predict_stage.bat` = `daily_workflow.py --stage predict` | injury snapshot, then predictions, then picks SMS (`kind = 'predict'`) |
+| `NBA-Predictor-Daily` | 6:00 AM | `run_daily.bat` = `daily_workflow.py --stage morning` | collect, settle yesterday, features, results push to ntfy + daily summary email (`workflow_log.kind = 'morning'`) |
+| `NBA-Predictor-Predict` | every 15 min, 10:05-22:05 | `run_predict_stage.bat` = `daily_workflow.py --stage predict` | injury snapshot, then predictions, then picks pushed to ntfy (`kind = 'predict'`) |
 
 Each predict run prices only games that tip within the next 75 minutes (`PREDICT_WINDOW_MINUTES` in
 `daily_workflow.py`, passed to `predict.py` as `NBA_PREDICT_WINDOW_MINUTES`) and that have no prediction yet, so
 every game is priced 60-75 minutes before tip with the newest report, whatever its tip time. A run with nothing
-to price exits quietly: no SMS, no log row, no odds request, and no Elo/games table reads (the cheap checks run
+to price exits quietly: no push, no log row, no odds request, and no Elo/games table reads (the cheap checks run
 first). `predict.py` also never prices a game that already tipped. `python daily_workflow.py` with no flag still
 does everything in one go (Run now).
 
@@ -80,7 +80,7 @@ does everything in one go (Run now).
 | NBA injury report PDFs (CDN) | 0-3 (stops at the first slot already on disk; 0.4 s apart) | same | no published limit |
 | The Odds API | 0 | 1 credit (whole slate) | 500 credits/month; capped at 12/day (`ODDS_DAILY_CALL_CAP`, `data\odds_budget.json`) |
 | Supabase | 1 small read (+1 if flags change) | + Elo/games/features reads | free-tier egress |
-| Twilio | 0 | 1 SMS | per message |
+| ntfy | 0 | 1 push per new pick | none on the public server |
 
 **Register the predict task BEFORE the morning bat changes take effect, or no predictions get made:**
 ```powershell
@@ -133,10 +133,12 @@ jobs:
       - name: Run daily workflow
         env:
           ODDS_API_KEY:        ${{ secrets.ODDS_API_KEY }}
-          TWILIO_ACCOUNT_SID:  ${{ secrets.TWILIO_ACCOUNT_SID }}
-          TWILIO_AUTH_TOKEN:   ${{ secrets.TWILIO_AUTH_TOKEN }}
-          TWILIO_FROM:         ${{ secrets.TWILIO_FROM }}
-          TWILIO_TO:           ${{ secrets.TWILIO_TO }}
+          NTFY_TOPIC:          ${{ secrets.NTFY_TOPIC }}
+          NTFY_TOKEN:          ${{ secrets.NTFY_TOKEN }}
+          SMTP_HOST:           ${{ secrets.SMTP_HOST }}
+          SMTP_USER:           ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD:       ${{ secrets.SMTP_PASSWORD }}
+          ALERT_EMAIL_TO:      ${{ secrets.ALERT_EMAIL_TO }}
         run: python daily_workflow.py
 ```
 
@@ -170,10 +172,8 @@ Same pattern — wire `daily_workflow.py` as the Lambda handler or ECS task entr
 
 ```
 ODDS_API_KEY
-TWILIO_ACCOUNT_SID
-TWILIO_AUTH_TOKEN
-TWILIO_FROM
-TWILIO_TO
+NTFY_TOPIC, NTFY_TOKEN  (optional: picks and results by push)
+SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, ALERT_EMAIL_TO, ALERT_EMAIL_FROM  (optional: daily summary by email)
 FLASK_SECRET_KEY  (only needed for the web dashboard)
 ```
 

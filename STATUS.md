@@ -11,10 +11,10 @@
 - **Vercel**: production deploy of the same SHA (see Deploys below).
 - **Scheduler**
   - `NBA-Predictor-Daily` 06:00 ET -> `run_daily.bat` -> `daily_workflow.py --stage morning` (collect, settle yesterday,
-    features, results SMS; workflow_log kind `morning`). It no longer predicts.
+    features, results push + summary email; workflow_log kind `morning`). It no longer predicts.
   - `NBA-Predictor-Predict` (new) every 15 min 10:05-22:05 -> `daily_workflow.py --stage predict`: injury snapshot, then
     prices each game that tips within 75 min and has no prediction, i.e. 60-75 min before tip (workflow_log kind
-    `predict`, picks SMS). A tick with nothing to price is silent and cheap: no SMS, no log row, no odds request, no
+    `predict`, picks pushed to ntfy). A tick with nothing to price is silent and cheap: no push, no log row, no odds request, no
     Elo/games table reads. Never prices a started game. Odds API capped at 12 calls/day (`data\odds_budget.json`).
   - `NBA-Predictor-Injury-Snapshot` every 30 min 11:00-23:00 (unchanged).
 
@@ -28,7 +28,7 @@ timing the model was evaluated at: report from tip minus 60 min).
 NBA ScoreboardV3 49 calls; injury PDFs on the NBA CDN 0-3 per snapshot (stops at the first slot already on disk, 0.4 s
 apart; ~75 snapshots a day incl. the injury task); Odds API 0 on quiet ticks, 1 credit per priced tick (typically 3-6 a
 game day, hard cap 12/day vs 500/month); Supabase 2 small reads per quiet tick, full Elo/games read only when pricing;
-Twilio 1 SMS per priced tick. `nba_api` schedule/player lookups are cached 24 h.
+ntfy 1 push per new pick. `nba_api` schedule/player lookups are cached 24 h.
 
 ## What the model now does
 Candidate `lr-calibrated-availability-v1` (calibrated logistic regression: Elo, rolling form, rest + 6 player-availability
@@ -50,9 +50,9 @@ Rosters for the projection now come from today's `CommonAllPlayers` (not last se
 - Games that tip within 2 h of the scheduler gap (or before 10:00 ET) are not priced; the 10:00 start covers noon tips.
 
 ## Tuesday checklist (Oct 20)
-- [ ] ~06:30 workflow_log: `morning` row, status success, SMS received (results only; says picks follow later)
+- [ ] ~06:30 workflow_log: `morning` row, status success, results push and summary email received (says picks follow later)
 - [ ] ~14:00-14:15 BOS@DET prediction row (tip 3:00 PM), `model_name = lr-calibrated-availability-v1`, prob_range_low/high set
-- [ ] ~18:00-18:15 PHI@NYK (7:00 PM); ~20:15-20:30 OKC@SAS (9:30 PM); each with a picks SMS; `book_odds` rows for each
+- [ ] ~18:00-18:15 PHI@NYK (7:00 PM); ~20:15-20:30 OKC@SAS (9:30 PM); each with a picks push; `book_odds` rows for each
 - [ ] 3 predictions total for the slate; no `skip_reason` unless an odds gap
 - [ ] `injury_snapshot.log` shows rows with matched players once teams submit
 - [ ] If anything fails: `logs\workflow.log`; to fall back, delete `NBA_PRODUCTION_MODEL` from `.env`

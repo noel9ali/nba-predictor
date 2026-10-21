@@ -23,9 +23,8 @@ def _blocked(*args, **kwargs):
 # Child processes don't inherit the socket patch below, so fence them too.
 # load_dotenv() never overrides variables that are already set, so these dummy
 # values win over the local dotenv file for this process AND every child it
-# spawns: Supabase points at a dead local port; no real key, Odds or Twilio value.
-for _name in ("SUPABASE_SECRET_KEY", "ODDS_API_KEY", "TWILIO_ACCOUNT_SID",
-              "TWILIO_AUTH_TOKEN", "TWILIO_FROM", "TWILIO_TO", "NTFY_TOKEN",
+# spawns: Supabase points at a dead local port; no real key, Odds, ntfy or SMTP value.
+for _name in ("SUPABASE_SECRET_KEY", "ODDS_API_KEY", "NTFY_TOKEN",
               "SMTP_USER", "SMTP_PASSWORD", "ALERT_EMAIL_TO"):
     os.environ[_name] = "offline-test-dummy"
 os.environ["SUPABASE_URL"] = "http://127.0.0.1:9"

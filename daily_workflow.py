@@ -6,8 +6,8 @@ evening predictions, then notifies (ntfy for picks and results, email for the da
 
 Can be invoked directly:
     python daily_workflow.py                    # everything in one go
-    python daily_workflow.py --stage morning    # 06:00 ET: pipeline + results SMS
-    python daily_workflow.py --stage predict    # evening: predictions + picks SMS
+    python daily_workflow.py --stage morning    # 06:00 ET: pipeline + results push + email
+    python daily_workflow.py --stage predict    # evening: predictions + picks push
 
 Or triggered via the Flask API (POST /api/run-workflow).
 """
@@ -43,9 +43,7 @@ load_dotenv()
 
 WORKFLOW_LOG_MIGRATION = 'supabase/migrations/20260923000500_workflow_log.sql'
 LOG_TAIL_CHARS = 4000
-SECRET_ENV_VARS = ('SUPABASE_SECRET_KEY', 'ODDS_API_KEY', 'TWILIO_AUTH_TOKEN',
-                    'TWILIO_API_SID', 'TWILIO_CLIENT_SECRET',
-                    'TWILIO_ACCOUNT_SID', 'TWILIO_FROM', 'TWILIO_TO',
+SECRET_ENV_VARS = ('SUPABASE_SECRET_KEY', 'ODDS_API_KEY',
                     'NTFY_TOKEN', 'SMTP_USER', 'SMTP_PASSWORD', 'ALERT_EMAIL_TO', 'ALERT_EMAIL_FROM')
 DEFAULT_STEP_TIMEOUT_SECONDS = 7200  # 2 hours; overridable via WORKFLOW_STEP_TIMEOUT_SECONDS
 
@@ -63,7 +61,7 @@ def redact_secrets(text):
     return text
 
 
-def log_run(run_date, started_at, finished_at, status, pipeline_ok, predict_ok, sms_sent, notes='',
+def log_run(run_date, started_at, finished_at, status, pipeline_ok, predict_ok, notified, notes='',
             kind='manual', trigger='schedule', log_tail=''):
     """Insert one workflow_log row. A database failure is reported, never raised."""
     row = {
@@ -75,7 +73,7 @@ def log_run(run_date, started_at, finished_at, status, pipeline_ok, predict_ok, 
         'status': status,
         'pipeline_ok': bool(pipeline_ok),
         'predict_ok': bool(predict_ok),
-        'sms_sent': bool(sms_sent),
+        'sms_sent': bool(notified),  # legacy column name
         'notes': notes,
         'log_tail': redact_secrets(log_tail)[-LOG_TAIL_CHARS:],
     }
@@ -250,16 +248,16 @@ def get_overall_stats():
 
 
 # ---------------------------------------------------------------------------
-# SMS formatting & sending
+# Summary formatting
 # ---------------------------------------------------------------------------
 
 TENTATIVE_NOTE = ("These are tentative: early injury reports and morning odds, so they can change. "
                   "Final picks (and any bets) follow about an hour before each tip.")
 
 
-def format_sms(yesterday_results, today_predictions, stats, include_yesterday=True, include_today=True,
+def format_summary(yesterday_results, today_predictions, stats, include_yesterday=True, include_today=True,
                temporary_picks=None):
-    """Build the daily SMS text. The morning stage shows today's temporary picks as tentative (the real picks come
+    """Build the daily summary text. The morning stage shows today's temporary picks as tentative (the real picks come
     later, after the injury reports); the predict stage leaves yesterday's results out (the morning text already
     had them)."""
     yesterday = (date.today() - timedelta(days=1)).strftime('%b %d')
@@ -333,7 +331,7 @@ def format_sms(yesterday_results, today_predictions, stats, include_yesterday=Tr
 # ---------------------------------------------------------------------------
 # Notifications: picks and results over ntfy (public topic), daily summary by email
 # ---------------------------------------------------------------------------
-# Twilio SMS was dropped: carriers filtered the odds/picks text (error 30007) while the log said "sent".
+# Delivery is confirmed per channel: a push or email counts as sent only when the server accepted it.
 # Every channel here returns a result dict and never raises, so a messaging failure cannot fail the pipeline.
 
 NTFY_DEFAULT_SERVER = 'https://ntfy.sh'
@@ -554,12 +552,12 @@ STAGE_KIND = {'full': 'manual', 'morning': 'morning', 'predict': 'predict'}
 def run_workflow(send_text=True, trigger='schedule', stage='full'):
     """
     Daily workflow, in stages:
-      full     pipeline, then predictions, then SMS (Run now; the original behaviour)
-      morning  pipeline only (collect, settle yesterday, features), then the results SMS      06:00 ET
-      predict  predictions only (injury snapshot first), then the picks SMS            every 15 min, 10:05-22:05 ET
+      full     pipeline, then predictions, then notifications (Run now; the original behaviour)
+      morning  pipeline only (collect, settle yesterday, features), then the results push + email      06:00 ET
+      predict  predictions only (injury snapshot first), then the picks push            every 15 min, 10:05-22:05 ET
     The predict stage prices each game once it tips within PREDICT_WINDOW_MINUTES, so the availability model sees
     the newest game-day injury report; at 06:00 teams have not yet submitted theirs. A run with nothing new to
-    price exits quietly (no SMS, no workflow_log row).
+    price exits quietly (no push, no workflow_log row).
     trigger is 'schedule' from the CLI (Task Scheduler) and 'manual' from Run now.
     Returns a dict with status info.
     """
@@ -619,7 +617,7 @@ def run_workflow(send_text=True, trigger='schedule', stage='full'):
                     'status': 'success', 'pipeline_ok': True, 'predict_ok': True, 'sms_sent': False, 'noop': True}
 
     # Step 3 — notifications
-    sms_sent = False
+    notified = False
     outcomes = []
     if send_text:
         yesterday_results = get_yesterdays_results() if stage != 'predict' else []
@@ -627,11 +625,11 @@ def run_workflow(send_text=True, trigger='schedule', stage='full'):
         stats = get_overall_stats()
         temporary_picks = get_todays_temporary_picks() if stage == 'morning' else []
 
-        sms_body = format_sms(yesterday_results, today_predictions, stats,
+        summary_body = format_summary(yesterday_results, today_predictions, stats,
                               include_yesterday=stage != 'predict', include_today=stage != 'morning',
                               temporary_picks=temporary_picks)
         print("📱 Daily summary:\n")
-        print(sms_body)
+        print(summary_body)
         print()
 
         # Picks and results by ntfy, the daily summary by email. Nothing here may fail the pipeline or the predict stage.
@@ -640,11 +638,11 @@ def run_workflow(send_text=True, trigger='schedule', stage='full'):
                 outcomes += push_picks(today_predictions)
             if stage in ('full', 'morning'):
                 outcomes += push_results(yesterday_results)
-                outcomes.append(send_email(f"NBA Daily Summary — {date.today().strftime('%b %d')}", sms_body))
+                outcomes.append(send_email(f"NBA Daily Summary — {date.today().strftime('%b %d')}", summary_body))
         except Exception as exc:
             outcomes.append(_result('ntfy', 'failed', f'unexpected {type(exc).__name__}'))
-        # workflow_log.sms_sent (column name kept): True only when every channel attempted this run delivered
-        sms_sent = bool(outcomes) and all(o['status'] == 'sent' for o in outcomes)
+        # workflow_log.sms_sent (legacy column name, kept): True only when every channel attempted this run delivered
+        notified = bool(outcomes) and all(o['status'] == 'sent' for o in outcomes)
         print(f"Notifications: {describe_outcomes(outcomes) or 'nothing new to send'}\n")
 
     # Step 4 — log
@@ -665,7 +663,7 @@ def run_workflow(send_text=True, trigger='schedule', stage='full'):
         notes.append(describe_outcomes(outcomes) or 'no notifications sent')
 
     log_run(run_date, started_at, finished_at, overall_status,
-            pipeline_ok, predict_ok, sms_sent, redact_secrets(', '.join(notes)),
+            pipeline_ok, predict_ok, notified, redact_secrets(', '.join(notes)),
             kind=STAGE_KIND[stage], trigger=trigger, log_tail=pipeline_out + predict_out)
 
     result = {
@@ -675,7 +673,7 @@ def run_workflow(send_text=True, trigger='schedule', stage='full'):
         'status': overall_status,
         'pipeline_ok': pipeline_ok,
         'predict_ok': predict_ok,
-        'sms_sent': sms_sent,
+        'sms_sent': notified,
     }
     print(f"\n{'='*50}")
     print(f"Workflow finished — status: {overall_status}")
@@ -716,5 +714,5 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="NBA Predictor daily workflow")
     parser.add_argument('--stage', choices=STAGES, default='full',
-                        help="full (default), morning (pipeline + results SMS) or predict (picks + SMS)")
+                        help="full (default), morning (pipeline + results push + email) or predict (picks push)")
     sys.exit(_exit_code(run_workflow(stage=parser.parse_args().stage)))

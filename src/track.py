@@ -224,7 +224,7 @@ def update_results():
 #   bankroll + running total of settled profit_loss, ordered by game_date).
 #   Settling an EARLIER date shifts the cumulative balance of every LATER
 #   date too, so rewriting only the dates settled in this run would leave
-#   every later bankroll row (including the latest one the dashboard/SMS
+#   every later bankroll row (including the latest one the dashboard/summary
 #   read) stale.
 def _recompute_bankroll(affected_dates):
     completed = select_rows(

@@ -16,7 +16,7 @@ An end-to-end pipeline that predicts NBA game outcomes, paper-bets against real 
 
 | Part | Runs on | Entry point |
 |---|---|---|
-| Pipeline (collect, Elo, features, train, settle, predict, SMS) | Windows laptop, Task Scheduler | `daily_workflow.py`, `run_pipeline.bat`, `run_predict.bat` |
+| Pipeline (collect, Elo, features, train, settle, predict, notify) | Windows laptop, Task Scheduler | `daily_workflow.py`, `run_pipeline.bat`, `run_predict.bat` |
 | Database | Supabase Postgres (RLS on, server key only) | `src/database.py`, `supabase/migrations/` |
 | Dashboard API and page | Vercel (Flask) or `python app.py` locally | `app.py`, `public/` |
 
@@ -32,7 +32,7 @@ An end-to-end pipeline that predicts NBA game outcomes, paper-bets against real 
 
 - **Morning:** `run_pipeline.bat` runs collect → Elo → features → train → settle.
 - **Predictions:** `run_predict.bat` fetches tonight's games and odds, predicts, sizes bets and logs them.
-- **Scheduled:** `scheduler\task_scheduler_setup.ps1` registers the Task Scheduler jobs that run `daily_workflow.py` and send the SMS summary.
+- **Scheduled:** `scheduler\task_scheduler_setup.ps1` registers the Task Scheduler jobs that run `daily_workflow.py` and send picks and results to ntfy and the daily summary by email.
 - **Local dashboard:** `python app.py`, then open http://127.0.0.1:5000
 
 ## Hosting (Vercel)
@@ -65,4 +65,4 @@ The top five models are within 0.002 log-loss of each other, so gradient boostin
 
 ## Tech stack
 
-nba_api · pandas · scikit-learn · XGBoost · PyTorch · The Odds API · Supabase Postgres · Flask · Vercel · Twilio
+nba_api · pandas · scikit-learn · XGBoost · PyTorch · The Odds API · Supabase Postgres · Flask · Vercel · ntfy

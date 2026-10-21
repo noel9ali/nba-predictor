@@ -117,7 +117,7 @@ class LogRunTests(unittest.TestCase):
         self.assertEqual((result["status"], row["status"]), ("success", "success"))
         self.assertIn("temporary predictions failed", row["notes"])
 
-    def test_the_picks_sms_check_ignores_temporary_predictions(self):
+    def test_the_picks_push_check_ignores_temporary_predictions(self):
         self.assertEqual(daily_workflow.saved_predictions("Saved 3 temporary prediction(s).\n"), 0)
 
     def test_predict_stage_runs_only_predictions_and_logs_kind_predict(self):
@@ -143,7 +143,7 @@ class LogRunTests(unittest.TestCase):
         self.assertEqual(calls, ["run_pipeline.bat", "run_predict.bat"])
         self.assertEqual(row["kind"], "manual")
 
-    def test_predict_tick_with_nothing_saved_sends_no_sms_and_logs_nothing(self):
+    def test_predict_tick_with_nothing_saved_sends_no_push_and_logs_nothing(self):
         for out in ("No games today.\n", "No games inside the prediction window.\n", "Saved 0 prediction(s).\n",
                     "Odds request budget for today (12 calls) is used up; no odds fetched.\n", ""):
             with self.subTest(out=out), \
@@ -185,20 +185,20 @@ class LogRunTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             daily_workflow.run_workflow(send_text=False, stage="evening")
 
-    def test_stage_sms_texts(self):
+    def test_stage_summary_texts(self):
         picks = [{"home_team": "LAL", "away_team": "BOS", "home_win_prob": 0.62, "away_win_prob": 0.38,
                   "predicted_winner": "LAL", "bet_placed": None, "bet_amount": 0, "odds": None}]
-        morning = daily_workflow.format_sms([], picks, {}, include_today=False)
+        morning = daily_workflow.format_summary([], picks, {}, include_today=False)
         self.assertIn("Today's picks follow later", morning)
         self.assertNotIn("LAL", morning)
-        evening = daily_workflow.format_sms([], picks, {}, include_yesterday=False)
+        evening = daily_workflow.format_summary([], picks, {}, include_yesterday=False)
         self.assertIn("NBA Picks", evening)
         self.assertNotIn("Yesterday", evening)
         self.assertIn("BOS @ LAL", evening)
 
 
-class QueryAndSmsTests(unittest.TestCase):
-    def test_format_sms_with_text_probabilities_and_odds(self):
+class QueryAndSummaryTests(unittest.TestCase):
+    def test_format_summary_with_text_probabilities_and_odds(self):
         rows = pd.DataFrame([
             {"home_team": "LAL", "away_team": "BOS", "home_win_prob": "0.62", "away_win_prob": "0.38",
              "predicted_winner": "LAL", "bet_placed": "LAL", "bet_amount": 25.0, "odds": "150"},
@@ -210,9 +210,9 @@ class QueryAndSmsTests(unittest.TestCase):
 
         self.assertIn(("game_date", "eq", daily_workflow.date.today().strftime("%Y-%m-%d")),
                       select_rows.call_args.kwargs["filters"])
-        sms = daily_workflow.format_sms([], predictions, {})
-        self.assertIn("BOS @ LAL — LAL (62%) | Bet: $25.00 @ +150", sms)
-        self.assertIn("PHX @ DEN — PHX (55%)", sms)
+        summary = daily_workflow.format_summary([], predictions, {})
+        self.assertIn("BOS @ LAL — LAL (62%) | Bet: $25.00 @ +150", summary)
+        self.assertIn("PHX @ DEN — PHX (55%)", summary)
 
     def test_yesterdays_results_handle_missing_profit_loss(self):
         rows = pd.DataFrame([
@@ -221,8 +221,8 @@ class QueryAndSmsTests(unittest.TestCase):
         ])
         with patch.object(daily_workflow, "select_rows", return_value=rows):
             results = daily_workflow.get_yesterdays_results()
-        sms = daily_workflow.format_sms(results, [], {})
-        self.assertIn("✓ BOS @ LAL — predicted LAL, actual LAL, P/L: +$0.00", sms)
+        summary = daily_workflow.format_summary(results, [], {})
+        self.assertIn("✓ BOS @ LAL — predicted LAL, actual LAL, P/L: +$0.00", summary)
 
     def test_overall_stats_fall_back_to_1000_without_bankroll_table(self):
         preds = pd.DataFrame([{"correct": 1, "profit_loss": 37.5}, {"correct": 0, "profit_loss": -20.0}])
@@ -237,20 +237,14 @@ class QueryAndSmsTests(unittest.TestCase):
         self.assertEqual(stats["bankroll"], 1000.0)
         self.assertEqual((stats["total"], stats["correct"], stats["total_pl"]), (2, 1, 17.5))
 
-    def test_redact_secrets_scrubs_twilio_identifiers(self):
+    def test_redact_secrets_scrubs_notification_credentials(self):
         # Obviously-fake values -- never read from .env.
-        fake = {
-            "TWILIO_ACCOUNT_SID": "AC" + "0" * 32,
-            "TWILIO_FROM": "+15550100000",
-            "TWILIO_TO": "+15550100001",
-        }
+        fake = {"NTFY_TOKEN": "tk_0000000000", "SMTP_PASSWORD": "pw-0000000000", "SMTP_USER": "user0000@example.invalid"}
         with patch.dict(os.environ, fake):
-            text = daily_workflow.redact_secrets(
-                f"sid={fake['TWILIO_ACCOUNT_SID']} from={fake['TWILIO_FROM']} to={fake['TWILIO_TO']}"
-            )
+            text = daily_workflow.redact_secrets(" ".join(f"{k}={v}" for k, v in fake.items()))
         for value in fake.values():
             self.assertNotIn(value, text)
-        self.assertEqual(text, "sid=<TWILIO_ACCOUNT_SID> from=<TWILIO_FROM> to=<TWILIO_TO>")
+        self.assertEqual(text, "NTFY_TOKEN=<NTFY_TOKEN> SMTP_PASSWORD=<SMTP_PASSWORD> SMTP_USER=<SMTP_USER>")
 
 
 class NtfyTests(unittest.TestCase):
