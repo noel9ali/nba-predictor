@@ -112,8 +112,22 @@ def compute_elo():
     print(f"Saved {len(elo_df)} elo records to database")
     return ratings
 
-# get_current_ratings() returns every team's most recent elo rating
-def get_current_ratings():
+# revert_stale_ratings() applies the between-season mean reversion (once, per team) to teams whose
+#   latest game is from an earlier season than today. Pure: no DB access. Mirrors compute_elo(), which
+#   reverts all ratings when the season changes, so openers are predicted on the same scale as training.
+def revert_stale_ratings(ratings, last_game_dates, today):
+    from nba_client import season_for_date
+    today_season = season_for_date(pd.Timestamp(today))
+    out = {}
+    for team, rating in ratings.items():
+        last = last_game_dates.get(team)
+        if last is not None and season_for_date(pd.Timestamp(last)) != today_season:
+            rating = apply_mean_reversion({team: rating})[team]
+        out[team] = rating
+    return out
+
+# get_current_ratings() returns every team's most recent elo rating (reverted if a new season has begun)
+def get_current_ratings(today=None):
     # returns the most recent elo rating for every team
     elo = select_rows(
         "elo",
@@ -132,6 +146,7 @@ def get_current_ratings():
     outcomes = home_games.set_index("GAME_ID")["WL"].to_dict()
 
     ratings = {}
+    last_dates = {}
     for _, game in elo.iterrows():
         home_id = game["HOME_TEAM_ID"]
         away_id = game["AWAY_TEAM_ID"]
@@ -143,7 +158,11 @@ def get_current_ratings():
         )
         ratings.setdefault(home_id, home_elo)
         ratings.setdefault(away_id, away_elo)
-    return ratings
+        last_dates.setdefault(home_id, game["GAME_DATE"])
+        last_dates.setdefault(away_id, game["GAME_DATE"])
+    if today is None:
+        today = pd.Timestamp.today().normalize()
+    return revert_stale_ratings(ratings, last_dates, today)
 
 def get_last_elo_date():
     df = select_rows(

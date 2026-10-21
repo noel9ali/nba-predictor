@@ -51,14 +51,12 @@ export function fmtDate(iso) {
 }
 // "Nov 17" from a YYYY-MM-DD
 export const monthDay = iso => fmt.date(iso, { month: 'short', day: 'numeric' });
-export const wl = s => String(s == null ? '' : s).replace('-', NDASH);               // "54-41" -> "54–41"
+export const wl = s => String(s == null ? '' : s).replace(/(\d)-(\d)/g, '$1' + NDASH + '$2');  // "54-41" -> "54–41"
 export function parseWL(s) {
   const m = /^(\d+)-(\d+)$/.exec(String(s || ''));
   return m ? [Number(m[1]), Number(m[2])] : [0, 0];
 }
-export const seasonLabel = s => String(s || '').replace('-', NDASH);
-// "2020-21" -> "20–21", for strips too narrow to carry the full label.
-export const seasonShort = s => seasonLabel(s).replace(/^\d\d(\d\d)/, '$1');
+export const seasonLabel = s => String(s || '').replace(/(\d)-(\d)/g, '$1' + NDASH + '$2');
 
 // A Date as YYYY-MM-DD in America/New_York.
 export function dateET(d) {
@@ -120,11 +118,15 @@ export function teamParts(t) {
 
 export const MODEL_LABELS = {
   'gradient-boosting': 'Gradient boosting',
+  'gradient-boosting-gridsearch': 'Gradient boosting',
   'calibrated-xgboost': 'Calibrated XGBoost',
   'current-xgboost': 'XGBoost',
-  lstm: 'LSTM',
+  'lstm': 'LSTM',
+  'lstm-gridsearch': 'LSTM',
   'random-forest': 'Random forest',
-  logistic: 'Calibrated logistic'
+  'random-forest-gridsearch': 'Random forest',
+  'logistic': 'Calibrated logistic',
+  'legacy-calibrated-logistic': 'Calibrated logistic'
 };
 // The training run stores names like "gradient-boosting-gridsearch" and "legacy-calibrated-logistic".
 export const modelKey = key => String(key).toLowerCase().replace(/^legacy-/, '').replace(/-gridsearch$/, '').replace(/^calibrated-logistic$/, 'logistic');

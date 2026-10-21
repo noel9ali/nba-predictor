@@ -1,4 +1,4 @@
-"""Response shapes from integration-docs/04-API-CONTRACT.md, shared by the endpoint tests
+﻿"""Response shapes from integration-docs/04-API-CONTRACT.md, shared by the endpoint tests
 and the sample-data tests so the API and public/sample/*.json can't drift apart.
 
 A shape is a type (str, bool, NUM, INT), an Opt(shape) (the value may be null), an
@@ -51,6 +51,16 @@ BET = {
     "kelly_fraction": Opt(NUM), "result": Opt(Enum("hit", "miss", "void")),
     "profit_loss": Opt(NUM),
 }
+# Player data (docs/player-data-backend-spec.md sec10). All additions are Maybe(): absent or null until the
+# player-data migrations are applied and the first snapshot exists; old consumers keep working.
+AVAIL_STATUS = Enum("out", "doubtful", "questionable", "probable", "available")
+AVAIL_PLAYER = {
+    "player_id": Opt(INT), "name": str, "status": AVAIL_STATUS, "reason": Opt(str), "p_play": NUM,
+    "rating": Opt(NUM), "exp_min": Opt(NUM), "impact_pts": Opt(NUM), "report_time": Opt(TIMESTAMP),
+}
+AVAIL_SUMMARY = {
+    "home_out": INT, "away_out": INT, "key_out": [str], "uncertain": bool, "status_changed": bool,
+}
 BOOK_GRID = {
     "books": [str], "home": [Opt(INT)], "away": [Opt(INT)],
     "best_home_idx": Opt(INT), "best_away_idx": Opt(INT),
@@ -61,7 +71,10 @@ GAME = {
     "home": TEAM, "away": TEAM, "pick": Opt(str), "pick_prob": Opt(NUM), "odds": Opt(INT),
     "bookmaker": Opt(str), "implied_prob": Opt(NUM), "edge": Opt(NUM), "bet": Opt(BET),
     "result": Opt(Enum("hit", "miss", "void")),
-    "skip_reason": Opt(Enum("no_odds", "missing_data")), "book_grid": Opt(BOOK_GRID),
+    "skip_reason": Opt(Enum("no_odds", "missing_data", "availability_uncertain")),
+    "book_grid": Opt(BOOK_GRID),
+    "availability_summary": Maybe(AVAIL_SUMMARY),
+    "provisional": Maybe(bool),   # true only for a temporary 6 AM pick; absent once the real prediction posts
 }
 BET_REF = {"game_id": GAME_ID, "profit_loss": NUM}
 RECAP = {
@@ -88,6 +101,14 @@ GAME_DETAIL = {
     "predicted_at": Opt(TIMESTAMP), "model_name": Opt(str),
     "result": Opt({"winner": Opt(str), "home_score": Opt(INT), "away_score": Opt(INT),
                    "correct": Opt(INT)}),
+    # Player data: injury chips, rest, scenario blend and "why the pick" factors.
+    "availability": Maybe({"home": [AVAIL_PLAYER], "away": [AVAIL_PLAYER]}),
+    "rest": Maybe({"home": {"rest_days": Opt(INT), "is_b2b": Opt(bool)},
+                   "away": {"rest_days": Opt(INT), "is_b2b": Opt(bool)}}),
+    "scenarios": Maybe([{"label": str, "weight": NUM, "home_win_prob": NUM}]),
+    "prob_range": Maybe({"low": NUM, "high": NUM}),
+    "factors": Maybe([{"key": str, "label": str, "group": Enum("base", "form", "availability", "rest"),
+                       "prob_points": NUM}]),
 }
 DAYS = {
     **ENVELOPE, "has_earlier": bool,
@@ -96,7 +117,7 @@ DAYS = {
 }
 SPLIT = {"key": str, "bets": INT, "w": INT, "l": INT, "staked": NUM, "pl": NUM, "roi": Opt(NUM)}
 PERFORMANCE = {
-    **ENVELOPE, "season": Pattern(r"^(\d{4}-\d{2}|all)$"), "seasons": [SEASON],
+    **ENVELOPE, "season": Pattern(r"^(\d{4}-\d{2}|all)$"), "seasons": [SEASON], "beta_seasons": [SEASON],
     "kpis": {
         "bankroll": Opt(NUM), "start_bankroll": NUM, "net_pl": NUM, "roi": Opt(NUM),
         "staked": NUM, "bets": RECORD, "picks": RECORD, "accuracy": Opt(NUM),
@@ -105,7 +126,8 @@ PERFORMANCE = {
     },
     "series": [{"date": DATE, "bankroll": NUM, "nightly_pl": NUM, "bets": RECORD,
                 "picks": RECORD, "pending": INT}],
-    "splits": {"book": [SPLIT], "confidence": [SPLIT], "edge": [SPLIT]},
+    "splits": {"book": [SPLIT], "confidence": [SPLIT], "edge": [SPLIT],
+               "star_out": Maybe([SPLIT])},
     "recent_bets": [Enum("W", "L")],
 }
 PREDICTION_ROW = {
@@ -146,6 +168,20 @@ MODEL = {
     }),
     # B3: the src/elo.py constants
     "elo": Maybe({"k": NUM, "home_advantage": NUM, "mean_reversion": NUM, "start": NUM}),
+    # Player data: candidate models (never auto-promoted) and the availability gate switch.
+    "feature_set_version": Maybe(str),
+    "model_status": Maybe(str),
+    "candidates": Maybe([{"model": str, "feature_set": Opt(str), "accuracy": Opt(NUM), "log_loss": Opt(NUM),
+                          "brier_score": Opt(NUM), "roc_auc": Opt(NUM), "test_games": Opt(INT),
+                          "promoted": bool}]),
+    "availability_gate": Maybe(bool),
+}
+# GET /api/injuries?date=: latest snapshot per game, grouped by team.
+INJURIES = {
+    **ENVELOPE, "date": DATE, "report_time": Opt(TIMESTAMP),
+    "source": Maybe(str),
+    "games": [{"game_id": GAME_ID, "home": {"tricode": str, "players": [AVAIL_PLAYER]},
+               "away": {"tricode": str, "players": [AVAIL_PLAYER]}}],
 }
 # B4: GET /api/featured-pick. game_id is null when no settled pick exists yet.
 FEATURED_PICK = {**ENVELOPE, "game_id": Opt(GAME_ID)}

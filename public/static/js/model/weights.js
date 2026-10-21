@@ -26,12 +26,32 @@ function row(label, small, share, extra) {
   const li = el('li', 'w' + (extra ? ' ' + extra : ''));
   const nm = el('span', 'nm');
   nm.append(document.createTextNode(label), el('small', '', small));
+  // Add sr-only value for screen readers
+  const sr = el('span', 'sr', pct1(share) + '%');
+  nm.append(sr);
   const tr = el('span', 'tr');
   tr.setAttribute('aria-hidden', 'true');
   const bar = document.createElement('i');
   bar.style.setProperty('width', Math.min(100, Math.max(0, share * 100)) + '%');
-  tr.append(bar);
-  li.append(nm, tr, el('span', 'val', pct1(share) + '%'));
+  const val = el('span', 'val', pct1(share) + '%');
+  // Position value at bar end (inside track), or deeper inside bar if share > 0.82
+  // When share <= 0.82, position at bar end but align right edge of value with track right edge
+  // minus 8px to ensure it fits
+  const shareNum = Math.min(1, Math.max(0, share));
+  const pct = shareNum * 100;
+  val.style.setProperty('position', 'absolute');
+  if (shareNum > 0.82) {
+    // Inside bar case: position right edge 8px from bar end
+    val.style.setProperty('right', 'calc(100% - ' + pct + '% + 8px)');
+    val.style.setProperty('left', 'auto');
+  } else {
+    // Outside bar case: position left edge 8px from bar end, but keep within track
+    // Use max() to ensure it doesn't overflow: max(left_pos, track_right - value_width_estimate)
+    val.style.setProperty('left', 'calc(' + pct + '% + 8px)');
+    val.style.setProperty('right', 'auto');
+  }
+  tr.append(bar, val);
+  li.append(nm, tr);
   return li;
 }
 

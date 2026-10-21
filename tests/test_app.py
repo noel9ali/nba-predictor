@@ -9,6 +9,18 @@ import pandas as pd
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import app as dashboard  # noqa: E402  (app.py adds src/ to sys.path itself)
+
+
+# These tests use 2025-26 fixtures; pin the clock's season so the live 2026-27 default does not apply.
+_season_patch = patch.object(dashboard, "current_season", return_value="2025-26")
+
+
+def setUpModule():
+    _season_patch.start()
+
+
+def tearDownModule():
+    _season_patch.stop()
 import daily_workflow  # noqa: E402
 from database import DatabaseError, MissingTableError  # noqa: E402
 
@@ -255,6 +267,43 @@ class LegacyRouteTests(AppTestCase):
         self.assertEqual(body["peak_point"], {"date": "2026-03-01", "balance": 1017.5, "cum_pl": 17.5})
         self.assertEqual(body["ytd_summary"]["bankroll"], 1017.5)
         self.assertEqual(body["ytd_summary"]["max_drawdown"], 20.0)
+
+
+class HideBetaTests(AppTestCase):
+    """Pre-launch (2025-26 and earlier) results stay in the database but are not served."""
+
+    def setUp(self):
+        super().setUp()
+        env = patch.dict(os.environ, {"HIDE_BETA": "1"})
+        env.start()
+        self.addCleanup(env.stop)
+        season = patch.object(dashboard, "current_season", return_value="2026-27")
+        season.start()
+        self.addCleanup(season.stop)
+
+    def test_named_beta_season_serves_no_beta_data(self):
+        for route in ("/api/ytd-summary", "/api/bankroll-series", "/api/recommendations"):
+            with self.subTest(route=route):
+                body = self.client.get(f"{route}?season=2025-26").get_json()
+                self.assertNotEqual(body["season"], "2025-26")
+        self.assertEqual(self.client.get("/api/ytd-summary?season=2025-26").get_json()["games"], 0)
+
+    def test_season_selector_omits_beta_seasons(self):
+        html = self.client.get("/legacy").get_data(as_text=True)
+        self.assertNotIn('value="2025-26"', html)
+        self.assertNotIn('value="2024-25"', html)
+
+    def test_beta_dates_have_no_slate_days_or_game_detail(self):
+        slate = self.client.get("/api/slate?date=2026-03-01").get_json()
+        self.assertEqual(slate["games"], [])
+        days = self.client.get("/api/days?end=2026-03-01").get_json()
+        self.assertEqual(days["days"], [])
+        self.assertEqual(self.client.get("/api/game/0022500900").status_code, 404)
+
+    def test_switch_off_shows_beta_data(self):
+        with patch.dict(os.environ, {"HIDE_BETA": "0"}):
+            body = self.client.get("/api/ytd-summary?season=2025-26").get_json()
+        self.assertEqual(body["games"], 2)
 
 
 class SeasonTests(AppTestCase):

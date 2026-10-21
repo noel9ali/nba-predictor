@@ -8,13 +8,27 @@ import unittest
 from datetime import date, datetime, timezone
 from unittest.mock import patch
 
+import pandas as pd
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.dirname(__file__))
 
 import app as dashboard  # noqa: E402
+
+
+# These tests use 2025-26 fixtures; pin the clock's season so the live 2026-27 default does not apply.
+_season_patch = patch.object(dashboard, "current_season", return_value="2025-26")
+
+
+def setUpModule():
+    _season_patch.start()
+
+
+def tearDownModule():
+    _season_patch.stop()
 import daily_workflow  # noqa: E402
 from contract_shapes import (  # noqa: E402
-    DAYS, FEATURED_PICK, GAME_DETAIL, MODEL, PERFORMANCE, PREDICTIONS, SLATE,
+    DAYS, FEATURED_PICK, GAME_DETAIL, LIVE_SCORES, MODEL, PERFORMANCE, PREDICTIONS, SLATE,
     WORKFLOW_STATUS, check,
 )
 from database import DatabaseError, MissingColumnError, MissingTableError  # noqa: E402
@@ -428,6 +442,158 @@ class WorkflowStatusTests(ApiTestCase):
         self.assertFalse(response.get_json()["controls_allowed"])
 
 
+class DbViewTests(ApiTestCase):
+    """Migration 0012: team_form() feeds the slate's records and v_nightly feeds /api/days."""
+    env = V2_ON
+
+    def tables(self):
+        tables = v2_tables()
+        tables["v_nightly"] = [
+            {"game_date": "2026-04-10", "season": "2025-26", "games": 3, "picks_won": 2,
+             "picks_lost": 1, "bets": 2, "bets_won": 1, "bets_lost": 1, "staked": 80.58,
+             "net_pl": 27.93},
+            {"game_date": "2026-04-11", "season": "2025-26", "games": 2, "picks_won": 1,
+             "picks_lost": 1, "bets": 2, "bets_won": 1, "bets_lost": 1, "staked": 70.0,
+             "net_pl": 18.0},
+            {"game_date": "2026-04-12", "season": "2025-26", "games": 2, "picks_won": 0,
+             "picks_lost": 0, "bets": 1, "bets_won": 0, "bets_lost": 0, "staked": 20.0,
+             "net_pl": 0},
+        ]
+        return tables
+
+    def patch_rpc(self, rows=None, error=None):
+        calls = []
+
+        def fake(function, params):
+            calls.append((function, params))
+            if error:
+                raise error
+            return pd.DataFrame(rows)
+
+        patcher = patch.object(dashboard, "call_rpc", fake)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return calls
+
+    def test_slate_records_come_from_one_team_form_call(self):
+        calls = self.patch_rpc([
+            {"team_id": 1, "tricode": "SAC", "wins": 8, "losses": 4, "last10": "WLWWLWWLWL"},
+            {"team_id": 2, "tricode": "ZZZ", "wins": 1, "losses": 0, "last10": "W"},
+        ])
+        game = next(g for g in self.get("/api/slate?date=2026-04-10").get_json()["games"]
+                    if g["game_id"] == "0022501100")
+        self.assertEqual(game["home"]["record"], "8-4")
+        self.assertEqual(game["home"]["l10"], "LWLWWLWWLW")  # oldest first, as before
+        self.assertEqual(calls, [("team_form", {"p_season": "2025-26", "p_before": "2026-04-10"})])
+        self.assertNotIn("games", [table for table, _ in self.db.calls])
+
+    def test_slate_falls_back_to_reading_games_when_the_function_is_missing(self):
+        self.patch_rpc(error=DatabaseError("Calling team_form failed (PGRST202)"))
+        game = next(g for g in self.get("/api/slate?date=2026-04-10").get_json()["games"]
+                    if g["game_id"] == "0022501100")
+        self.assertEqual(game["home"]["record"], "8-4")
+        self.assertEqual(game["home"]["l10"], "LWLWWLWWLW")
+
+    def test_days_come_from_v_nightly_with_pending_derived(self):
+        body = self.get("/api/days").get_json()
+        self.assertEqual(body["days"][0], {"date": "2026-04-12", "games": 2, "picks": "0-0",
+                                           "bets": "0-0", "net_pl": 0.0, "pending": 2})
+        self.assertEqual(body["days"][-1], {"date": "2026-04-10", "games": 3, "picks": "2-1",
+                                            "bets": "1-1", "net_pl": 27.93, "pending": 0})
+        self.assertIn("v_nightly", [table for table, _ in self.db.calls])
+
+    def test_days_fall_back_to_predictions_when_the_view_is_missing(self):
+        self.db.errors["v_nightly"] = MissingTableError("view missing")
+        body = self.get("/api/days").get_json()
+        self.assertEqual(body["days"][-1], {"date": "2026-04-10", "games": 3, "picks": "2-1",
+                                            "bets": "1-1", "net_pl": 27.93, "pending": 0})
+
+
+class SchedulePendingTests(ApiTestCase):
+    """Games the predict stage recorded in schedule are listed "pick pending" until predictions exist."""
+    env = V2_ON
+
+    def tables(self):
+        return v2_tables()
+
+    def test_todays_unpredicted_games_are_listed_as_pick_pending(self):
+        self.db.tables["schedule"] = [
+            {"game_id": "0022600001", "game_date": "2026-09-24", "home_team": "DET", "away_team": "BOS",
+             "tip_time_utc": "2026-09-24T19:00:00Z"},
+            {"game_id": "0022600002", "game_date": "2026-09-24", "home_team": "LAL", "away_team": "DEN",
+             "tip_time_utc": "2026-09-24T23:30:00Z"},
+            {"game_id": "0022600009", "game_date": "2026-09-23", "home_team": "NYK", "away_team": "MIA",
+             "tip_time_utc": "2026-09-23T23:30:00Z"}]
+        body = self.get("/api/slate").get_json()
+        self.assertEqual(body["phase"], "before_predictions")
+        self.assertFalse(body["offseason"])
+        self.assertEqual([g["game_id"] for g in body["games"]], ["0022600001", "0022600002"])
+        first = body["games"][0]
+        self.assertEqual((first["home"]["tricode"], first["away"]["tricode"]), ("DET", "BOS"))
+        self.assertEqual(first["status"], "scheduled")
+        for field in ("pick", "bet", "skip_reason"):
+            self.assertIsNone(first[field])
+        self.assertEqual(body["summary"]["games"], 2)
+
+    def test_a_game_with_a_prediction_is_not_also_listed_as_pending(self):
+        self.db.tables["schedule"] = [
+            {"game_id": "0022501100", "game_date": "2026-04-10", "home_team": "SAC", "away_team": "LAL",
+             "tip_time_utc": None},
+            {"game_id": "0022600001", "game_date": "2026-04-10", "home_team": "DET", "away_team": "BOS",
+             "tip_time_utc": None}]
+        with patch.object(dashboard, "today_et", lambda: date(2026, 4, 10)):
+            body = self.get("/api/slate").get_json()
+        ids = [g["game_id"] for g in body["games"]]
+        self.assertEqual(ids.count("0022501100"), 1)
+        self.assertIn("0022600001", ids)
+        self.assertEqual(body["phase"], "picks_posted")
+
+    def test_a_temporary_pick_carries_its_price_and_is_flagged_provisional(self):
+        self.db.tables["schedule"] = [
+            {"game_id": "0022600001", "game_date": "2026-09-24", "home_team": "DET", "away_team": "BOS",
+             "tip_time_utc": "2026-09-24T19:00:00Z"},
+            {"game_id": "0022600002", "game_date": "2026-09-24", "home_team": "NYK", "away_team": "PHI",
+             "tip_time_utc": "2026-09-24T23:00:00Z"}]
+        self.db.tables["provisional_predictions"] = [
+            {"game_id": "0022600001", "game_date": "2026-09-24", "home_team": "DET", "away_team": "BOS",
+             "home_win_prob": 0.4, "away_win_prob": 0.6, "predicted_winner": "BOS", "odds": 120,
+             "bookmaker": "FanDuel", "implied_prob": 0.4545, "edge": 0.1455},
+            {"game_id": "0022600002", "game_date": "2026-09-23", "home_team": "NYK", "away_team": "PHI",
+             "home_win_prob": 0.7, "away_win_prob": 0.3, "predicted_winner": "NYK", "odds": None,
+             "bookmaker": None, "implied_prob": None, "edge": None}]
+        body = self.get("/api/slate").get_json()
+        first, second = body["games"]
+        self.assertTrue(first["provisional"])
+        self.assertEqual((first["pick"], first["odds"], first["bookmaker"]), ("BOS", 120, "FanDuel"))
+        self.assertAlmostEqual(first["pick_prob"], 0.6)
+        self.assertAlmostEqual(first["edge"], 0.1455)
+        self.assertIsNone(first["bet"])                      # a temporary pick is never a bet
+        self.assertNotIn("provisional", second)              # yesterday's temporary row is ignored
+        self.assertIsNone(second["pick"])
+        self.assertEqual(body["phase"], "before_predictions")
+
+    def test_a_real_prediction_replaces_the_temporary_pick(self):
+        self.db.tables["schedule"] = [
+            {"game_id": "0022501100", "game_date": "2026-04-10", "home_team": "SAC", "away_team": "GSW",
+             "tip_time_utc": None}]
+        self.db.tables["provisional_predictions"] = [
+            {"game_id": "0022501100", "game_date": "2026-04-10", "home_team": "SAC", "away_team": "GSW",
+             "home_win_prob": 0.1, "away_win_prob": 0.9, "predicted_winner": "GSW", "odds": 100,
+             "bookmaker": "X", "implied_prob": 0.5, "edge": 0.4}]
+        with patch.object(dashboard, "today_et", lambda: date(2026, 4, 10)):
+            games = self.get("/api/slate").get_json()["games"]
+        game = next(g for g in games if g["game_id"] == "0022501100")
+        self.assertNotIn("provisional", game)
+        self.assertEqual(game["pick"], "SAC")
+
+    def test_a_past_date_never_lists_schedule_games(self):
+        self.db.tables["schedule"] = [
+            {"game_id": "0022600001", "game_date": "2026-04-10", "home_team": "DET", "away_team": "BOS",
+             "tip_time_utc": None}]
+        ids = [g["game_id"] for g in self.get("/api/slate?date=2026-04-10").get_json()["games"]]
+        self.assertNotIn("0022600001", ids)
+
+
 class PostMigrationTests(ApiTestCase):
     env = V2_ON
 
@@ -638,7 +804,8 @@ class ModelExtrasTests(ApiTestCase):
         self.assertNotIn("training", body)
         self.assertEqual(body["production_model"], "legacy-calibrated-logistic")
         self.assertEqual(len(body["leaderboard"]), 2)
-        self.assertEqual(len([c for c in calls if c[0] == "model_runs"]), 2)
+        # player data: +1 attempt for the optional candidates/feature_set_version columns (migration 0006)
+        self.assertEqual(len([c for c in calls if c[0] == "model_runs"]), 3)
 
 
 class FeaturedPickTests(ApiTestCase):
@@ -720,8 +887,11 @@ class QueryBudgetTests(unittest.TestCase):
                     "/api/model": 2, "/api/workflow-status": 0}
     # Post-M adds book_odds and games (slate, game) and bankroll (recap, performance); the
     # game drawer's 7 is the accepted API-F20 shape: constant, bounded and CDN-cached.
-    BUDGET_POST_M = {"/api/slate?date=2026-04-10": 5, "/api/game/0022501300": 7,
-                     "/api/days": 2, "/api/performance": 3, "/api/predictions": 2,
+    # Player data adds (constant, bounded) reads: slate +3 (injury_snapshots, player_minutes_projection,
+    # prediction_availability_inputs; +player_ratings when a report exists), game +4 (those three and
+    # team_availability_features; +ratings and scenarios/factors when they apply), performance +1.
+    BUDGET_POST_M = {"/api/slate?date=2026-04-10": 8, "/api/game/0022501300": 11,
+                     "/api/days": 2, "/api/performance": 4, "/api/predictions": 2,
                      "/api/model": 3, "/api/workflow-status": 1}
 
     def count(self, url, n_games, v2):
@@ -796,6 +966,235 @@ class PostMigrationHostileTests(ApiTestCase):
         self.assertEqual(self.get("/api/model").get_json()["production_model"], HOSTILE)
         latest = self.get("/api/workflow-status").get_json()["latest"]
         self.assertEqual(latest["morning"]["notes"], HOSTILE)
+
+
+# ---------------------------------------------------------------------------
+# /api/live-scores: the cached proxy to the NBA live scoreboard (src/live_scores.py)
+# ---------------------------------------------------------------------------
+
+LIVE_TODAY = date(2026, 4, 12)  # v2_tables has two unsettled games that night
+
+
+def upstream_game(game_id, status, text, period=0, clock="", home=0, away=0):
+    return {"gameId": game_id, "gameStatus": status, "gameStatusText": text, "period": period,
+            "gameClock": clock, "gameTimeUTC": "2026-04-12T23:30:00Z",
+            "homeTeam": {"teamTricode": "CLE", "score": home},
+            "awayTeam": {"teamTricode": "MIL", "score": away}}
+
+
+def scoreboard(game_date="2026-04-12", games=None):
+    if games is None:
+        games = [
+            upstream_game("0022501190", 3, "Final", 4, "", 112, 104),
+            upstream_game("0022501191", 1, "7:30 pm ET"),
+            upstream_game("0022501192", 2, "3rd Qtr", 3, "PT04M40.00S", 70, 65),
+            upstream_game("0022501193", 2, "Half", 2, "PT00M00.00S", 51, 49),
+            upstream_game("0022501194", 2, "OT", 5, "PT01M30.00S", 110, 108),
+            upstream_game("0022501195", 2, "2OT", 6, "PT00M05.40S", 121, 121),
+            upstream_game("0022501196", 3, "Final/OT", 5, "", 118, 117),
+            upstream_game("0022501197", 1, "PPD"),
+            upstream_game("0022501198", 2, HOSTILE, 1, HOSTILE, 2, 0),
+            upstream_game("not-an-id", 2, "1st Qtr", 1, "PT11M00.00S"),
+        ]
+    return {"meta": {"code": 200}, "scoreboard": {"gameDate": game_date, "games": games}}
+
+
+class FakeHTTPResponse:
+    def __init__(self, status_code=200, body=None):
+        self.status_code = status_code
+        self.body = body
+
+    def json(self):
+        if isinstance(self.body, Exception):
+            raise self.body
+        return self.body
+
+
+class FakeUpstream:
+    """Stands in for requests.get: a response (or exception) per source label."""
+
+    def __init__(self, **by_source):
+        self.by_source = by_source
+        self.calls = []
+
+    def __call__(self, url, headers=None, timeout=None):
+        source = next(s for s, u in dashboard.live_scores.UPSTREAMS if u == url)
+        self.calls.append((source, timeout))
+        result = self.by_source[source]
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+
+class LiveScoresTests(ApiTestCase):
+    env = V2_ON
+
+    def tables(self):
+        return v2_tables()
+
+    def setUp(self):
+        super().setUp()
+        self.clock = [1000.0]
+        self.upstream = FakeUpstream(**{"nba-cdn": FakeHTTPResponse(200, scoreboard()),
+                                        "nba-origin": FakeHTTPResponse(200, scoreboard())})
+        self.board = dashboard.live_scores.LiveScoreboard(http_get=self.upstream,
+                                                          clock=lambda: self.clock[0])
+        for target, value in (("LIVE_SCOREBOARD", self.board), ("today_et", lambda: LIVE_TODAY)):
+            patcher = patch.object(dashboard, target, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def live(self, query="", status=200):
+        return self.get("/api/live-scores" + query, status)
+
+    def test_contract_shape_and_status_mapping(self):
+        response = self.live()
+        body = response.get_json()
+        self.assert_shape(body, LIVE_SCORES)
+        self.assertEqual((body["stale"], body["source"]), (False, "nba-cdn"))
+        games = {g["game_id"]: g for g in body["games"]}
+        self.assertNotIn("not-an-id", games)
+        expected = {
+            "0022501190": ("final", 4, "Final", 112, 104, False),
+            "0022501191": ("scheduled", None, None, None, None, False),
+            "0022501192": ("live", 3, "Q3 4:40", 70, 65, False),
+            "0022501193": ("live", 2, "Half", 51, 49, False),
+            "0022501194": ("live", 5, "OT 1:30", 110, 108, False),
+            "0022501195": ("live", 6, "2OT 0:05", 121, 121, False),
+            "0022501196": ("final", 5, "Final/OT", 118, 117, False),
+            "0022501197": ("postponed", None, None, None, None, True),
+        }
+        for game_id, (status, period, clock, home, away, postponed) in expected.items():
+            with self.subTest(game_id):
+                g = games[game_id]
+                self.assertEqual((g["status"], g["period"], g["clock"], g["home_score"],
+                                  g["away_score"], g["postponed"]),
+                                 (status, period, clock, home, away, postponed))
+
+    def test_upstream_text_never_reaches_the_response(self):
+        response = self.live()
+        self.assertNotIn("onerror", response.get_data(as_text=True))
+        hostile = next(g for g in response.get_json()["games"] if g["game_id"] == "0022501198")
+        self.assertEqual(hostile["clock"], "Q1")  # unparseable clock: the period only
+
+    def test_headers_cdn_cache_and_csp(self):
+        response = self.live()
+        self.assertEqual(response.headers["Cache-Control"],
+                         "public, s-maxage=15, stale-while-revalidate=30")
+        self.assertIn("connect-src 'self'", response.headers["Content-Security-Policy"])
+        self.assertEqual(response.mimetype, "application/json")
+
+    def test_cache_hit_within_15_seconds(self):
+        first = self.live().get_json()
+        self.clock[0] += 14
+        second = self.live().get_json()
+        self.assertEqual(len(self.upstream.calls), 1)
+        self.assertEqual(first["fetched_at"], second["fetched_at"])
+        self.clock[0] += 2
+        self.live()
+        self.assertEqual(len(self.upstream.calls), 2)
+
+    def test_short_timeout(self):
+        self.live()
+        self.assertEqual(self.upstream.calls, [("nba-cdn", 4)])
+
+    def test_refused_cdn_falls_back_to_origin_and_remembers_it(self):
+        self.upstream.by_source["nba-cdn"] = FakeHTTPResponse(403, ValueError("html"))
+        self.assertEqual(self.live().get_json()["source"], "nba-origin")
+        self.clock[0] += 20
+        self.live()
+        self.assertEqual([s for s, _ in self.upstream.calls], ["nba-cdn", "nba-origin", "nba-origin"])
+
+    def test_upstream_failure_serves_last_good_payload_as_stale(self):
+        good = self.live().get_json()
+        self.upstream.by_source["nba-cdn"] = dashboard.live_scores.requests.Timeout("slow")
+        self.upstream.by_source["nba-origin"] = FakeHTTPResponse(200, ValueError("not json"))
+        self.clock[0] += 20
+        stale = self.live().get_json()
+        self.assert_shape(stale, LIVE_SCORES)
+        self.assertTrue(stale["stale"])
+        self.assertEqual((stale["fetched_at"], stale["games"]), (good["fetched_at"], good["games"]))
+        # The failure is cached too: no second round of timeouts inside the window.
+        calls = len(self.upstream.calls)
+        self.live()
+        self.assertEqual(len(self.upstream.calls), calls)
+        # Recovery clears the flag.
+        self.upstream.by_source["nba-cdn"] = FakeHTTPResponse(200, scoreboard())
+        self.clock[0] += 20
+        self.assertFalse(self.live().get_json()["stale"])
+
+    def test_nothing_cached_and_upstream_down_is_503_json(self):
+        for source in ("nba-cdn", "nba-origin"):
+            self.upstream.by_source[source] = dashboard.live_scores.requests.ConnectionError()
+        response = self.live(status=503)
+        self.assertEqual(response.get_json(), {"error": "live_scores_unavailable"})
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
+
+    def test_malformed_scoreboard_counts_as_a_failure(self):
+        for source in ("nba-cdn", "nba-origin"):
+            self.upstream.by_source[source] = FakeHTTPResponse(200, {"scoreboard": {"games": "x"}})
+        self.live(status=503)
+
+    def test_date_validation(self):
+        for bad in ("2026-13-01", "2026-02-30", "tonight", "2026-4-12", "2026-04-12T00:00"):
+            with self.subTest(bad):
+                response = self.client.get("/api/live-scores?date=" + bad)
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.get_json()["error"], "bad_request")
+        self.assertEqual(self.upstream.calls, [])
+        self.live("?date=2026-04-12")
+
+    def test_past_night_answers_from_the_slate_without_upstream(self):
+        response = self.live("?date=2026-04-10")
+        body = response.get_json()
+        self.assert_shape(body, LIVE_SCORES)
+        self.assertEqual((body["stale"], body["source"]), (False, "slate"))
+        self.assertEqual(self.upstream.calls, [])
+        self.assertEqual({g["game_id"] for g in body["games"]},
+                         {"0022501100", "0022501101", "0022501102"})
+        for g in body["games"]:
+            self.assertEqual((g["status"], g["clock"], g["home_score"], g["away_score"]),
+                             ("final", "Final", 110, 100))
+        self.assertEqual(response.headers["Cache-Control"], dashboard.CACHE_PAST)
+
+    def test_future_night_is_empty_not_an_error(self):
+        body = self.live("?date=2026-05-01").get_json()
+        self.assertEqual((body["games"], body["stale"]), ([], False))
+        self.assertEqual(self.upstream.calls, [])
+
+    def test_today_before_the_feed_rolls_over_uses_the_slate(self):
+        self.upstream.by_source["nba-cdn"] = FakeHTTPResponse(200, scoreboard("2026-04-11"))
+        body = self.live().get_json()
+        self.assertEqual(body["source"], "slate")
+        self.assertEqual({(g["game_id"], g["status"]) for g in body["games"]},
+                         {("0022501190", "scheduled"), ("0022501191", "scheduled")})
+
+    def test_yesterday_on_the_feed_is_live(self):
+        self.upstream.by_source["nba-cdn"] = FakeHTTPResponse(200, scoreboard("2026-04-11"))
+        self.assertEqual(self.live("?date=2026-04-11").get_json()["source"], "nba-cdn")
+
+    def test_yesterday_with_upstream_down_falls_back_to_the_slate(self):
+        for source in ("nba-cdn", "nba-origin"):
+            self.upstream.by_source[source] = dashboard.live_scores.requests.ConnectionError()
+        body = self.live("?date=2026-04-11").get_json()
+        self.assertEqual((body["source"], body["stale"]), ("slate", False))
+
+    def test_database_down_on_a_slate_night_is_empty_not_an_error(self):
+        self.db.errors["predictions"] = DatabaseError("down")
+        body = self.live("?date=2026-04-10").get_json()
+        self.assertEqual(body["games"], [])
+
+
+class LiveScoresSlateFallbackPreMigrationTests(ApiTestCase):
+    env = V2_OFF
+
+    def test_old_schema_finals_have_no_scores(self):
+        with patch.object(dashboard, "today_et", lambda: LIVE_TODAY):
+            body = self.get("/api/live-scores?date=2026-04-10").get_json()
+        self.assert_shape(body, LIVE_SCORES)
+        self.assertTrue(body["games"])
+        for g in body["games"]:
+            self.assertEqual((g["status"], g["home_score"]), ("final", None))
 
 
 if __name__ == "__main__":

@@ -277,6 +277,7 @@ async function model(w) {
     const h1 = await page.evaluate(() => ({ state: document.querySelector('[data-scrolly] .pin').dataset.state, title: document.querySelector('[data-title]').textContent.replace(/\s+/g, ' ') }));
     const cM = await courtTop();
     await shot(page, K, w, 'claim-model');
+    // Oct 7 2026 (audit A3): production is gradient boosting, test accuracy 0.6792 -> 67.9% (was logistic 68.1%).
     rec(K, '6a_hero_state_and_title', w, h0.state === 'base' && stBase === 'base' && h1.state === 'model' && h1.title.includes('67.9%') && !h0.title.includes('67.9%'),
       `top: state=${h0.state} title="${h0.title}"; 20% in: ${stBase}; 35% in: state=${h1.state} title="${h1.title}"`);
     const dRect = Math.abs(cM.rect - cB.rect);

@@ -1,6 +1,7 @@
 import requests
 from dotenv import load_dotenv
 import os
+from datetime import datetime, timezone
 from console import force_utf8_stdio
 
 # Config
@@ -46,7 +47,28 @@ ABBR_MAP = {
     'WAS': 'Washington Wizards'
 }
 
-def get_tonights_odds():
+def _archive_stamp():
+    try:
+        import odds_archive
+        return odds_archive.now_utc_ms()
+    except Exception:
+        return None
+
+
+def _archive(events, response, stamp, purpose):
+    """Append the response (every bookmaker, with the quota headers) to the odds history. Never raises."""
+    try:
+        import odds_archive
+        odds_archive.safe_archive(events, getattr(response, 'headers', None), stamp or odds_archive.now_utc_ms(),
+                                  purpose=purpose, http_status=getattr(response, 'status_code', None),
+                                  sport=SPORT, regions=REGIONS, markets=MARKETS)
+    except Exception as exc:
+        print(f"ERROR: odds archive unavailable: {type(exc).__name__}: {exc}")
+
+
+def get_tonights_odds(purpose='pricing'):
+    """One Odds API credit returns the whole slate. Every response is also appended to the odds-history archive
+    (src/odds_archive.py; zero extra credits, never fatal). purpose: 'pricing' | 'closing' | 'debug'."""
     url = f"{BASE_URL}/sports/{SPORT}/odds"
     params = {
         'apiKey': API_KEY,
@@ -56,13 +78,18 @@ def get_tonights_odds():
     }
 
     response = requests.get(url, params=params, timeout=(5, 30))
+    archive_stamp = _archive_stamp()   # when the response arrived: the archive's point-in-time stamp
 
     if response.status_code != REQUEST_SUCCESS:
-        print(f"Error fetching odds: {response.status_code} - {response.text}")
+        print(f"ERROR fetching odds: {response.status_code} - {response.text}")
+        _archive(None, response, archive_stamp, purpose)    # keeps the quota headers of a failed call too
         return {}
 
     games = response.json()
+    _archive(games, response, archive_stamp, purpose)
+    captured_at = datetime.now(timezone.utc).isoformat(timespec='seconds')
     odds_by_teams = {}
+    generic_rows = []
 
     for game in games:
         home_team = game['home_team']
@@ -88,6 +115,16 @@ def get_tonights_odds():
                     continue
                 for outcome in market['outcomes']:
                     price = outcome['price']
+                    if game.get('id'):
+                        generic_rows.append({
+                            'game_id': str(game['id']),
+                            'captured_at': captured_at,
+                            'bookmaker': bookmaker['title'],
+                            'market': 'moneyline',
+                            'selection': 'home' if outcome['name'] == home_team else 'away',
+                            'player_id': None, 'line': None,
+                            'price_american': int(price),
+                        })
                     if outcome['name'] == home_team:
                         if best_home_odds is None or price > best_home_odds:
                             best_home_odds = price
@@ -105,6 +142,22 @@ def get_tonights_odds():
                 'away_book': best_away_book
             }
 
+    # The old dictionary remains the caller-facing contract.  A best-effort
+    # generic write keeps moneylines available to the future props layer.
+    try:
+        from market_odds import write_moneyline_rows
+        if generic_rows:
+            import hashlib
+            for row in generic_rows:
+                key = '|'.join(str(row.get(k)) for k in
+                               ('game_id', 'captured_at', 'bookmaker', 'market', 'selection', 'line'))
+                row['odds_id'] = int(hashlib.sha256(key.encode()).hexdigest()[:15], 16)
+            write_moneyline_rows(generic_rows)
+    except Exception as exc:
+        # Missing migration or a transient local-store problem must never
+        # make moneyline prediction fail, but it must not be silent either.
+        print(f"ERROR: could not store generic moneyline rows: {type(exc).__name__}: {exc}")
+        generic_rows = []
     print(f"Found odds for {len(odds_by_teams)} games")
     print(f"Requests used: {response.headers.get('x-requests-used')}")
     print(f"Requests remaining: {response.headers.get('x-requests-remaining')}")
@@ -120,6 +173,7 @@ def get_bookmakers():
     }
     response = requests.get(url, params=params, timeout=(5, 30))
     games = response.json()
+    _archive(games if response.status_code == REQUEST_SUCCESS else None, response, _archive_stamp(), 'debug')
 
     bookmakers = set()
     for game in games:

@@ -31,6 +31,64 @@ Start-ScheduledTask -TaskName "NBA-Predictor-Daily"
 Unregister-ScheduledTask -TaskName "NBA-Predictor-Daily" -Confirm:$false
 ```
 
+### Injury report snapshots (player-data work)
+
+A second, independent job, `NBA-Predictor-Injury-Snapshot`, archives the official NBA injury report. It runs
+`scheduler\run_injury_snapshot.bat` (that is, `python -m src.injuries --snapshot`) every 30 minutes from 11:00
+to 23:00. The morning pipeline (`run_pipeline.bat`) and `run_predict.bat` also take one snapshot each.
+A failed snapshot is logged and never fails the pipeline.
+
+**Setup** (registers the job for the checkout the script lives in):
+```powershell
+powershell -ExecutionPolicy Bypass -File scheduler\register_injury_snapshot_task.ps1
+```
+
+Equivalent `schtasks` command (replace the path with your checkout):
+```
+schtasks /Create /TN "NBA-Predictor-Injury-Snapshot" /SC DAILY /ST 11:00 /RI 30 /DU 12:00 /TR "cmd.exe /c C:\path\to\checkout\scheduler\run_injury_snapshot.bat" /F
+```
+
+Outputs: raw PDFs in `data\raw\injury_reports\` (the archive), parsed rows in
+`data\injuries\injury_snapshots.sqlite`, unmatched names in `data\injuries\injury_unmatched.csv`,
+log in `logs\injury_snapshot.log`.
+
+**Remove:** `Unregister-ScheduledTask -TaskName "NBA-Predictor-Injury-Snapshot" -Confirm:$false`
+
+### Morning stage and evening predict stage
+
+The workflow runs in two stages so the availability (injury-aware) model sees game-day injury reports. Teams
+submit their reports during the day, so at 06:00 most statuses for tonight's games are missing and predicting then
+would treat those players as available.
+
+| Task | When | Runs | Does |
+|---|---|---|---|
+| `NBA-Predictor-Daily` | 6:00 AM | `run_daily.bat` = `daily_workflow.py --stage morning` | collect, settle yesterday, features, results SMS (`workflow_log.kind = 'morning'`) |
+| `NBA-Predictor-Predict` | every 15 min, 10:05-22:05 | `run_predict_stage.bat` = `daily_workflow.py --stage predict` | injury snapshot, then predictions, then picks SMS (`kind = 'predict'`) |
+
+Each predict run prices only games that tip within the next 75 minutes (`PREDICT_WINDOW_MINUTES` in
+`daily_workflow.py`, passed to `predict.py` as `NBA_PREDICT_WINDOW_MINUTES`) and that have no prediction yet, so
+every game is priced 60-75 minutes before tip with the newest report, whatever its tip time. A run with nothing
+to price exits quietly: no SMS, no log row, no odds request, and no Elo/games table reads (the cheap checks run
+first). `predict.py` also never prices a game that already tipped. `python daily_workflow.py` with no flag still
+does everything in one go (Run now).
+
+**API budget** (per day, 15-minute ticks 10:05-22:05 = 49 runs):
+
+| API | Per quiet tick | Per priced tick | Limit |
+|---|---|---|---|
+| NBA `ScoreboardV3` (stats.nba.com) | 1 | 1 | no published limit; 1 call / 15 min |
+| NBA injury report PDFs (CDN) | 0-3 (stops at the first slot already on disk; 0.4 s apart) | same | no published limit |
+| The Odds API | 0 | 1 credit (whole slate) | 500 credits/month; capped at 12/day (`ODDS_DAILY_CALL_CAP`, `data\odds_budget.json`) |
+| Supabase | 1 small read (+1 if flags change) | + Elo/games/features reads | free-tier egress |
+| Twilio | 0 | 1 SMS | per message |
+
+**Register the predict task BEFORE the morning bat changes take effect, or no predictions get made:**
+```powershell
+powershell -ExecutionPolicy Bypass -File scheduler\register_predict_task.ps1
+```
+**Remove:** `Unregister-ScheduledTask -TaskName "NBA-Predictor-Predict" -Confirm:$false` (and change `run_daily.bat`
+back to `python daily_workflow.py`).
+
 ---
 
 ## Migrating to Linux / macOS cron

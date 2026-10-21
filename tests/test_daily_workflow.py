@@ -17,7 +17,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import daily_workflow  # noqa: E402  (daily_workflow.py adds src/ to sys.path itself)
 from database import DatabaseError, MissingTableError  # noqa: E402
 
-TWILIO_VARS = ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM", "TWILIO_TO")
+TWILIO_VARS = ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_API_SID", "TWILIO_CLIENT_SECRET",
+               "TWILIO_FROM", "TWILIO_TO")
 
 
 class LogRunTests(unittest.TestCase):
@@ -67,6 +68,115 @@ class LogRunTests(unittest.TestCase):
         self.assertEqual(row["log_tail"], "step output\nstep output\n")
         self.assertRegex(row["started_at"], r"[+-]\d{2}:\d{2}$")  # timestamptz needs an offset
 
+    def run_stage(self, stage, rc=0):
+        calls = []
+        self.envs = {}
+
+        def fake_bat(path, timeout=None, extra_env=None):
+            calls.append(os.path.basename(path))
+            self.envs[os.path.basename(path)] = extra_env
+            return rc, "out\nSaved 1 prediction(s).\n" if "predict" in path else "out\n"
+
+        with patch.object(daily_workflow, "run_bat", side_effect=fake_bat), \
+                patch.object(daily_workflow, "insert_rows") as insert_rows, \
+                contextlib.redirect_stdout(io.StringIO()):
+            result = daily_workflow.run_workflow(send_text=False, trigger="schedule", stage=stage)
+        return result, calls, insert_rows.call_args.args[1][0]
+
+    def test_morning_stage_runs_the_pipeline_then_temporary_predictions_and_logs_kind_morning(self):
+        result, calls, row = self.run_stage("morning")
+        self.assertEqual(calls, ["run_pipeline.bat", "run_predict.bat"])
+        self.assertEqual(self.envs["run_predict.bat"], {"NBA_PREDICT_PROVISIONAL": "1"})
+        self.assertEqual((result["status"], row["kind"]), ("success", "morning"))
+        self.assertIn("morning stage", row["notes"])
+
+    def test_a_failed_temporary_step_does_not_fail_the_morning_stage(self):
+        calls = []
+
+        def fake_bat(path, timeout=None, extra_env=None):
+            calls.append(os.path.basename(path))
+            return (1, "boom\n") if calls[-1] == "run_predict.bat" else (0, "out\n")
+
+        with patch.object(daily_workflow, "run_bat", side_effect=fake_bat), \
+                patch.object(daily_workflow, "insert_rows") as insert_rows, \
+                contextlib.redirect_stdout(io.StringIO()):
+            result = daily_workflow.run_workflow(send_text=False, trigger="schedule", stage="morning")
+        row = insert_rows.call_args.args[1][0]
+        self.assertEqual((result["status"], row["status"]), ("success", "success"))
+        self.assertIn("temporary predictions failed", row["notes"])
+
+    def test_the_picks_sms_check_ignores_temporary_predictions(self):
+        self.assertEqual(daily_workflow.saved_predictions("Saved 3 temporary prediction(s).\n"), 0)
+
+    def test_predict_stage_runs_only_predictions_and_logs_kind_predict(self):
+        result, calls, row = self.run_stage("predict")
+        self.assertEqual(calls, ["run_predict.bat"])
+        self.assertEqual((result["status"], row["kind"]), ("success", "predict"))
+
+    def test_predict_stage_sets_the_window_for_the_child_only(self):
+        self.run_stage("predict")
+        self.assertEqual(self.envs["run_predict.bat"],
+                         {"NBA_PREDICT_WINDOW_MINUTES": str(daily_workflow.PREDICT_WINDOW_MINUTES)})
+        self.assertNotIn("NBA_PREDICT_WINDOW_MINUTES", os.environ)       # no leak into this process
+        self.run_stage("full")
+        self.assertIsNone(self.envs["run_predict.bat"])                  # Run now still prices everything
+
+    def test_a_failed_single_step_stage_is_failed_not_partial(self):
+        for stage in ("morning", "predict"):
+            result, _, row = self.run_stage(stage, rc=1)
+            self.assertEqual((result["status"], row["status"]), ("failed", "failed"))
+
+    def test_full_stage_is_unchanged(self):
+        result, calls, row = self.run_stage("full")
+        self.assertEqual(calls, ["run_pipeline.bat", "run_predict.bat"])
+        self.assertEqual(row["kind"], "manual")
+
+    def test_predict_tick_with_nothing_saved_sends_no_sms_and_logs_nothing(self):
+        for out in ("No games today.\n", "No games inside the prediction window.\n", "Saved 0 prediction(s).\n",
+                    "Odds request budget for today (12 calls) is used up; no odds fetched.\n", ""):
+            with self.subTest(out=out), \
+                    patch.object(daily_workflow, "run_bat", return_value=(0, out)), \
+                    patch.object(daily_workflow, "insert_rows") as insert_rows, \
+                    patch.object(daily_workflow, "send_sms") as send_sms, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                result = daily_workflow.run_workflow(send_text=True, stage="predict")
+            self.assertTrue(result["noop"])
+            insert_rows.assert_not_called()
+            send_sms.assert_not_called()
+
+    def test_predict_tick_that_saved_a_prediction_logs_and_texts(self):
+        with patch.object(daily_workflow, "run_bat", return_value=(0, "LAL @ DEN\nSaved 2 prediction(s).\n")), \
+                patch.object(daily_workflow, "insert_rows") as insert_rows, \
+                patch.object(daily_workflow, "get_todays_predictions", return_value=[]), \
+                patch.object(daily_workflow, "get_overall_stats", return_value={}), \
+                patch.object(daily_workflow, "send_sms", return_value=True) as send_sms, \
+                contextlib.redirect_stdout(io.StringIO()):
+            result = daily_workflow.run_workflow(send_text=True, stage="predict")
+        self.assertNotIn("noop", result)
+        insert_rows.assert_called_once()
+        send_sms.assert_called_once()
+
+    def test_saved_predictions_counts_the_line(self):
+        self.assertEqual(daily_workflow.saved_predictions("x\nSaved 3 prediction(s).\n"), 3)
+        self.assertEqual(daily_workflow.saved_predictions("Saved 0 prediction(s)."), 0)
+        self.assertEqual(daily_workflow.saved_predictions(""), 0)
+        self.assertEqual(daily_workflow.saved_predictions(None), 0)
+
+    def test_unknown_stage_is_rejected(self):
+        with self.assertRaises(ValueError):
+            daily_workflow.run_workflow(send_text=False, stage="evening")
+
+    def test_stage_sms_texts(self):
+        picks = [{"home_team": "LAL", "away_team": "BOS", "home_win_prob": 0.62, "away_win_prob": 0.38,
+                  "predicted_winner": "LAL", "bet_placed": None, "bet_amount": 0, "odds": None}]
+        morning = daily_workflow.format_sms([], picks, {}, include_today=False)
+        self.assertIn("Today's picks follow later", morning)
+        self.assertNotIn("LAL", morning)
+        evening = daily_workflow.format_sms([], picks, {}, include_yesterday=False)
+        self.assertIn("NBA Picks", evening)
+        self.assertNotIn("Yesterday", evening)
+        self.assertIn("BOS @ LAL", evening)
+
 
 class QueryAndSmsTests(unittest.TestCase):
     def test_format_sms_with_text_probabilities_and_odds(self):
@@ -113,6 +223,28 @@ class QueryAndSmsTests(unittest.TestCase):
         with patch.dict(os.environ, env), contextlib.redirect_stdout(io.StringIO()) as output:
             self.assertFalse(daily_workflow.send_sms("hello"))
         self.assertIn("SMS skipped", output.getvalue())
+
+    def test_send_sms_prefers_the_api_key_over_the_auth_token(self):
+        env = {"TWILIO_ACCOUNT_SID": "AC" + "0" * 32, "TWILIO_AUTH_TOKEN": "token",
+               "TWILIO_API_SID": "SK" + "0" * 32, "TWILIO_CLIENT_SECRET": "secret",
+               "TWILIO_FROM": "+15550100000", "TWILIO_TO": "+15550100001"}
+        made = {}
+
+        class FakeClient:
+            def __init__(self, username, password, account_sid):
+                made["auth"] = (username, password, account_sid)
+                self.messages = self
+
+            def create(self, **kw):
+                made["sent"] = kw
+                return type("M", (), {"sid": "SMfake"})()
+
+        with patch.dict(os.environ, env), patch.dict(sys.modules, {
+                "twilio": type(sys)("twilio"), "twilio.rest": type(sys)("twilio.rest")}),                 contextlib.redirect_stdout(io.StringIO()):
+            sys.modules["twilio.rest"].Client = FakeClient
+            self.assertTrue(daily_workflow.send_sms("hello"))
+        self.assertEqual(made["auth"], ("SK" + "0" * 32, "secret", "AC" + "0" * 32))
+        self.assertEqual(made["sent"]["body"], "hello")
 
     def test_redact_secrets_scrubs_twilio_identifiers(self):
         # Obviously-fake values -- never read from .env.

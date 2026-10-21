@@ -1,14 +1,15 @@
 {
-  "best_model": "legacy-calibrated-logistic",
-  "production_model": "legacy-calibrated-logistic",
+  "best_model": "gradient-boosting-gridsearch",
+  "production_model": "gradient-boosting-gridsearch",
   "available_models": [
     "legacy-calibrated-logistic",
     "current-xgboost",
+    "calibrated-xgboost",
     "gradient-boosting-gridsearch",
     "random-forest-gridsearch",
     "lstm-gridsearch"
   ],
-  "trained_at": "2026-09-18T01:11:09.204958+00:00",
+  "trained_at": "2026-10-20T10:05:48.899515+00:00",
   "cutoff_date": "2025-02-25",
   "features": [
     "HOME_roll_PTS",
@@ -28,5 +29,118 @@
     "AWAY_ELO",
     "ELO_DIFF"
   ],
-  "leaderboard_path": "data/model_leaderboard.csv"
+  "leaderboard_path": "data/model_leaderboard.csv",
+  "training": {
+    "first_game_date": "2019-11-22",
+    "cutoff_date": "2025-02-25",
+    "last_game_date": "2026-04-12",
+    "games_total": 7979,
+    "train_games": 6383,
+    "test_games": 1596,
+    "home_win_rate": 0.5501,
+    "rolling_window": 10,
+    "seasons": [
+      {
+        "season": "2019-20",
+        "games": 759,
+        "train": 759,
+        "test": 0
+      },
+      {
+        "season": "2020-21",
+        "games": 1080,
+        "train": 1080,
+        "test": 0
+      },
+      {
+        "season": "2021-22",
+        "games": 1230,
+        "train": 1230,
+        "test": 0
+      },
+      {
+        "season": "2022-23",
+        "games": 1230,
+        "train": 1230,
+        "test": 0
+      },
+      {
+        "season": "2023-24",
+        "games": 1230,
+        "train": 1230,
+        "test": 0
+      },
+      {
+        "season": "2024-25",
+        "games": 1225,
+        "train": 854,
+        "test": 371
+      },
+      {
+        "season": "2025-26",
+        "games": 1225,
+        "train": 0,
+        "test": 1225
+      }
+    ]
+  },
+  "candidates": {
+    "path": "data/model_leaderboard_candidates.csv",
+    "evaluated_at": "2026-10-12T23:28:40+00:00",
+    "feature_set_version": "avail_v1+ratings:2026-10-10",
+    "models": [
+      "lr-calibrated-availability-v1",
+      "lr-calibrated-availability-rest-v1"
+    ],
+    "rows": [
+      {
+        "model": "lr-calibrated-availability-v1",
+        "feature_set": "baseline+avail_rapm",
+        "feature_set_version": "avail_v1+ratings:2026-10-10",
+        "evaluated_at": "2026-10-12T23:28:40+00:00",
+        "test_games": 1596,
+        "accuracy": 0.6885964912280702,
+        "log_loss": 0.5834072225234971,
+        "brier_score": 0.1997737970178383,
+        "roc_auc": 0.7534327193355372,
+        "calibration_ece": 0.015714002351252202,
+        "baseline_home_win_rate": 0.550125313283208,
+        "extreme_prediction_rate": 0.05764411027568922,
+        "artifact_path": "data/candidates/lr-calibrated-availability-v1.pkl",
+        "artifact_sha256": "add63d9ee46b2cd14ceede6e654ef1f83d0eaf1840e5ae1eb3612019ec8ac5f6"
+      },
+      {
+        "model": "lr-calibrated-availability-rest-v1",
+        "feature_set": "all_rapm",
+        "feature_set_version": "avail_v1+ratings:2026-10-10",
+        "evaluated_at": "2026-10-12T23:28:40+00:00",
+        "test_games": 1596,
+        "accuracy": 0.6892230576441103,
+        "log_loss": 0.5833537071040119,
+        "brier_score": 0.20002443853255697,
+        "roc_auc": 0.7529235220588701,
+        "calibration_ece": 0.01646631338075729,
+        "baseline_home_win_rate": 0.550125313283208,
+        "extreme_prediction_rate": 0.02882205513784461,
+        "artifact_path": "data/candidates/lr-calibrated-availability-rest-v1.pkl",
+        "artifact_sha256": "ecf1dbb530fce0dbedb48d685d7934a1fad996e1dcd8960c96bc7aeeb4cba2cd"
+      }
+    ],
+    "promoted": false,
+    "promotion_check": [
+      {
+        "against": "production gradient-boosting-gridsearch",
+        "brier_improvement": 0.0094,
+        "log_loss_improvement": 0.02419,
+        "passes_rule": true
+      },
+      {
+        "against": "same-family baseline",
+        "brier_improvement": 0.00909,
+        "log_loss_improvement": 0.04912,
+        "passes_rule": true
+      }
+    ],
+    "artifact_status": "ready"
+  }
 }

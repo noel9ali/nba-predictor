@@ -1,16 +1,19 @@
 """
 daily_workflow.py — NBA Predictor daily automation orchestrator.
 
-Runs the morning pipeline (collect → features → elo → model → track) and
+Runs the morning pipeline (collect → elo → features → model → track) and
 evening predictions, then sends a Twilio SMS summary and logs the run.
 
 Can be invoked directly:
-    python daily_workflow.py
+    python daily_workflow.py                    # everything in one go
+    python daily_workflow.py --stage morning    # 06:00 ET: pipeline + results SMS
+    python daily_workflow.py --stage predict    # evening: predictions + picks SMS
 
 Or triggered via the Flask API (POST /api/run-workflow).
 """
 
 import os
+import re
 import sys
 import subprocess
 import threading
@@ -23,6 +26,7 @@ REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(REPO_ROOT, 'src'))
 
 from console import force_utf8_stdio  # noqa: E402
+from config import LIVE_START_DATE  # noqa: E402
 from database import DatabaseError, MissingTableError, insert_rows, select_rows  # noqa: E402
 
 # Must run before any print(): stdout/stderr aren't always a real UTF-8
@@ -38,6 +42,7 @@ load_dotenv()
 WORKFLOW_LOG_MIGRATION = 'supabase/migrations/20260923000500_workflow_log.sql'
 LOG_TAIL_CHARS = 4000
 SECRET_ENV_VARS = ('SUPABASE_SECRET_KEY', 'ODDS_API_KEY', 'TWILIO_AUTH_TOKEN',
+                    'TWILIO_API_SID', 'TWILIO_CLIENT_SECRET',
                     'TWILIO_ACCOUNT_SID', 'TWILIO_FROM', 'TWILIO_TO')
 DEFAULT_STEP_TIMEOUT_SECONDS = 7200  # 2 hours; overridable via WORKFLOW_STEP_TIMEOUT_SECONDS
 
@@ -104,7 +109,7 @@ def _kill_process_tree(proc):
         proc.kill()
 
 
-def run_bat(bat_path, timeout=None):
+def run_bat(bat_path, timeout=None, extra_env=None):
     """
     Run a .bat file via cmd.exe, streaming output.
     Returns (returncode, combined_stdout_stderr).
@@ -117,6 +122,7 @@ def run_bat(bat_path, timeout=None):
 
     child_env = os.environ.copy()
     child_env['PYTHONIOENCODING'] = 'utf-8'  # child scripts must not crash on non-ASCII output either
+    child_env.update(extra_env or {})
 
     proc = subprocess.Popen(
         ['cmd.exe', '/c', bat_path],
@@ -187,18 +193,35 @@ def get_todays_predictions():
         return []
 
 
+def get_todays_temporary_picks():
+    """Today's temporary 6 AM picks (provisional_predictions), [] when there are none or the read fails."""
+    today = date.today().strftime('%Y-%m-%d')
+    try:
+        df = select_rows(
+            'provisional_predictions',
+            columns='home_team,away_team,home_win_prob,away_win_prob,predicted_winner,odds,bookmaker',
+            filters=[('game_date', 'eq', today)],
+            order_by='game_id',
+        )
+        return _records(df, ('home_win_prob', 'away_win_prob', 'odds'))
+    except Exception as exc:
+        print(f"⚠ get_todays_temporary_picks failed: {type(exc).__name__}")
+        return []
+
+
 def get_overall_stats():
     """Return overall prediction accuracy and bankroll info."""
     try:
         preds = select_rows(
             'predictions',
             columns='correct,profit_loss',
-            filters=[('correct', 'not_is', 'null')],
+            filters=[('correct', 'not_is', 'null'), ('game_date', 'gte', LIVE_START_DATE)],
             order_by='game_id',
         )
         try:
             bankroll_row = select_rows(
-                'bankroll', columns='balance', order_by='date', descending=True, limit=1
+                'bankroll', columns='balance', filters=[('date', 'gte', LIVE_START_DATE)],
+                order_by='date', descending=True, limit=1
             )
         except MissingTableError:
             bankroll_row = pd.DataFrame()
@@ -227,16 +250,24 @@ def get_overall_stats():
 # SMS formatting & sending
 # ---------------------------------------------------------------------------
 
-def format_sms(yesterday_results, today_predictions, stats):
-    """Build the daily SMS text."""
+TENTATIVE_NOTE = ("These are tentative: early injury reports and morning odds, so they can change. "
+                  "Final picks (and any bets) follow about an hour before each tip.")
+
+
+def format_sms(yesterday_results, today_predictions, stats, include_yesterday=True, include_today=True,
+               temporary_picks=None):
+    """Build the daily SMS text. The morning stage shows today's temporary picks as tentative (the real picks come
+    later, after the injury reports); the predict stage leaves yesterday's results out (the morning text already
+    had them)."""
     yesterday = (date.today() - timedelta(days=1)).strftime('%b %d')
     today_str = date.today().strftime('%b %d')
 
-    lines = [f"🏀 NBA Daily Summary — {today_str}", ""]
+    lines = [f"🏀 NBA Daily Summary — {today_str}" if include_yesterday else f"🏀 NBA Picks — {today_str}", ""]
 
     # Yesterday's results
-    lines.append(f"Yesterday's Results ({yesterday}):")
-    if yesterday_results:
+    if include_yesterday:
+        lines.append(f"Yesterday's Results ({yesterday}):")
+    if include_yesterday and yesterday_results:
         for g in yesterday_results:
             mark = '✓' if g['correct'] else '✗'
             pl = g['profit_loss'] or 0
@@ -245,7 +276,7 @@ def format_sms(yesterday_results, today_predictions, stats):
                 f"  {mark} {g['away_team']} @ {g['home_team']} "
                 f"— predicted {g['predicted_winner']}, actual {g['actual_winner']}, P/L: {pl_str}"
             )
-    else:
+    elif include_yesterday:
         lines.append("  No completed results for yesterday.")
 
     if stats:
@@ -259,6 +290,23 @@ def format_sms(yesterday_results, today_predictions, stats):
     lines.append("")
 
     # Today's predictions
+    if not include_today:
+        if temporary_picks:
+            lines.append(f"TENTATIVE picks ({today_str}):")
+            for g in temporary_picks:
+                win_prob = g['home_win_prob'] if g['predicted_winner'] == g['home_team'] else g['away_win_prob']
+                prob_pct = f"{win_prob:.0%}" if win_prob else "?"
+                odds = g.get('odds')
+                if odds:
+                    odds = int(odds)
+                    line = f" | {'+' if odds > 0 else ''}{odds}" + (f" ({g['bookmaker']})" if g.get('bookmaker') else "")
+                else:
+                    line = " | no odds yet"
+                lines.append(f"  {g['away_team']} @ {g['home_team']} — {g['predicted_winner']} ({prob_pct}){line}")
+            lines.append(TENTATIVE_NOTE)
+        else:
+            lines.append("Today's picks follow later, after the injury reports.")
+        return "\n".join(lines)
     lines.append(f"Today's Predictions ({today_str}):")
     if today_predictions:
         for g in today_predictions:
@@ -282,17 +330,20 @@ def format_sms(yesterday_results, today_predictions, stats):
 def send_sms(body):
     """Send SMS via Twilio. Returns True on success."""
     account_sid = os.getenv('TWILIO_ACCOUNT_SID')
-    auth_token = os.getenv('TWILIO_AUTH_TOKEN')
     from_number = os.getenv('TWILIO_FROM')
     to_number = os.getenv('TWILIO_TO')
+    # An API key (TWILIO_API_SID + TWILIO_CLIENT_SECRET) is preferred over the account auth token.
+    api_sid, api_secret = os.getenv('TWILIO_API_SID'), os.getenv('TWILIO_CLIENT_SECRET')
+    auth_token = os.getenv('TWILIO_AUTH_TOKEN')
+    username, password = (api_sid, api_secret) if api_sid and api_secret else (account_sid, auth_token)
 
-    if not all([account_sid, auth_token, from_number, to_number]):
+    if not all([account_sid, username, password, from_number, to_number]):
         print("⚠ Twilio credentials not configured — SMS skipped.")
         return False
 
     try:
         from twilio.rest import Client
-        client = Client(account_sid, auth_token)
+        client = Client(username, password, account_sid)
         message = client.messages.create(body=body, from_=from_number, to=to_number)
         print(f"✓ SMS sent — SID: {message.sid}")
         return True
@@ -305,51 +356,97 @@ def send_sms(body):
 # Main workflow
 # ---------------------------------------------------------------------------
 
-def run_workflow(send_text=True, trigger='schedule'):
+STAGES = ('full', 'morning', 'predict')
+PREDICT_WINDOW_MINUTES = 75      # the predict stage prices a game once it tips within this long (runs every 15 min)
+# predict.py ends every run that got as far as pricing with "Saved N prediction(s)." (keep in sync with predict.run()).
+PREDICTIONS_SAVED = re.compile(r'Saved (\d+) prediction')
+
+
+def saved_predictions(predict_output):
+    """Number of predictions the predict step stored, 0 when it had nothing to price or printed no count."""
+    return sum(int(n) for n in PREDICTIONS_SAVED.findall(predict_output or ''))
+# workflow_log.kind per stage: the dashboard reads 'morning' (06:00 ET job) and 'predict' separately.
+STAGE_KIND = {'full': 'manual', 'morning': 'morning', 'predict': 'predict'}
+
+
+def run_workflow(send_text=True, trigger='schedule', stage='full'):
     """
-    Full daily workflow:
-      1. Run pipeline.bat
-      2. Run predict.bat
-      3. Build + send SMS summary
-      4. Log results to workflow_log
+    Daily workflow, in stages:
+      full     pipeline, then predictions, then SMS (Run now; the original behaviour)
+      morning  pipeline only (collect, settle yesterday, features), then the results SMS      06:00 ET
+      predict  predictions only (injury snapshot first), then the picks SMS            every 15 min, 10:05-22:05 ET
+    The predict stage prices each game once it tips within PREDICT_WINDOW_MINUTES, so the availability model sees
+    the newest game-day injury report; at 06:00 teams have not yet submitted theirs. A run with nothing new to
+    price exits quietly (no SMS, no workflow_log row).
     trigger is 'schedule' from the CLI (Task Scheduler) and 'manual' from Run now.
     Returns a dict with status info.
     """
+    if stage not in STAGES:
+        raise ValueError(f"stage must be one of {STAGES}")
     run_date = date.today().strftime('%Y-%m-%d')
     started_at = datetime.now().astimezone().isoformat(timespec='seconds')
 
     print(f"\n{'='*50}")
-    print(f"NBA Daily Workflow — {run_date}")
+    print(f"NBA Daily Workflow — {run_date}" + ('' if stage == 'full' else f" ({stage} stage)"))
     print(f"{'='*50}\n")
 
+    pipeline_ok = predict_ok = True      # a stage that is not run counts as ok
+    pipeline_out = predict_out = ''
+
     # Step 1 — pipeline
-    print("▶ Running run_pipeline.bat...")
-    pipeline_rc, pipeline_out = run_bat(os.path.join(REPO_ROOT, 'run_pipeline.bat'))
-    pipeline_ok = pipeline_rc == 0
-    print(pipeline_out)
-    if pipeline_ok:
-        print("✓ Pipeline complete.\n")
-    else:
-        print(f"✗ Pipeline exited with code {pipeline_rc}.\n")
+    if stage in ('full', 'morning'):
+        print("▶ Running run_pipeline.bat...")
+        pipeline_rc, pipeline_out = run_bat(os.path.join(REPO_ROOT, 'run_pipeline.bat'))
+        pipeline_ok = pipeline_rc == 0
+        print(pipeline_out)
+        if pipeline_ok:
+            print("✓ Pipeline complete.\n")
+        else:
+            print(f"✗ Pipeline exited with code {pipeline_rc}.\n")
+
+    # Step 1b — temporary picks (6 AM): a first model pass with the morning odds, shown on the site as temporary.
+    # Never a bet and never in predictions, so a failure here must not fail the morning stage.
+    temp_ok = True
+    if stage == 'morning' and pipeline_ok:
+        print("▶ Running temporary predictions (run_predict.bat, provisional)...")
+        temp_rc, temp_out = run_bat(os.path.join(REPO_ROOT, 'run_predict.bat'),
+                                    extra_env={'NBA_PREDICT_PROVISIONAL': '1'})
+        temp_ok = temp_rc == 0
+        print(temp_out)
+        print("✓ Temporary predictions complete.\n" if temp_ok
+              else f"✗ Temporary predictions exited with code {temp_rc}; the site just shows no temporary picks.\n")
+        pipeline_out += temp_out
 
     # Step 2 — predictions
-    print("▶ Running run_predict.bat...")
-    predict_rc, predict_out = run_bat(os.path.join(REPO_ROOT, 'run_predict.bat'))
-    predict_ok = predict_rc == 0
-    print(predict_out)
-    if predict_ok:
-        print("✓ Predictions complete.\n")
-    else:
-        print(f"✗ Predictions exited with code {predict_rc}.\n")
+    if stage in ('full', 'predict'):
+        print("▶ Running run_predict.bat...")
+        # predict stage: predict.py prices only games tipping soon (passed to the child process only)
+        extra_env = {'NBA_PREDICT_WINDOW_MINUTES': str(PREDICT_WINDOW_MINUTES)} if stage == 'predict' else None
+        predict_rc, predict_out = run_bat(os.path.join(REPO_ROOT, 'run_predict.bat'), extra_env=extra_env)
+        predict_ok = predict_rc == 0
+        print(predict_out)
+        if predict_ok:
+            print("✓ Predictions complete.\n")
+        else:
+            print(f"✗ Predictions exited with code {predict_rc}.\n")
+        if stage == 'predict' and predict_ok and saved_predictions(predict_out) == 0:
+            # the common case (every 15-min tick between games): no new picks, so no SMS and no workflow_log row
+            print("Nothing new predicted; no SMS, no log row.\n")
+            return {'run_date': run_date, 'started_at': started_at,
+                    'finished_at': datetime.now().astimezone().isoformat(timespec='seconds'),
+                    'status': 'success', 'pipeline_ok': True, 'predict_ok': True, 'sms_sent': False, 'noop': True}
 
     # Step 3 — SMS
     sms_sent = False
     if send_text:
-        yesterday_results = get_yesterdays_results()
-        today_predictions = get_todays_predictions()
+        yesterday_results = get_yesterdays_results() if stage != 'predict' else []
+        today_predictions = get_todays_predictions() if stage != 'morning' else []
         stats = get_overall_stats()
+        temporary_picks = get_todays_temporary_picks() if stage == 'morning' else []
 
-        sms_body = format_sms(yesterday_results, today_predictions, stats)
+        sms_body = format_sms(yesterday_results, today_predictions, stats,
+                              include_yesterday=stage != 'predict', include_today=stage != 'morning',
+                              temporary_picks=temporary_picks)
         print("📱 Daily SMS:\n")
         print(sms_body)
         print()
@@ -359,17 +456,23 @@ def run_workflow(send_text=True, trigger='schedule'):
     # Step 4 — log
     finished_at = datetime.now().astimezone().isoformat(timespec='seconds')
     overall_status = 'success' if (pipeline_ok and predict_ok) else 'partial' if (pipeline_ok or predict_ok) else 'failed'
+    if stage != 'full' and not (pipeline_ok and predict_ok):
+        overall_status = 'failed'        # the only step of a single-step stage failed
     notes = []
+    if stage != 'full':
+        notes.append(f'{stage} stage')
     if not pipeline_ok:
         notes.append('pipeline failed')
     if not predict_ok:
         notes.append('predict failed')
+    if not temp_ok:
+        notes.append('temporary predictions failed')
     if send_text and not sms_sent:
         notes.append('sms not sent')
 
     log_run(run_date, started_at, finished_at, overall_status,
             pipeline_ok, predict_ok, sms_sent, ', '.join(notes),
-            kind='manual', trigger=trigger, log_tail=pipeline_out + predict_out)
+            kind=STAGE_KIND[stage], trigger=trigger, log_tail=pipeline_out + predict_out)
 
     result = {
         'run_date': run_date,
@@ -415,4 +518,9 @@ def _exit_code(result):
 
 
 if __name__ == '__main__':
-    sys.exit(_exit_code(run_workflow()))
+    import argparse
+
+    parser = argparse.ArgumentParser(description="NBA Predictor daily workflow")
+    parser.add_argument('--stage', choices=STAGES, default='full',
+                        help="full (default), morning (pipeline + results SMS) or predict (picks + SMS)")
+    sys.exit(_exit_code(run_workflow(stage=parser.parse_args().stage)))

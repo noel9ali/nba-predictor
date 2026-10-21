@@ -1,0 +1,419 @@
+{
+ "app_buckets": [
+  [
+   0,
+   0
+  ],
+  [
+   1,
+   3
+  ],
+  [
+   4,
+   6
+  ],
+  [
+   7,
+   9
+  ],
+  [
+   10,
+   10
+  ]
+ ],
+ "bm3_edges": [
+  12.0,
+  24.0
+ ],
+ "bm_edges": [
+  6.0,
+  12.0,
+  18.0,
+  24.0
+ ],
+ "built_from": "267275 roster rows, 8038 games",
+ "cutoff_game_date": "2026-04-12",
+ "format_version": 1,
+ "listed": {
+  "available": {
+   "n": 3469,
+   "p": 0.7945
+  },
+  "available|g_league": {
+   "n": 540,
+   "p": 0.448
+  },
+  "available|g_league|bm0": {
+   "n": 433,
+   "p": 0.4127
+  },
+  "available|g_league|bm1": {
+   "n": 101,
+   "p": 0.5038
+  },
+  "available|g_league|bm2": {
+   "n": 6,
+   "p": 0.5369
+  },
+  "available|injury": {
+   "n": 2311,
+   "p": 0.9086
+  },
+  "available|injury|bm0": {
+   "n": 221,
+   "p": 0.5692
+  },
+  "available|injury|bm1": {
+   "n": 828,
+   "p": 0.8846
+  },
+  "available|injury|bm2": {
+   "n": 1262,
+   "p": 0.99
+  },
+  "available|other": {
+   "n": 618,
+   "p": 0.6816
+  },
+  "available|other|bm0": {
+   "n": 239,
+   "p": 0.4696
+  },
+  "available|other|bm1": {
+   "n": 180,
+   "p": 0.6682
+  },
+  "available|other|bm2": {
+   "n": 199,
+   "p": 0.9344
+  },
+  "doubtful": {
+   "n": 1522,
+   "p": 0.0217
+  },
+  "doubtful|g_league": {
+   "n": 143,
+   "p": 0.0211
+  },
+  "doubtful|g_league|bm0": {
+   "n": 81,
+   "p": 0.0042
+  },
+  "doubtful|g_league|bm1": {
+   "n": 62,
+   "p": 0.0417
+  },
+  "doubtful|injury": {
+   "n": 1340,
+   "p": 0.018
+  },
+  "doubtful|injury|bm0": {
+   "n": 102,
+   "p": 0.0193
+  },
+  "doubtful|injury|bm1": {
+   "n": 487,
+   "p": 0.0125
+  },
+  "doubtful|injury|bm2": {
+   "n": 751,
+   "p": 0.0212
+  },
+  "doubtful|other": {
+   "n": 39,
+   "p": 0.109
+  },
+  "doubtful|other|bm0": {
+   "n": 3,
+   "p": 0.0948
+  },
+  "doubtful|other|bm1": {
+   "n": 18,
+   "p": 0.0837
+  },
+  "doubtful|other|bm2": {
+   "n": 18,
+   "p": 0.189
+  },
+  "out": {
+   "n": 39207,
+   "p": 0.0028
+  },
+  "out|g_league": {
+   "n": 10842,
+   "p": 0.0084
+  },
+  "out|g_league|bm0": {
+   "n": 9041,
+   "p": 0.0086
+  },
+  "out|g_league|bm1": {
+   "n": 1770,
+   "p": 0.0068
+  },
+  "out|g_league|bm2": {
+   "n": 31,
+   "p": 0.0229
+  },
+  "out|injury": {
+   "n": 24461,
+   "p": 0.0004
+  },
+  "out|injury|bm0": {
+   "n": 2593,
+   "p": 0.0004
+  },
+  "out|injury|bm1": {
+   "n": 8530,
+   "p": 0.0005
+  },
+  "out|injury|bm2": {
+   "n": 13338,
+   "p": 0.0003
+  },
+  "out|other": {
+   "n": 3904,
+   "p": 0.0021
+  },
+  "out|other|bm0": {
+   "n": 625,
+   "p": 0.0001
+  },
+  "out|other|bm1": {
+   "n": 1410,
+   "p": 0.0028
+  },
+  "out|other|bm2": {
+   "n": 1869,
+   "p": 0.0021
+  },
+  "probable": {
+   "n": 4125,
+   "p": 0.9074
+  },
+  "probable|g_league": {
+   "n": 102,
+   "p": 0.6897
+  },
+  "probable|g_league|bm0": {
+   "n": 64,
+   "p": 0.5452
+  },
+  "probable|g_league|bm1": {
+   "n": 38,
+   "p": 0.824
+  },
+  "probable|injury": {
+   "n": 3975,
+   "p": 0.9152
+  },
+  "probable|injury|bm0": {
+   "n": 196,
+   "p": 0.6079
+  },
+  "probable|injury|bm1": {
+   "n": 1190,
+   "p": 0.868
+  },
+  "probable|injury|bm2": {
+   "n": 2589,
+   "p": 0.9626
+  },
+  "probable|other": {
+   "n": 48,
+   "p": 0.8404
+  },
+  "probable|other|bm0": {
+   "n": 4,
+   "p": 0.742
+  },
+  "probable|other|bm1": {
+   "n": 22,
+   "p": 0.805
+  },
+  "probable|other|bm2": {
+   "n": 22,
+   "p": 0.9002
+  },
+  "questionable": {
+   "n": 10167,
+   "p": 0.5029
+  },
+  "questionable|g_league": {
+   "n": 615,
+   "p": 0.2395
+  },
+  "questionable|g_league|bm0": {
+   "n": 452,
+   "p": 0.2114
+  },
+  "questionable|g_league|bm1": {
+   "n": 162,
+   "p": 0.2846
+  },
+  "questionable|g_league|bm2": {
+   "n": 1,
+   "p": 0.2281
+  },
+  "questionable|injury": {
+   "n": 9299,
+   "p": 0.5197
+  },
+  "questionable|injury|bm0": {
+   "n": 598,
+   "p": 0.2757
+  },
+  "questionable|injury|bm1": {
+   "n": 2901,
+   "p": 0.4863
+  },
+  "questionable|injury|bm2": {
+   "n": 5800,
+   "p": 0.5624
+  },
+  "questionable|other": {
+   "n": 253,
+   "p": 0.5423
+  },
+  "questionable|other|bm0": {
+   "n": 30,
+   "p": 0.4369
+  },
+  "questionable|other|bm1": {
+   "n": 82,
+   "p": 0.4985
+  },
+  "questionable|other|bm2": {
+   "n": 141,
+   "p": 0.6077
+  }
+ },
+ "min_cell_n": 40,
+ "none": {
+  "all": {
+   "n": 208785,
+   "p": 0.7467
+  },
+  "app0": {
+   "n": 12146,
+   "p": 0.0598
+  },
+  "app0|bm0": {
+   "n": 2489,
+   "p": 0.0814
+  },
+  "app0|bm1": {
+   "n": 4157,
+   "p": 0.0486
+  },
+  "app0|bm2": {
+   "n": 3257,
+   "p": 0.044
+  },
+  "app0|bm3": {
+   "n": 1583,
+   "p": 0.0457
+  },
+  "app0|bm4": {
+   "n": 660,
+   "p": 0.1385
+  },
+  "app1": {
+   "n": 34682,
+   "p": 0.4478
+  },
+  "app1|bm0": {
+   "n": 7795,
+   "p": 0.3024
+  },
+  "app1|bm1": {
+   "n": 11729,
+   "p": 0.3527
+  },
+  "app1|bm2": {
+   "n": 7737,
+   "p": 0.4356
+  },
+  "app1|bm3": {
+   "n": 3696,
+   "p": 0.6205
+  },
+  "app1|bm4": {
+   "n": 3725,
+   "p": 0.9015
+  },
+  "app2": {
+   "n": 37440,
+   "p": 0.6414
+  },
+  "app2|bm0": {
+   "n": 3349,
+   "p": 0.4113
+  },
+  "app2|bm1": {
+   "n": 12248,
+   "p": 0.5137
+  },
+  "app2|bm2": {
+   "n": 9983,
+   "p": 0.6062
+  },
+  "app2|bm3": {
+   "n": 5228,
+   "p": 0.773
+  },
+  "app2|bm4": {
+   "n": 6632,
+   "p": 0.9421
+  },
+  "app3": {
+   "n": 56348,
+   "p": 0.8714
+  },
+  "app3|bm0": {
+   "n": 404,
+   "p": 0.4939
+  },
+  "app3|bm1": {
+   "n": 6895,
+   "p": 0.6795
+  },
+  "app3|bm2": {
+   "n": 14459,
+   "p": 0.7912
+  },
+  "app3|bm3": {
+   "n": 11108,
+   "p": 0.8909
+  },
+  "app3|bm4": {
+   "n": 23482,
+   "p": 0.975
+  },
+  "app4": {
+   "n": 68169,
+   "p": 0.9762
+  },
+  "app4|bm0": {
+   "n": 9,
+   "p": 0.9146
+  },
+  "app4|bm1": {
+   "n": 865,
+   "p": 0.8345
+  },
+  "app4|bm2": {
+   "n": 9492,
+   "p": 0.9333
+  },
+  "app4|bm3": {
+   "n": 17716,
+   "p": 0.9749
+  },
+  "app4|bm4": {
+   "n": 40087,
+   "p": 0.9903
+  }
+ },
+ "shrink_m": 20.0
+}

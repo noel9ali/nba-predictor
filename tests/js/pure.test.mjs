@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { fmt, pct1, wl, seasonOf, seasonShort } from '../../public/static/js/format.js';
+import { fmt, pct1, wl, seasonOf } from '../../public/static/js/format.js';
 import { clampCenter, labelWidth, fitAnchor, nudgeClear } from '../../public/static/js/labels.js';
 import { normalize, applyLive, summarize, nextUpOf, visibleOf, countsOf, pl, result, pickMargin, marginLabel, liveLine } from '../../public/static/js/state.js';
 import { courtGeometry } from '../../public/static/js/court.js';
@@ -111,7 +111,8 @@ test('liveLine: bets-ahead count only when a live game has a bet', () => {
   assert.equal(liveLine({ live: 1, liveBets: 0, ahead: 0, upcoming: 2 }), '1 live');
   assert.equal(liveLine({ live: 2, liveBets: 3, ahead: 1, upcoming: 0 }), '2 live · 1 of 3 bets ahead');
   assert.equal(liveLine({ live: 0, liveBets: 0, ahead: 0, upcoming: 4 }), '4 to come');
-  assert.equal(liveLine({ live: 0, liveBets: 0, ahead: 0, upcoming: 0 }), 'All final');
+  assert.equal(liveLine({ live: 0, liveBets: 0, ahead: 0, upcoming: 0, games: 3 }), 'All final');
+  assert.equal(liveLine({ live: 0, liveBets: 0, ahead: 0, upcoming: 0, games: 0 }), 'No games');
 });
 
 test('clampCenter keeps a box inside its host', () => {
@@ -119,12 +120,6 @@ test('clampCenter keeps a box inside its host', () => {
   assert.equal(clampCenter(790, 200, 800), 700);
   assert.equal(clampCenter(400, 200, 800), 400);
   assert.equal(clampCenter(10, 900, 800), 400);
-});
-
-test('seasonShort drops the century and keeps the en dash', () => {
-  assert.equal(seasonShort('2020-21'), '20–21');
-  assert.equal(seasonShort('2019–20'), '19–20');
-  assert.equal(seasonShort(''), '');
 });
 
 test('fitAnchor flips a label that would leave the chart', () => {
@@ -138,4 +133,38 @@ test('nudgeClear moves a label off a rule and leaves clear labels alone', () => 
   assert.equal(nudgeClear(100, [200]), 100);
   assert.equal(nudgeClear(203, [200]), 209);
   assert.equal(nudgeClear(197, [200]), 191);
+});
+
+test('nextUpOf respects tip time', () => {
+  // Create test games with different tip times
+  const T = Date.parse('2026-11-18T01:30:00Z');  // reference time = 8:30 PM ET
+  const games = [
+    { game_id: '1', state: 'scheduled', bet: { amount: 10 }, odds: -105, tip_time_utc: '2026-11-18T00:30:00Z', edge: 5 },  // 7:30 PM ET, in the past
+    { game_id: '2', state: 'scheduled', bet: { amount: 10 }, odds: -105, tip_time_utc: '2026-11-18T01:00:00Z', edge: 3 },  // 8:00 PM ET, in the past
+    { game_id: '3', state: 'scheduled', bet: { amount: 10 }, odds: -105, tip_time_utc: '2026-11-18T03:00:00Z', edge: 4 },  // 10:00 PM ET, in future
+    { game_id: '4', state: 'scheduled', bet: { amount: 10 }, odds: -105, tip_time_utc: '2026-11-18T04:00:00Z', edge: 2 }   // 11:00 PM ET, in future
+  ];
+
+  // With T = 8:30 PM ET, games 1 and 2 have tipped, so next should be game 3 (10 PM ET)
+  const nu = nextUpOf(games, T);
+  assert.equal(nu.game_id, '3', 'nextUpOf should skip games whose tips have passed');
+
+  // When all have tipped, return null
+  const nuAll = nextUpOf(games, Date.parse('2026-11-18T05:00:00Z'));
+  assert.equal(nuAll, null);
+
+  // Games with no tip_time_utc should qualify (Infinity > any time) and be sorted to the end
+  const noTip = [
+    { game_id: 'a', state: 'scheduled', bet: { amount: 10 }, odds: -105, tip_time_utc: '2026-11-18T04:00:00Z', edge: 1 },
+    { game_id: 'b', state: 'scheduled', bet: { amount: 10 }, odds: -105, edge: 2 }  // no tip_time_utc
+  ];
+  const nuNoTip = nextUpOf(noTip, T);
+  assert.equal(nuNoTip.game_id, 'a', 'games with no tip_time_utc should be sorted after games with known tip times');
+
+  // But if all other games have tipped, a game with no tip_time_utc becomes next up
+  const onlyNoTip = [
+    { game_id: 'x', state: 'scheduled', bet: { amount: 10 }, odds: -105, edge: 1 }  // no tip_time_utc
+  ];
+  const nuOnlyNoTip = nextUpOf(onlyNoTip, T);
+  assert.equal(nuOnlyNoTip.game_id, 'x', 'a scheduled bet with no tip time is a valid next-up candidate');
 });

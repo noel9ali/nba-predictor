@@ -28,7 +28,11 @@ for _name in ("SUPABASE_SECRET_KEY", "ODDS_API_KEY", "TWILIO_ACCOUNT_SID",
               "TWILIO_AUTH_TOKEN", "TWILIO_FROM", "TWILIO_TO"):
     os.environ[_name] = "offline-test-dummy"
 os.environ["SUPABASE_URL"] = "http://127.0.0.1:9"
+# The odds archive must never write into the real data/odds_history during tests.
+import tempfile  # noqa: E402
+os.environ["NBA_ODDS_HISTORY_DB"] = os.path.join(tempfile.mkdtemp(prefix="nba_offline_odds_"), "odds_history.sqlite")
 os.environ.pop("ALLOW_RUN_WORKFLOW", None)
+os.environ["HIDE_BETA"] = "0"  # the fixtures are 2025-26 (beta) data; test_app.HideBetaTests turns hiding on
 
 _PIPELINE = re.compile(r"run_pipeline|run_predict|run_daily|daily_workflow\.py|"
                        r"src[\\/](collect|elo|features|model|track|predict|odds)\.py", re.I)

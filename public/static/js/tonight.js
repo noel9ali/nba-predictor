@@ -54,7 +54,7 @@ function onSlate() {
   renderGrid({ replay: false });
   if (!ribbonMounted) { mountRibbon(); ribbonMounted = true; }
   updateRibbon(s);
-  setPageDate(store.slate);
+  setPageDate(store.slate, store.games.some(g => g.provisional));
   seasonOnBatch([{ type: 'slate' }]);
   if (firstSlate) {
     firstSlate = false;

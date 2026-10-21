@@ -13,12 +13,22 @@ const enabled = () => {
   return store.status === 'ready' && store.games.length > 0 && !['no_games', 'offseason', 'before_predictions', 'prediction_failed'].includes(phase);
 };
 
+function updateScrollPaddingTop() {
+  if (on && ribbon) {
+    const bottom = ribbon.offsetTop + ribbon.offsetHeight;
+    document.documentElement.style.setProperty('scroll-padding-top', (bottom + 12) + 'px');
+  } else {
+    document.documentElement.style.removeProperty('scroll-padding-top');
+  }
+}
+
 function apply() {
   const next = past && before && enabled();
   if (next === on) return;
   on = next;
   ribbon.classList.toggle('on', on);
   board.classList.toggle('docked', on);
+  updateScrollPaddingTop();
 }
 
 export function mountRibbon() {
@@ -45,7 +55,32 @@ export function mountRibbon() {
   };
   const onScroll = () => { if (!queued) { queued = true; requestAnimationFrame(recheck); } };
   addEventListener('scroll', onScroll, { passive: true });
-  addEventListener('resize', onScroll, { passive: true });
+  addEventListener('resize', () => {
+    updateScrollPaddingTop();
+    onScroll();
+  }, { passive: true });
+
+  // Focus trap: ensure focused elements don't land under the ribbon
+  document.addEventListener('focusin', (e) => {
+    if (!on) return;
+    const target = e.target;
+    const ribbonEl = $('[data-ribbon]');
+    const drawer = $('.drawer');
+
+    // Skip if focus is inside ribbon or drawer
+    if (ribbonEl?.contains(target) || drawer?.contains(target)) return;
+
+    const ribbonBottom = ribbonEl?.offsetTop + ribbonEl?.offsetHeight;
+    if (ribbonBottom === undefined) return;
+
+    const targetRect = target.getBoundingClientRect();
+    const threshold = ribbonBottom + 12;
+
+    if (targetRect.top < threshold) {
+      // Scroll the element into view above the ribbon
+      window.scrollBy({ top: targetRect.top - threshold, behavior: 'auto' });
+    }
+  });
 }
 
 function put(dd, text, cls) {

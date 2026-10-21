@@ -61,10 +61,61 @@ function stampHTML(g, info) {
 }
 
 function ariaLabel(g, info) {
-  const base = g.away.tricode + ' at ' + g.home.tricode;
-  if (!info) return base + ', open details';
-  const score = (g.state === 'final' && g.as != null && g.hs != null) ? ', final ' + g.as + '–' + g.hs : '';
-  return base + score + ', ' + info.label + ', open details';
+  const parts = [];
+
+  // 1. Matchup + time/status
+  const matchup = g.away.tricode + ' at ' + g.home.tricode;
+  let timeStatus;
+  if (g.state === 'scheduled') {
+    timeStatus = g.tip_time_utc ? fmt.time(g.tip_time_utc) + ' ET' : 'Time TBD';
+  } else if (g.state === 'live') {
+    timeStatus = 'live' + (g.clock ? ', ' + g.clock : '');
+  } else if (g.state === 'final') {
+    timeStatus = (g.as != null && g.hs != null) ? 'final ' + g.as + '–' + g.hs : 'final';
+  } else if (g.state === 'postponed') {
+    timeStatus = 'postponed';
+  } else if (g.state === 'void') {
+    timeStatus = 'void';
+  }
+  parts.push(matchup + ', ' + timeStatus + '.');
+
+  // 2. Pick/bet
+  if (g.provisional) {
+    parts.push('Temporary pick ' + g.pick + (g.odds != null ? ' at ' + fmt.odds(g.odds) : '') + ', not final, no bet yet.');
+  } else if (g.pick == null && !g.bet && !g.skip_reason) {
+    // Pick pending
+    parts.push('Pick pending.');
+  } else if (g.bet && g.odds != null && g.bet.amount != null) {
+    // Bet on [team], [amount] at [odds]
+    parts.push('Bet on ' + g.pick + ', ' + fmt.money(g.bet.amount) + ' at ' + fmt.odds(g.odds) + '.');
+  } else if (g.pick) {
+    // Pick [team], no bet
+    parts.push('Pick ' + g.pick + ', no bet.');
+  }
+
+  // 3. Model vs market when both known
+  if (g.pick_prob != null && g.implied_prob != null) {
+    parts.push('Model ' + fmt.pct(g.pick_prob) + ' vs market ' + fmt.pct(g.implied_prob) + '.');
+  }
+
+  // 4. Status/result when known
+  if (g.state === 'live' && g.pick) {
+    const m = pickMargin(g);
+    if (m != null) {
+      parts.push(marginLabel(g) + '.');
+    }
+  } else if (info) {
+    let label = info.label;
+    if (g.bet && !g.official) {
+      label += ', unofficial';
+    }
+    parts.push(label + '.');
+  }
+
+  // 5. Open details.
+  parts.push('Open details.');
+
+  return parts.join(' ');
 }
 
 const payoutOf = g => (g.bet && g.bet.amount != null && g.odds != null ? fmt.payout(g.bet.amount, g.odds) : null);
@@ -75,27 +126,32 @@ function teamRow(g, side) {
   let score;
   if (g.state === 'scheduled') score = '<span class="score pre-tip">' + esc(fmt.pct(t.win_prob, 0)) + '</span>';
   else score = '<span class="score' + (ld && ld !== side ? ' trail' : '') + '" data-score="' + esc(g.game_id + '-' + side) + '">' + (sc == null ? '—' : esc(sc)) + '</span>';
-  const tag = isPick ? '<span class="bet-tag' + (g.bet ? '' : ' nobet') + '">' + (g.bet ? 'Bet on' : 'Pick') + '</span>' : '';
-  const nm = t.name != null && t.name !== '' ? esc(t.name) : '', rec = t.record ? esc(wl(t.record)) : '';
-  const name = nm && rec ? nm + ' <span class="rec">· ' + rec + '</span>' : nm || rec;
+  const tag = isPick ? '<span class="bet-tag' + (g.bet ? '' : ' nobet') + '">' + (g.bet ? 'Bet on' : g.provisional ? 'Temp pick' : 'Pick') + '</span>' : '';
+  let name = '';
+  if (t.name) {
+    name = '<span class="tname">';
+    name += '<span class="tn-n">' + esc(t.name) + '</span>';
+    if (t.record) name += '<span class="tn-r"> · ' + esc(wl(t.record)) + '</span>';
+    name += '</span>';
+  }
   const img = TRICODE.test(String(t.tricode || '')) ? '<i data-logo="' + esc(t.tricode) + '"></i>' : '';
-  return '<div class="team ' + (isPick ? 'is-pick' : 'not-pick') + '">' + img + '<span class="t-tri">' + esc(t.tricode) + '</span>' + tag +
-    (name ? '<span class="tname">' + name + '</span>' : '') + '</div>' + score;
+  return '<div class="team ' + (isPick ? 'is-pick' : 'not-pick') + '">' + img + '<span class="t-tri">' + esc(t.tricode) + '</span>' + tag + name + '</div>' + score;
 }
 
 function stubHTML(g, no) {
   const b = g.bet, pending = g.pick == null && !b && !g.skip_reason;
   let who, pick, odds, stake, win;
   if (pending) { who = 'Pick pending'; pick = '—'; odds = '—'; stake = '—'; win = '—'; }
+  else if (g.provisional) { who = 'Temporary pick'; pick = esc(g.pick); odds = fmt.odds(g.odds); stake = '—'; win = '—'; }
   else {
-    who = b ? 'Bet on' : 'Pick · no bet';
+    who = b ? 'Bet on' : 'Pick<span class="who-sep"> · </span><span class="who-2">no bet</span>';
     pick = g.pick == null ? '—' : esc(g.pick);
     odds = fmt.odds(g.odds);
     stake = b ? money(b.amount) : '$0.00';
     win = b ? money(payoutOf(g)) : '—';
   }
   return '<div class="stub"><span class="who">' + who + '<b class="stub-pick">' + pick + '</b></span><span>Odds<b>' + esc(odds) +
-    '</b></span><span>Stake<b>' + esc(stake) + '</b></span><span>To win<b>' + esc(win) + '</b></span><span class="no">Ticket № ' + no + '</span></div>';
+    '</b></span><span>Stake<b>' + esc(stake) + '</b></span><span>To win<b>' + esc(win) + '</b></span><span class="no">Ticket No. ' + no + '</span></div>';
 }
 
 function linesHTML(g) {
@@ -105,6 +161,13 @@ function linesHTML(g) {
     return '<dl class="lines"><dt>Moneyline</dt><dd><b>' + esc(g.pick) + ' ' + esc(fmt.odds(g.odds)) + '</b>' + (g.bookmaker ? ' · ' + esc(g.bookmaker) : '') +
       '</dd><dt>Risk</dt><dd>' + esc(money(b.amount)) + ' to win ' + esc(money(payoutOf(g))) +
       '</dd><dt>Model · market</dt><dd>' + esc(fmt.pct(g.pick_prob)) + ' vs ' + esc(fmt.pct(g.implied_prob)) + edge + '</dd></dl>';
+  }
+  if (g.provisional) {
+    const edge = g.edge != null ? ' · <span class="edge">edge ' + esc(fmt.pts(g.edge)) + '</span>' : '';
+    return '<dl class="lines"><dt>Temporary pick</dt><dd><b>' + esc(g.pick) + (g.pick_prob != null ? ' ' + esc(fmt.pct(g.pick_prob)) : '') + '</b></dd>' +
+      '<dt>Moneyline</dt><dd>' + (g.odds != null ? '<b>' + esc(fmt.odds(g.odds)) + '</b>' + (g.bookmaker ? ' · ' + esc(g.bookmaker) : '') : 'No odds yet') + '</dd>' +
+      (g.implied_prob != null ? '<dt>Model · market</dt><dd>' + esc(fmt.pct(g.pick_prob)) + ' vs ' + esc(fmt.pct(g.implied_prob)) + edge + '</dd>' : '') +
+      '<dt>Status</dt><dd>Temporary 6 AM pick. The final pick and any bet post about an hour before the first tip</dd></dl>';
   }
   if (g.pick == null && !g.skip_reason) {
     return '<dl class="lines"><dt>Pick</dt><dd>Pending</dd><dt>Status</dt><dd>Picks post about an hour before the first tip</dd></dl>';
@@ -142,7 +205,7 @@ function footHTML(g) {
 
 function ticketInner(g, info) {
   const no = esc(String(g.game_id).slice(-4));
-  return stubHTML(g, no) + '<div class="ticket__body"><div class="band"><span>Paper ticket · № ' + no + '</span>' + statusHTML(g) +
+  return stubHTML(g, no) + '<div class="ticket__body"><div class="band"><span>Paper ticket · No. ' + no + '</span>' + statusHTML(g) +
     '</div><div class="match">' + teamRow(g, 'away') + teamRow(g, 'home') + '</div>' + linesHTML(g) + footHTML(g) + '</div>' + stampHTML(g, info);
 }
 

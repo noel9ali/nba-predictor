@@ -5,8 +5,9 @@ import os
 import joblib
 import numpy as np
 import pandas as pd
+from dotenv import load_dotenv
 from console import force_utf8_stdio
-from database import schema_v2_enabled, select_rows, upsert_rows
+from database import MissingColumnError, schema_v2_enabled, select_rows, upsert_rows
 from features import ROLLING_WINDOW
 from model_metadata import (
     build_model_run_row,
@@ -33,7 +34,7 @@ SCALER_PATH = "data/scaler.pkl"
 METADATA_PATH = "data/model_metadata.json"
 LEADERBOARD_PATH = "data/model_leaderboard.csv"
 RANDOM_STATE = 42
-DEFAULT_PRODUCTION_MODEL = "legacy-calibrated-logistic"
+DEFAULT_PRODUCTION_MODEL = "gradient-boosting-gridsearch"
 
 FEATURES = [
     "HOME_roll_PTS",
@@ -464,6 +465,14 @@ def _save_leaderboard(leaderboard, best_model_name, cutoff, training=None):
     }
     if training is not None:
         metadata["training"] = training
+    # The candidates block is written by scripts/evaluate_availability.py, not by training; keep it.
+    try:
+        with open(METADATA_PATH, encoding="utf-8") as handle:
+            previous = json.load(handle)
+    except (OSError, ValueError):
+        previous = {}
+    if isinstance(previous, dict) and previous.get("candidates"):
+        metadata["candidates"] = previous["candidates"]
     with open(METADATA_PATH, "w", encoding="utf-8") as handle:
         json.dump(metadata, handle, indent=2)
 
@@ -475,7 +484,16 @@ def publish_model_run():
     metadata, leaderboard = load_metadata_and_leaderboard(METADATA_PATH, LEADERBOARD_PATH)
     row = build_model_run_row(metadata, leaderboard)
     try:
-        upsert_rows("model_runs", [row], conflict_columns=["trained_at"])
+        try:
+            upsert_rows("model_runs", [row], conflict_columns=["trained_at"])
+        except MissingColumnError:
+            optional = [k for k in ("candidates", "feature_set_version") if k in row]
+            if not optional:
+                raise
+            print("model_runs has no candidates/feature_set_version columns yet "
+                  "(apply supabase/migrations/20261012000600_model_runs_candidates.sql); publishing without them.")
+            upsert_rows("model_runs", [{k: v for k, v in row.items() if k not in optional}],
+                        conflict_columns=["trained_at"])
     except Exception as exc:
         print(f"Publishing model run failed: {exc}")
         raise
@@ -518,6 +536,13 @@ def run():
     fitted_lookup = {item["model_name"]: item["model"] for item in fitted}
     if production_model_name in fitted_lookup:
         best_model_name = production_model_name
+    elif production_model_name.startswith("lr-calibrated-availability-"):
+        # Served at predict time from data/candidates (src/availability_predict.py); model.pkl stays the base model.
+        print(
+            f"Production model '{production_model_name}' is an availability candidate applied at predict time; "
+            f"saving leaderboard best '{leaderboard_best}' as the base model."
+        )
+        best_model_name = leaderboard_best
     else:
         print(
             f"Configured production model '{production_model_name}' is unavailable. "
@@ -551,6 +576,8 @@ def main():
         ),
     )
     args = parser.parse_args()
+    # The NBA_SCHEMA_V2 checks below run before any Supabase client loads .env.
+    load_dotenv()
 
     if args.publish_only:
         if not schema_v2_enabled():

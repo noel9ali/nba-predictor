@@ -134,18 +134,18 @@ export function summarize(games) {
 // The ribbon's status line. "N of M bets ahead" only when a live game carries a bet.
 export function liveLine(s) {
   if (s.live) return s.live + ' live' + (s.liveBets ? ' · ' + s.ahead + ' of ' + s.liveBets + ' bets ahead' : '');
-  return s.upcoming ? s.upcoming + ' to come' : 'All final';
+  return s.upcoming ? s.upcoming + ' to come' : s.games ? 'All final' : 'No games';
 }
 export const summary = () => summarize(store.games);
 
-// The earliest unstarted game with a bet whose tip is still ahead. When the live feed is down a
-// game past its tip can still read "scheduled"; it is not next up.
 export function nextUpOf(games, nowMs = Date.now()) {
   const c = games.filter(g => g.state === 'scheduled' && hasBet(g) && tipMs(g) > nowMs);
   if (!c.length) return null;
   return c.sort((a, b) => (tipMs(a) - tipMs(b)) || ((b.edge ?? -Infinity) - (a.edge ?? -Infinity)) || a.game_id.localeCompare(b.game_id))[0];
 }
 export const nextUp = () => nextUpOf(store.games, now());
+
+export const pendingBets = () => store.games.some(g => g.state === 'scheduled' && hasBet(g));
 
 export const FILTERS = [['all', 'All'], ['bets', 'Bets'], ['live', 'Live'], ['upcoming', 'Upcoming'], ['final', 'Final']];
 export const SORTS = [['tip', 'Tip-off'], ['edge', 'Edge'], ['bet', 'Bet size']];
@@ -271,12 +271,13 @@ function setSlateMeta(slate) {
 
 function scheduleBeforeRefetch() {
   clearTimeout(refetchTimer);
-  if (!store.slate || store.slate.phase !== 'before_predictions' || store.isPast) return;
+  const awaitingPicks = store.games.some(g => (g.pick == null || g.provisional) && !g.bet && !g.skip_reason && g.state === 'scheduled');
+  if (!store.slate || store.isPast || (store.slate.phase !== 'before_predictions' && !awaitingPicks)) return;
   refetchTimer = setTimeout(async () => {
     if (document.hidden) { scheduleBeforeRefetch(); return; }
     try {
       const s = await api.slate(store.date || undefined);
-      const changed = s.phase !== store.slate.phase || (s.games || []).some(sg => { const o = game(sg.game_id); return !o || o.pick !== sg.pick || !!o.bet !== !!sg.bet; });
+      const changed = s.phase !== store.slate.phase || (s.games || []).some(sg => { const o = game(sg.game_id); return !o || o.pick !== sg.pick || !!o.bet !== !!sg.bet || !!o.provisional !== !!sg.provisional; });
       if (changed) { reconcile(s); emit([{ type: 'slate', refetch: true }]); }
     } catch { /* try again next minute */ }
     scheduleBeforeRefetch();

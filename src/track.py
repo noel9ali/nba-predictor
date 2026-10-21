@@ -1,6 +1,8 @@
 import pandas as pd
 from datetime import date, timedelta
 from nba_api.stats.endpoints import scoreboardv3
+import betting
+from config import LIVE_START_DATE
 from console import force_utf8_stdio
 from database import (
     DatabaseError,
@@ -37,23 +39,27 @@ def _require_bankroll_table(callback):
 # setup_tables() verifies the migrated tables and seeds the initial bankroll row.
 def setup_tables():
     existing = _require_bankroll_table(
-        lambda: select_rows("bankroll", columns="date,balance", limit=1)
+        lambda: select_rows(
+            "bankroll", columns="date,balance",
+            filters=[("date", "gte", LIVE_START_DATE)], limit=1,
+        )
     )
     if len(existing) == 0:
         _require_bankroll_table(
             lambda: upsert_rows(
                 "bankroll",
-                [{"date": date.today().isoformat(), "balance": STARTING_BANKROLL}],
+                [{"date": LIVE_START_DATE, "balance": STARTING_BANKROLL}],
                 conflict_columns=["date"],
             )
         )
 
-# get_current_bankroll() looks up most recent balance from bankroll table
+# get_current_bankroll() looks up the most recent LIVE balance from bankroll table (beta rows are ignored)
 def get_current_bankroll():
     df = _require_bankroll_table(
         lambda: select_rows(
             "bankroll",
             columns="balance",
+            filters=[("date", "gte", LIVE_START_DATE)],
             order_by="date",
             descending=True,
             limit=1,
@@ -66,7 +72,9 @@ def get_current_bankroll():
 # save_prediction() stores relevant information for each game in prediction table
 def save_prediction(game_id, game_date, home_team, away_team,
                     home_prob, away_prob, predicted_winner,
-                    bet_placed, bet_amount, odds):
+                    bet_placed, bet_amount, odds, extra=None):
+    """extra: optional additive columns (prob_range_low/high, model_name, skip_reason) written only when the
+    availability candidate is the production model; None keeps the original row exactly."""
     game_id = normalize_game_id(game_id)
     existing = select_rows(
         "predictions",
@@ -76,7 +84,7 @@ def save_prediction(game_id, game_date, home_team, away_team,
     )
     if len(existing) > 0:
         print(f"  Prediction already logged for {game_id}, skipping.")
-        return
+        return False
     row = {
         "game_id": game_id,
         "game_date": game_date,
@@ -92,35 +100,19 @@ def save_prediction(game_id, game_date, home_team, away_team,
         "odds": int(odds) if odds is not None else None,
         "profit_loss": None,
     }
+    if extra:
+        row.update(extra)
     try:
         insert_rows("predictions", [row])
     except DuplicateRecordError:
         print(f"  Prediction already logged for {game_id}, skipping.")
+        return False
+    return True
 
-# kelly_bet() calculates bet size using the Kelly formula. 
-#   Uses fraction paramater to scale aggresion.
+# kelly_bet() calculates bet size using the Kelly formula (quarter Kelly, 5% cap, MAX_DECIMAL_ODDS).
+#   Thin wrapper over the market-agnostic src/betting.py, kept for existing callers.
 def kelly_bet(prob, odds, bankroll, fraction=0.25):
-    # convert american odds to decimal
-    if odds > 0:
-        decimal_odds = (odds / 100) + 1
-    else:
-        decimal_odds = (100 / abs(odds)) + 1
-
-    if decimal_odds > MAX_DECIMAL_ODDS:
-        return 0
-
-    edge = (prob * decimal_odds) - 1
-    kelly = edge / (decimal_odds - 1)
-
-    # only bet if there is a positive edge
-    if kelly <= 0:
-        return 0
-
-    # fractional kelly to scale aggression
-    bet = kelly * fraction * bankroll
-
-    # cap bet at 5% of bankroll
-    return min(bet, bankroll * 0.05)
+    return betting.stake(bankroll, prob, odds, fraction=fraction, max_decimal_odds=MAX_DECIMAL_ODDS)
 
 # update_results() fetches results for every prediction still pending from
 #   before today (not just yesterday), updates the corresponding prediction
@@ -238,7 +230,7 @@ def _recompute_bankroll(affected_dates):
     completed = select_rows(
         "predictions",
         columns="game_date,profit_loss",
-        filters=[("profit_loss", "not_is", "null")],
+        filters=[("profit_loss", "not_is", "null"), ("game_date", "gte", LIVE_START_DATE)],
         order_by="game_date",
     )
     completed = completed.copy()
@@ -247,7 +239,8 @@ def _recompute_bankroll(affected_dates):
     running_balance = STARTING_BANKROLL + daily_totals.cumsum()
 
     earliest_affected = min(affected_dates)
-    stale_dates = sorted(d for d in running_balance.index if d >= earliest_affected)
+    # Beta-season dates settle without touching the live tally.
+    stale_dates = sorted(d for d in running_balance.index if d >= max(earliest_affected, LIVE_START_DATE))
     if not stale_dates:
         return
 
@@ -259,12 +252,13 @@ def _recompute_bankroll(affected_dates):
 def print_summary():
     preds = select_rows(
         "predictions",
-        filters=[("correct", "not_is", "null")],
+        filters=[("correct", "not_is", "null"), ("game_date", "gte", LIVE_START_DATE)],
         order_by="game_id",
     )
     bankroll = _require_bankroll_table(
         lambda: select_rows(
             "bankroll",
+            filters=[("date", "gte", LIVE_START_DATE)],
             order_by="date",
             descending=True,
             limit=1,

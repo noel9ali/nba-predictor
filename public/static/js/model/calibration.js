@@ -38,5 +38,17 @@ export function initCalibration(section, model) {
   const sparse = (model.calibration || []).find(b => b.n < 20);
   sum.append(stat(String(live.picks ?? 0), 'live picks this season.' +
     (sparse ? ' Buckets with fewer than 20 picks swing a lot; ' + bucketLabel(sparse.bucket) + '% has only ' + sparse.n + '.' : '')));
+
+  // Add ResizeObserver for chapter variant to re-render on width changes > 8px
+  let lastWidth = plot.clientWidth;
+  const ro = new ResizeObserver(() => {
+    const newWidth = plot.clientWidth;
+    if (Math.abs(newWidth - lastWidth) > 8) {
+      lastWidth = newWidth;
+      renderCalibration(plot, model.calibration || [], { variant: 'chapter' });
+    }
+  });
+  ro.observe(plot);
+
   return true;
 }

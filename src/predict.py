@@ -1,3 +1,5 @@
+import os
+
 import joblib
 import pandas as pd
 from nba_api.stats.endpoints import scoreboardv3
@@ -6,7 +8,7 @@ from console import force_utf8_stdio
 from track import setup_tables, save_prediction, kelly_bet, get_current_bankroll
 from odds import get_tonights_odds
 from elo import get_current_ratings
-from database import select_rows
+from database import select_rows, upsert_rows
 
 # --- Config ---
 FEATURES = [
@@ -22,27 +24,133 @@ def load_model():
     scaler = joblib.load('data/scaler.pkl')
     return model, scaler
 
+# games_from_scoreboard() builds one row per game from a ScoreboardV3 dict, taking home and away from the
+#   explicit homeTeam / awayTeam objects. The LineScore frame is NOT positional-safe: it lists the HOME team
+#   first, so the old groupby().first() = away / .last() = home swapped every game (wrong venue features,
+#   odds and edge for the wrong matchup).
+def games_from_scoreboard(scoreboard):
+    rows = []
+    seen = set()
+    for game in (scoreboard or {}).get('scoreboard', {}).get('games', []) or []:
+        game_id = game.get('gameId')
+        home, away = game.get('homeTeam') or {}, game.get('awayTeam') or {}
+        if not game_id or game_id in seen or not home.get('teamId') or not away.get('teamId'):
+            continue
+        seen.add(game_id)
+        rows.append({
+            'gameId': game_id,
+            'HOME_TEAM_ID': home['teamId'],
+            'HOME_TEAM_ABBREVIATION': home.get('teamTricode'),
+            'VISITOR_TEAM_ID': away['teamId'],
+            'VISITOR_TEAM_ABBREVIATION': away.get('teamTricode'),
+            'GAME_STATUS': game.get('gameStatus'),
+            'TIP_UTC': game.get('gameTimeUTC'),
+        })
+    return pd.DataFrame(rows, columns=['gameId', 'HOME_TEAM_ID', 'HOME_TEAM_ABBREVIATION',
+                                       'VISITOR_TEAM_ID', 'VISITOR_TEAM_ABBREVIATION', 'GAME_STATUS', 'TIP_UTC'])
+
+
+def predict_window_minutes():
+    """NBA_PREDICT_WINDOW_MINUTES (set by the evening predict stage): only price games that tip within this many
+    minutes, so each game is priced shortly before tip with the newest injury report. Unset = no window."""
+    try:
+        value = int(os.environ.get('NBA_PREDICT_WINDOW_MINUTES', '').strip())
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def within_window(games, minutes, now=None):
+    """Keep games that tip within `minutes` from now. A game with an unknown tip time is kept (never silently
+    dropped); one whose tip has passed is left to not_started()."""
+    if not minutes or 'TIP_UTC' not in games.columns:
+        return games
+    now = pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz='UTC')
+    tip = pd.to_datetime(games['TIP_UTC'], utc=True, errors='coerce')
+    soon = tip.isna() | (tip <= now + pd.Timedelta(minutes=minutes))
+    return games[soon].reset_index(drop=True)
+
+
+def record_schedule(games):
+    """Upsert today's slate to schedule so the site can list games whose picks haven't posted yet.
+    Best effort: a failure here must never stop predictions."""
+    try:
+        rows = [{
+            'game_id': str(g['gameId']),
+            'game_date': str(date.today()),
+            'home_team': g['HOME_TEAM_ABBREVIATION'],
+            'away_team': g['VISITOR_TEAM_ABBREVIATION'],
+            'tip_time_utc': g.get('TIP_UTC') if isinstance(g.get('TIP_UTC'), str) else None,
+        } for g in games.to_dict('records') if g['HOME_TEAM_ABBREVIATION'] and g['VISITOR_TEAM_ABBREVIATION']]
+        upsert_rows('schedule', rows, conflict_columns=['game_id'])
+    except Exception as exc:
+        print(f"Could not record today's schedule ({type(exc).__name__}); the site will not list pending games.")
+
+
+def provisional_mode():
+    """NBA_PREDICT_PROVISIONAL=1 (set by the 6 AM stage): save temporary picks to provisional_predictions instead
+    of real predictions. No window, no bets, no bankroll, and nothing is written to predictions."""
+    return os.getenv('NBA_PREDICT_PROVISIONAL', '').strip() == '1'
+
+
+def save_provisional(game, home_prob, away_prob, predicted_winner, game_odds, model_name):
+    """Upsert one temporary pick with the best-book price on the picked side (price fields None without odds)."""
+    odds = book = implied = edge = None
+    if game_odds:
+        home_side = predicted_winner == game['HOME_TEAM_ABBREVIATION']
+        odds = game_odds['home_odds'] if home_side else game_odds['away_odds']
+        book = game_odds['home_book'] if home_side else game_odds['away_book']
+        implied = implied_prob(odds)
+        edge = (home_prob if home_side else away_prob) - implied
+    row = {
+        'game_id': str(game['gameId']),
+        'game_date': str(date.today()),
+        'home_team': game['HOME_TEAM_ABBREVIATION'],
+        'away_team': game['VISITOR_TEAM_ABBREVIATION'],
+        'home_win_prob': float(home_prob),
+        'away_win_prob': float(away_prob),
+        'predicted_winner': predicted_winner,
+        'odds': int(odds) if odds is not None else None,
+        'bookmaker': book,
+        'implied_prob': float(implied) if implied is not None else None,
+        'edge': float(edge) if edge is not None else None,
+        'model_name': model_name,
+        'predicted_at': pd.Timestamp.now(tz='UTC').isoformat(),
+    }
+    upsert_rows('provisional_predictions', [row], conflict_columns=['game_id'])
+
+
+def not_yet_predicted(games):
+    """Drop games that already have a predictions row. A failed lookup keeps every game: the per-game
+    duplicate check in save_prediction is still the safety net."""
+    try:
+        done = select_rows("predictions", columns="game_id", order_by="game_id",
+                           filters=[("game_date", "eq", str(date.today()))])
+    except Exception as exc:
+        print(f"Could not check existing predictions ({type(exc).__name__}); predicting every game.")
+        return games
+    if done.empty:
+        return games
+    have = set(done["game_id"].astype(str))
+    return games[~games["gameId"].astype(str).isin(have)].reset_index(drop=True)
+
+
+def not_started(games):
+    """Keep scheduled games only (ScoreboardV3 gameStatus 1). A late-day run must not price a game that is in
+    progress or over: in-play odds and a known score would make the 'prediction' meaningless. A missing status
+    is treated as scheduled."""
+    if 'GAME_STATUS' not in games.columns:
+        return games
+    status = pd.to_numeric(games['GAME_STATUS'], errors='coerce').fillna(1)
+    return games[status == 1].reset_index(drop=True)
+
+
 # get_todays_games() fetches today's games from nba_api. Returns a dataframe with one
 #   game per row
 def get_todays_games():
     today = date.today().strftime('%Y-%m-%d')
     board = scoreboardv3.ScoreboardV3(game_date=today)
-    
-    games = board.get_data_frames()[1]  # game header
-    teams = board.get_data_frames()[2]  # team info
-
-    # split into separate rows for home and away to be merged
-    away_teams = teams.groupby('gameId').first().reset_index()
-    home_teams = teams.groupby('gameId').last().reset_index()
-
-    # merge into one row per game
-    merged = games[['gameId']].drop_duplicates()
-    merged = merged.merge(home_teams[['gameId', 'teamId', 'teamTricode']], on='gameId')
-    merged = merged.rename(columns={'teamId': 'HOME_TEAM_ID', 'teamTricode': 'HOME_TEAM_ABBREVIATION'})
-    merged = merged.merge(away_teams[['gameId', 'teamId', 'teamTricode']], on='gameId')
-    merged = merged.rename(columns={'teamId': 'VISITOR_TEAM_ID', 'teamTricode': 'VISITOR_TEAM_ABBREVIATION'})
-
-    return merged
+    return games_from_scoreboard(board.get_dict())
 
 # get_team_rolling_stats() looks up rolling averages for a team's past 10 games
 def get_team_rolling_stats(team_id, prefix):
@@ -107,21 +215,154 @@ def match_odds(home_abbr, away_abbr, odds_dict):
 
     return None
 
-# implied_prob() converts american odds to implied probability
-def implied_prob(american_odds):
-    if american_odds > 0:
-        return 100 / (american_odds + 100)
-    else:
-        return abs(american_odds) / (abs(american_odds) + 100)
+# implied_prob() converts american odds to implied probability (market-agnostic, src/betting.py)
+from betting import implied_prob  # noqa: E402
+
+ODDS_DAILY_CALL_CAP = 12     # Odds API credits per day; the free plan is 500 a month (12 x 31 = 372)
+
+
+def _odds_budget_path():
+    from config import DATA_DIR
+    return os.path.join(DATA_DIR, 'odds_budget.json')
+
+
+def odds_call_allowed(today=None, path=None):
+    """True while today's Odds API calls are under ODDS_DAILY_CALL_CAP. A run that keeps finding a game without
+    odds retries every 15 minutes, and this stops that from burning the monthly quota. A missing or unreadable
+    file means no calls recorded yet."""
+    import json
+    today = str(today or date.today())
+    try:
+        with open(path or _odds_budget_path(), encoding='utf-8') as fh:
+            state = json.load(fh)
+    except (OSError, ValueError):
+        return True
+    return state.get('date') != today or int(state.get('calls', 0)) < ODDS_DAILY_CALL_CAP
+
+
+def record_odds_call(today=None, path=None):
+    import json
+    today, path = str(today or date.today()), path or _odds_budget_path()
+    try:
+        with open(path, encoding='utf-8') as fh:
+            state = json.load(fh)
+    except (OSError, ValueError):
+        state = {}
+    same_day = state.get('date') == today
+    calls = int(state.get('calls', 0)) + 1 if same_day else 1
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as fh:
+            json.dump({'date': today, 'calls': calls,
+                       'closing_calls': int(state.get('closing_calls', 0)) if same_day else 0}, fh)
+    except OSError as exc:
+        print(f"Could not record the odds call ({type(exc).__name__}).")
+    return calls
+
+
+def closing_call_allowed(today=None, path=None, remaining=None):
+    """Closing-line calls (flag ODDS_CLOSING_CAPTURE) have their own daily cap and a monthly reserve: no closing
+    call when the last x-requests-remaining header is at or below ODDS_CLOSING_MONTHLY_RESERVE. Unreadable state
+    fails SAFE (no call), the opposite of the pricing budget, because a closing snapshot is optional."""
+    import json
+    import config
+    today = str(today or date.today())
+    if remaining is not None and remaining <= config.ODDS_CLOSING_MONTHLY_RESERVE:
+        return False
+    try:
+        with open(path or _odds_budget_path(), encoding='utf-8') as fh:
+            state = json.load(fh)
+    except FileNotFoundError:
+        return True
+    except (OSError, ValueError):
+        return False
+    used = int(state.get('closing_calls', 0)) if state.get('date') == today else 0
+    return used < config.ODDS_CLOSING_DAILY_CALL_CAP
+
+
+def record_closing_call(today=None, path=None):
+    """Count a closing call apart from the pricing calls (same budget file, separate field)."""
+    import json
+    today, path = str(today or date.today()), path or _odds_budget_path()
+    try:
+        with open(path, encoding='utf-8') as fh:
+            state = json.load(fh)
+    except (OSError, ValueError):
+        state = {}
+    same_day = state.get('date') == today
+    state = {'date': today, 'calls': int(state.get('calls', 0)) if same_day else 0,
+             'closing_calls': (int(state.get('closing_calls', 0)) if same_day else 0) + 1}
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as fh:
+            json.dump(state, fh)
+    except OSError as exc:
+        print(f"Could not record the closing odds call ({type(exc).__name__}).")
+    return state['closing_calls']
+
+
+def maybe_capture_closing(scheduled, now=None):
+    """Closing-line snapshot (default OFF, config.ODDS_CLOSING_CAPTURE): when a not-yet-started game tips 2-17
+    minutes from now and its tip time has no closing capture yet, spend ONE credit on the slate (purpose
+    'closing'); the response is archived like every other. Never raises, never affects predictions."""
+    try:
+        import config
+        if not config.ODDS_CLOSING_CAPTURE:
+            return False
+        import odds_archive
+        due = odds_archive.due_closing_tips(scheduled, now)
+        if not due:
+            return False
+        if not closing_call_allowed(remaining=odds_archive.latest_requests_remaining()):
+            print("Closing odds capture skipped: closing budget or monthly reserve reached.")
+            return False
+        record_closing_call()
+        print(f"Capturing closing odds for tip time(s) {', '.join(due)}...")
+        get_tonights_odds(purpose='closing')
+        odds_archive.mark_closing_done(due, scheduled.loc[scheduled['TIP_UTC'].isin(due), 'gameId'].tolist())
+        odds_archive.link_game_ids(scheduled)
+        return True
+    except Exception as exc:
+        print(f"Closing odds capture failed ({type(exc).__name__}: {exc}); predictions are unaffected.")
+        return False
+
+
+def _flag_status_changes():
+    """Informational: flag predictions whose key players' injury status changed since they were made. Local data
+    plus a Supabase update only when something changed, so it is cheap to run on every tick."""
+    try:
+        import availability_predict as ap
+        ap.flag_status_changes()
+    except Exception as exc:
+        print(f"Status-change check skipped: {type(exc).__name__}: {exc}")
+
+
+def _availability_setup():
+    """Load the availability helpers, the saved candidate (if any) and player names. Never raises."""
+    try:
+        import availability_predict as ap
+    except Exception as exc:
+        print(f"Availability step disabled: {type(exc).__name__}: {exc}")
+        return None, None, {}
+    configured = ap.configured_candidate_name()
+    try:
+        candidate = ap.load_candidate(configured or ap.DEFAULT_CANDIDATE, required=bool(configured))
+    except Exception as exc:
+        if configured:
+            raise RuntimeError(f"Configured candidate cannot be used: {exc}") from exc
+        print(f"Availability candidate not loaded: {type(exc).__name__}: {exc}")
+        candidate = None
+    try:
+        names = ap.player_names()
+    except Exception:
+        names = {}
+    return ap, candidate, names
+
 
 def run():
-    # load the trained model and scaler
-    print("Loading model...")
-    model, scaler = load_model()
-
-    # load current elo ratings for all teams
-    print("Loading Elo ratings...")
-    elo_ratings = get_current_ratings()
+    # The cheap checks come first: this runs every 15 minutes, and most runs have nothing to price. Loading
+    # Elo reads the whole elo and games tables (~25k rows), so it waits until there is a game to price.
+    _flag_status_changes()
 
     # fetch tonight's games
     print("Fetching today's games...")
@@ -131,10 +372,66 @@ def run():
     if len(games) == 0:
         print("No games today.")
         return
+    record_schedule(games)
 
-    # fetch real-time odds from The Odds API
-    print("Fetching odds...")
-    odds_dict = get_tonights_odds()
+    # skip games already in progress or finished (a late-day run, or a manual re-run)
+    scheduled = not_started(games)
+    if len(scheduled) < len(games):
+        print(f"Skipping {len(games) - len(scheduled)} game(s) already started or finished.")
+    games = scheduled
+    if len(games) == 0:
+        print("No games left to predict.")
+        return
+    maybe_capture_closing(scheduled)      # OFF by default (config.ODDS_CLOSING_CAPTURE); never raises
+
+    # the evening stage prices each game shortly before its tip, with the newest injury report
+    provisional = provisional_mode()
+    window = None if provisional else predict_window_minutes()
+    if window:
+        in_window = within_window(games, window)
+        if len(in_window) < len(games):
+            print(f"{len(games) - len(in_window)} game(s) tip more than {window} min from now; deferred to a later run.")
+        games = in_window
+        if len(games) == 0:
+            print("No games inside the prediction window.")
+            return
+
+    # a repeat run (a retry trigger, or a manual re-run) must not spend an odds request on games that already
+    # have a prediction; save_prediction would skip them anyway
+    games = not_yet_predicted(games)
+    if len(games) == 0:
+        print("Every game today already has a prediction.")
+        return
+
+    # something to price: now load the model, the candidate and the Elo ratings
+    print("Loading model...")
+    model, scaler = load_model()
+    ap, candidate, player_names = _availability_setup()
+    print("Loading Elo ratings...")
+    elo_ratings = get_current_ratings()
+
+    # fetch real-time odds from The Odds API (one credit returns the whole slate)
+    if not odds_call_allowed():
+        print(f"Odds request budget for today ({ODDS_DAILY_CALL_CAP} calls) is used up; no odds fetched.")
+        if not provisional:
+            return
+        odds_dict = {}      # a temporary pick is still worth showing without a price
+    else:
+        record_odds_call()
+        print("Fetching odds...")
+        try:
+            odds_dict = get_tonights_odds()
+        except Exception as exc:
+            if not provisional:
+                raise
+            print(f"Odds fetch failed ({type(exc).__name__}); temporary picks will have no price.")
+            odds_dict = {}
+    try:
+        import odds_archive
+        odds_archive.link_game_ids(scheduled)     # NBA game ids onto the archived rows (non-fatal)
+    except Exception as exc:
+        print(f"Odds archive game-id link skipped: {type(exc).__name__}: {exc}")
+    saved = 0
 
     # ADD THIS HERE
     print("Odds dictionary keys:")
@@ -201,11 +498,42 @@ def run():
         home_prob = prob[1] * 100
         away_prob = prob[0] * 100
 
+        # Availability (player-data work): projections, features and the candidate's shadow prediction.
+        # Production picks only change when NBA_PRODUCTION_MODEL names the availability candidate.
+        extra = {}
+        if ap is not None:
+            try:
+                run_avail = ap.provisional_for_game if provisional else ap.run_for_game
+                avail = run_avail(str(game['gameId']), str(date.today()), int(home_id), int(away_id), row,
+                                  candidate=candidate, names=player_names)
+                if avail and candidate and ap.production_uses_candidate(candidate['name']):
+                    home_prob = avail['home_win_prob'] * 100
+                    away_prob = 100 - home_prob
+                    extra = {'prob_range_low': avail['prob_range_low'],
+                             'prob_range_high': avail['prob_range_high'],
+                             'model_name': candidate['name']}
+            except Exception as exc:
+                print(f"  availability step skipped: {type(exc).__name__}: {exc}")
+
         # determine predicted winner
         predicted_winner = home_abbr if home_prob > away_prob else away_abbr
 
         # look up real odds for this game
         game_odds = match_odds(home_abbr, away_abbr, odds_dict)
+
+        if provisional:
+            # temporary pick: never a bet, never in predictions; the pre-tip run makes the real prediction
+            try:
+                save_provisional(game, home_prob / 100, away_prob / 100, predicted_winner, game_odds,
+                                 extra.get('model_name'))
+            except Exception as exc:
+                print(f"{away_abbr} @ {home_abbr} - temporary pick not saved: {type(exc).__name__}: {exc}")
+                continue
+            line = f"{game_odds['home_odds'] if predicted_winner == home_abbr else game_odds['away_odds']}"                 if game_odds else "no odds yet"
+            print(f"{away_abbr} @ {home_abbr}: TEMPORARY pick {predicted_winner} "
+                  f"({max(home_prob, away_prob):.1f}%), line {line}")
+            saved += 1
+            continue
 
         if game_odds:
             # use real odds and calculate edge
@@ -218,6 +546,11 @@ def run():
             # only bet if model has a real edge over the market
             bankroll = get_current_bankroll()
             bet_amount = kelly_bet(best_prob, bet_odds, bankroll) if edge > 0 else 0
+            if extra:
+                from scenarios import apply_gate
+                bet_amount, skip_reason = apply_gate(bet_amount, extra['prob_range_low'], extra['prob_range_high'])
+                if skip_reason:
+                    extra['skip_reason'] = skip_reason
             bet_team = predicted_winner if bet_amount > 0 else None
         else:
             # no odds available, skip the game
@@ -239,7 +572,7 @@ def run():
         print()
 
         # log to database
-        save_prediction(
+        inserted = save_prediction(
             game_id          = game['gameId'],
             game_date        = str(date.today()),
             home_team        = home_abbr,
@@ -249,8 +582,17 @@ def run():
             predicted_winner = predicted_winner,
             bet_placed       = bet_team,
             bet_amount       = bet_amount,
-            odds             = bet_odds
+            odds             = bet_odds,
+            extra            = extra or None
         )
+        if inserted is not False:     # a skipped duplicate returns False; anything else was stored
+            saved += 1
+
+    if provisional:
+        print(f"Saved {saved} temporary prediction(s).")     # worded so the workflow's picks-SMS check ignores it
+        return
+    # the workflow reads this line: no new predictions means no picks SMS
+    print(f"Saved {saved} prediction(s).")
 
 if __name__ == '__main__':
     force_utf8_stdio()

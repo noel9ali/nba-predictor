@@ -2,6 +2,7 @@
 
 /* ---------- 1 · the night at a glance ---------- */
 .lede h1{margin:0;font:600 clamp(28px,4.4vw,50px)/1.14 var(--body);letter-spacing:-.02em;text-wrap:balance;max-width:24ch}
+.lede h1.oneline{white-space:nowrap;max-width:none;text-wrap:nowrap;font-size:clamp(12px,2.6vw,40px)}
 .lede h1 .n{font:400 1em/1 var(--jersey);letter-spacing:0;white-space:nowrap}
 .lede h1 .n.e{color:var(--ball)}
 .lede .board{margin:clamp(28px,4vw,40px) 0 0}
@@ -27,7 +28,7 @@
 .gl__st{font:500 13px/1.35 var(--mono);text-align:right;font-variant-numeric:tabular-nums}
 .gl__st small{display:block;color:var(--ink-2);font-size:12px}
 .gl__st .live{color:var(--live)}
-@media (max-width:760px){
+@media (max-width:900px){
   .gl{grid-template-columns:minmax(0,1fr) auto;gap:10px 14px}
   .gl .court-strip{grid-column:1/-1;grid-row:2}
   .gl__lab{flex-direction:row;align-items:baseline;gap:10px;flex-wrap:wrap}
@@ -37,12 +38,11 @@
 .js .gl.pre .edge-line{opacity:0}
 .js .gl.pre .mk{transform:scaleY(0)}
 .js .gl.pre .tag{opacity:0}
-/* Stagger is capped at the fourth row so the whole reveal lands inside 1.2s. */
-.js .gl .seg.paint{transition:transform .6s cubic-bezier(.2,.75,.2,1) calc(min(var(--i), 3) * 40ms)}
-.js .gl .edge-line{transition:opacity .2s calc(min(var(--i), 3) * 40ms + .5s)}
-.js .gl .seg.hat,.js .gl .seg.short{transition:transform .4s cubic-bezier(.2,.75,.2,1) calc(min(var(--i), 3) * 40ms + .5s)}
-.js .gl .mk{transition:transform .35s cubic-bezier(.3,.7,.2,1) calc(min(var(--i), 3) * 40ms + .35s)}
-.js .gl .tag{transition:opacity .3s calc(min(var(--i), 3) * 40ms + .6s)}
+.js .gl .seg.paint{transition:transform .8s cubic-bezier(.2,.75,.2,1) calc(min(var(--i),3)*50ms)}
+.js .gl .edge-line{transition:opacity .2s calc(min(var(--i),3)*50ms + .6s)}
+.js .gl .seg.hat,.js .gl .seg.short{transition:transform .45s cubic-bezier(.2,.75,.2,1) calc(min(var(--i),3)*50ms + .6s)}
+.js .gl .mk{transition:transform .45s cubic-bezier(.3,.7,.2,1) calc(min(var(--i),3)*50ms + .4s)}
+.js .gl .tag{transition:opacity .3s calc(min(var(--i),3)*50ms + .7s)}
 
 /* banners (feed down; prediction failed) */
 .banner{background:var(--stock);color:var(--t-ink);padding:13px 16px;border-left:6px solid var(--t-lost);font:500 14px/1.45 var(--body);
@@ -52,10 +52,15 @@
 
 /* ---------- 2 · tickets: toolbar and grid ---------- */
 .toolbar{display:flex;flex-wrap:wrap;gap:12px 28px;align-items:center}
+@media (max-width:1100px){.toolbar{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:12px;row-gap:6px;align-items:center}}
 .tg{display:flex;flex-wrap:wrap;gap:2px}
+@media (max-width:1100px){[data-testid=filters]{grid-column:1/-1;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;scroll-snap-type:x proximity;padding-block:2px}}
+@media (max-width:1100px){[data-testid=filters] button{flex:none;scroll-snap-align:start}}
+@media (max-width:1100px){[data-testid=sorts]{flex-wrap:nowrap;grid-column:2}}
 .tg button{border:0;background:none;cursor:pointer;min-height:44px;padding:0 12px;font:700 12px/1 var(--body);text-transform:uppercase;letter-spacing:.1em;color:var(--ink-2)}
 .tg button[aria-pressed="true"]{color:var(--ink);box-shadow:inset 0 -4px 0 var(--paint)}
 .tg button span{font:400 15px/1 var(--jersey);margin-left:6px}
+@media (max-width:1100px){.tg-lbl{display:inline-flex;align-items:center;grid-column:1;padding-left:12px}}
 .tg-lbl{font:600 11px/1 var(--mono);text-transform:uppercase;letter-spacing:.12em;color:var(--ink-2)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,500px),1fr));gap:clamp(28px,3.4vw,44px) clamp(24px,3vw,40px);align-items:start}
 .empty{padding:32px;border:3px dashed var(--line);background:var(--panel);font:500 14px/1.5 var(--mono)}
@@ -101,7 +106,7 @@
 }
 @media (prefers-reduced-motion:reduce){.bscrolly.drive .bstep__in{transform:none}}
 
-.mgrid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:clamp(28px,4vw,48px);margin-top:clamp(28px,4vw,40px)}
+.mgrid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:clamp(28px,4vw,48px);margin-top:clamp(28px,4vw,40px);align-items:start}
 @media (max-width:900px){.mgrid{grid-template-columns:minmax(0,1fr)}}
 .chart{position:relative}
 .chart svg{display:block;width:100%;height:auto;overflow:visible}
@@ -111,9 +116,9 @@
 .chart .ln{fill:none;stroke:var(--paint);stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
 .chart .ar{fill:var(--paint-wash);opacity:.6}
 .chart .pk{fill:var(--ball);stroke:var(--panel);stroke-width:2}
-.chart .lbl{font:600 12px/1 var(--mono);fill:var(--ink)}
+.chart .lbl{font:600 12px/1 var(--mono);fill:var(--ink);paint-order:stroke;stroke:var(--panel);stroke-width:4px;stroke-linejoin:round}
 .chart .cross{stroke:var(--ink-2);stroke-width:1;stroke-dasharray:3 3}
-.chart .tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--panel);font:500 12px/1.45 var(--mono);padding:8px 10px;white-space:nowrap;z-index:5;transform:translate(-50%,-110%)}
+.chart .tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--panel);font:500 12px/1.45 var(--mono);padding:8px 10px;white-space:nowrap;z-index:5;transform:translateX(-50%)}
 .chart .tip b{font-weight:600}
 .chart[data-testid="bankroll"]{touch-action:pan-y}
 .js .chart.pre .ln{stroke-dashoffset:var(--len)}
@@ -123,22 +128,22 @@
 .chart .ov{opacity:0;visibility:hidden;transition:opacity .5s,visibility 0s .5s}
 .chart[data-step="2"] .ov.dd,.chart[data-step="3"] .ov.tn,.chart[data-step="3"] .ov.pn{opacity:1;visibility:visible;transition:opacity .5s}
 .chart[data-step="2"] .ln{opacity:.45}
-.chart .endg{transition:opacity .3s,visibility 0s}
-.chart[data-step="3"] .endg{opacity:0;visibility:hidden;transition:opacity .3s,visibility 0s .3s}
+.chart .endg{transition:opacity .3s}
+.chart[data-step="3"] .endg{display:none}
 .chart .ddr{fill:rgba(255,141,132,.10)}
 .chart .ddl{fill:none;stroke:var(--loss);stroke-width:3;stroke-linejoin:round}
 .chart .ddb{stroke:var(--loss);stroke-width:1.5}
-.chart .ddt{font:600 12px/1 var(--mono);fill:var(--loss)}
+.chart .ddt{font:600 12px/1 var(--mono);fill:var(--loss);paint-order:stroke;stroke:var(--panel);stroke-width:4px;stroke-linejoin:round}
 .chart .tnl{fill:none;stroke:var(--ball);stroke-width:2.5;stroke-dasharray:6 5}
 .chart .tnr{stroke:var(--ball);stroke-width:8;stroke-linecap:butt;opacity:.35}
 .chart .tnp{fill:var(--ball);stroke:var(--panel);stroke-width:2}
-.chart .tnt{font:600 12px/1 var(--mono);fill:var(--ball)}
-.chart .tns{font:500 11px/1 var(--mono);fill:var(--ink-2)}
+.chart .tnt{font:600 12px/1 var(--mono);fill:var(--ball);paint-order:stroke;stroke:var(--panel);stroke-width:4px;stroke-linejoin:round}
+.chart .tns{font:500 11px/1 var(--mono);fill:var(--ink-2);paint-order:stroke;stroke:var(--panel);stroke-width:4px;stroke-linejoin:round}
 .chart.pop[data-step="3"] .ov.tn .tnl{animation:dashin .8s ease-out}
 @keyframes dashin{from{stroke-dashoffset:60;opacity:0}}
 
 /* W/L strip (T16) */
-.wl{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.wl{display:grid;grid-template-columns:repeat(11, minmax(0, 22px));gap:4px;justify-content:start;margin-top:4px}
 .wl i{width:22px;height:26px;display:grid;place-items:center;font:600 10px/1 var(--mono);font-style:normal;color:var(--panel)}
 .wl i.W{background:var(--win)}
 .wl i.L{background:transparent;color:var(--loss);box-shadow:inset 0 0 0 2px var(--loss)}
@@ -146,6 +151,7 @@
 .js .wl i{transition:transform .3s cubic-bezier(.2,.9,.3,1.4) calc(min(var(--k), 24) * 28ms)}
 
 /* calibration card (T17) and model facts */
+[data-testid=calib] .calib-svg{max-width:420px;margin-inline:auto}
 .calib .dot{transform-box:fill-box;transform-origin:center}
 .js .calib.pre .dot{opacity:0;transform:scale(.3)}
 .js .calib .dot{transition:opacity .4s calc(min(var(--k), 6) * 60ms),transform .4s cubic-bezier(.2,.9,.3,1.4) calc(min(var(--k), 6) * 60ms)}
@@ -169,6 +175,9 @@ html.drawer-open{overflow:hidden}
 .d-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .d-title span{font:500 14px/1 var(--mono);color:var(--t-ink-2);text-transform:uppercase}
 .d-logo{width:42px;height:42px}
+/* phone width: keep "ORL at BOS" on one line instead of orphaning the second tricode */
+@media (max-width:480px){.panel .d-title{font-size:28px;gap:8px}.d-logo{width:32px;height:32px}}
+@media (max-width:340px){.panel .d-title{font-size:22px;gap:6px}.d-logo{width:26px;height:26px}}
 .panel .btn{border-color:var(--t-ink);color:var(--t-ink)}
 .panel p.meta{margin:14px 0 0;font:400 13px/1.5 var(--mono);color:var(--t-ink-2)}
 .panel h3{font:600 11px/1 var(--mono);text-transform:uppercase;letter-spacing:.14em;color:var(--t-print);margin:30px 0 12px}
@@ -215,7 +224,7 @@ html.drawer-open{overflow:hidden}
 
 /* Reserve the courts and tickets while the slate loads, so the season section doesn't paint high
    and then jump down (layout shift). tonight.js removes .loading after the first slate render. */
-#tonight.loading .courts{min-height:calc(6 * (84px + clamp(18px,2.4vw,26px)) + 64px)}
+#tonight.loading .courts{min-height:calc(6 * (84px + clamp(18px,2.4vw,26px)) + 64px);align-content:start}
 #tonight.loading [data-testid=grid]{min-height:110vh}
 @media (max-width:760px){#tonight.loading .courts{min-height:900px}}
 #tonight.loading .lede h1{min-height:calc(3 * 1.14em)}
@@ -224,4 +233,5 @@ html.drawer-open{overflow:hidden}
 @media (max-width:960px){#tonight.loading .lede .board{min-height:calc(8px + 2 * var(--row))}}
 @media (max-width:520px){#tonight.loading .lede .board{min-height:calc(10px + 3 * var(--row))}}
 .lede .kick{min-height:12px}
+.lede .kick .kp{white-space:nowrap}
 @media (max-width:600px){.lede .kick{min-height:24px}}

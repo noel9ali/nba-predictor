@@ -72,6 +72,49 @@ class CollectTests(unittest.TestCase):
         fake_finder.assert_called_once()
         self.assertEqual(result["SEASON"].iloc[0], "2025-26")
 
+    def test_seasons_include_current_season_automatically(self):
+        from datetime import date
+        self.assertEqual(collect.seasons_to_collect(date(2026, 10, 20))[-1], "2026-27")
+        self.assertEqual(collect.seasons_to_collect(date(2027, 10, 20))[-1], "2027-28")
+        self.assertEqual(collect.seasons_to_collect(date(2026, 3, 1)), collect.SEASONS)
+
+    def test_empty_current_season_is_a_noop(self):
+        from datetime import date
+        hist = pd.DataFrame([{"GAME_ID": "0022501186", "TEAM_ID": 7}])
+
+        def fake_fetch(season, retries=3):
+            return pd.DataFrame() if season == "2026-27" else hist
+
+        with patch.object(collect, "fetch_season", side_effect=fake_fetch), \
+             patch.object(collect, "upsert_rows") as upsert:
+            collect.run(today=date(2026, 10, 19))
+        rows = upsert.call_args.args[1]
+        self.assertEqual(len(rows), len(collect.SEASONS))
+
+        with patch.object(collect, "fetch_season", return_value=pd.DataFrame()), \
+             patch.object(collect, "upsert_rows") as upsert:
+            collect.run(today=date(2026, 10, 19))
+        upsert.assert_not_called()
+
+    def test_failed_season_raises_after_saving_the_rest(self):
+        from datetime import date
+        hist = pd.DataFrame([{"GAME_ID": "0022501186", "TEAM_ID": 7}])
+
+        def fake_fetch(season, retries=3):
+            return None if season == "2026-27" else hist
+
+        with patch.object(collect, "fetch_season", side_effect=fake_fetch), \
+             patch.object(collect, "upsert_rows") as upsert:
+            with self.assertRaises(RuntimeError) as raised:
+                collect.run(today=date(2026, 10, 19))
+        self.assertIn("2026-27", str(raised.exception))
+        upsert.assert_called_once()
+
+    def test_fetch_season_returns_none_when_all_retries_fail(self):
+        with patch.object(collect.leaguegamefinder, "LeagueGameFinder", side_effect=OSError("boom")), \
+             patch.object(collect.time, "sleep"):
+            self.assertIsNone(collect.fetch_season("2026-27", retries=2))
+
 
 if __name__ == "__main__":
     unittest.main()

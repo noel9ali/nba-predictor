@@ -1,4 +1,4 @@
-import json
+﻿import json
 import os
 import re
 import secrets
@@ -24,10 +24,14 @@ from database import (  # noqa: E402  (needs the src/ path above)
     DatabaseError,
     MissingColumnError,
     MissingTableError,
+    call_rpc,
     normalize_game_id,
     schema_v2_enabled,
     select_rows,
 )
+import live_scores  # noqa: E402
+import api_availability  # noqa: E402  (player data: injuries, rest, scenarios, factors)
+import config as player_config  # noqa: E402
 
 load_dotenv()
 
@@ -165,6 +169,15 @@ def records(df):
     return df.astype(object).where(df.notna(), None).to_dict("records")
 
 
+def hide_beta():
+    """Pre-launch (beta) results stay in the database but are not served. HIDE_BETA=0 shows them."""
+    return os.environ.get("HIDE_BETA", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
+def is_hidden_day(day):
+    return hide_beta() and str(day)[:10] < player_config.LIVE_START_DATE
+
+
 def _prediction_dates():
     """All predictions.game_date values, fetched once per request so available_seasons()
     and available_prediction_dates() (SEC-F4/API-F1) can share the read."""
@@ -178,15 +191,27 @@ def _prediction_dates():
             descending=True,
         )
         dates = [r["game_date"] for r in records(df) if r.get("game_date")]
+        if hide_beta():
+            dates = [d for d in dates if not is_hidden_day(d)]
         g._prediction_dates = dates
     return dates
 
 
+def current_season():
+    return season_for(date.today())
+
+
 def available_seasons():
     seasons = list(dict.fromkeys(season_for(d) for d in _prediction_dates()))
-    if not seasons:
-        seasons = [season_for(date.today())]
+    current = current_season()
+    if current not in seasons:
+        seasons.insert(0, current)  # the live season is selectable (and the default) before its first pick
     return seasons
+
+
+def is_beta_season(season):
+    """Seasons before the live launch were beta testing; their bankroll is kept separate."""
+    return season < player_config.LIVE_FIRST_SEASON
 
 
 def available_prediction_dates(season):
@@ -612,8 +637,10 @@ def bad_season_response():
 
 @app.errorhandler(DatabaseError)
 def database_unavailable(exc):
-    # The exception text stays out of the response; only its type is logged.
-    app.logger.warning("Database unavailable: %s", type(exc).__name__)
+    # The exception text stays out of the response; only its type (and its cause's) is logged.
+    cause = exc.__cause__
+    app.logger.warning("Database unavailable: %s (cause: %s)", type(exc).__name__,
+                       type(cause).__name__ if cause else "none")
     return error_response(503, "database_unavailable")
 
 
@@ -750,6 +777,7 @@ CACHE_GAME = "public, s-maxage=60, stale-while-revalidate=600"
 CACHE_MODEL = "public, s-maxage=600, stale-while-revalidate=86400"
 FEATURED_PICK_WINDOW = 200  # rows, newest first: far more than one night's games
 CACHE_WORKFLOW = "public, s-maxage=30, stale-while-revalidate=60"
+CACHE_LIVE = "public, s-maxage=15, stale-while-revalidate=30"
 
 TEAMS = {
     "ATL": "Atlanta Hawks", "BOS": "Boston Celtics", "BKN": "Brooklyn Nets",
@@ -834,7 +862,10 @@ def season_or_all_from_request():
 
 
 def season_or_all_filters(column, season):
-    return [] if season == "all" else season_filters(column, season)
+    # "all" is the live tally only; beta seasons are reached by naming the season.
+    if season == "all":
+        return [(column, "gte", player_config.LIVE_START_DATE)]
+    return season_filters(column, season)
 
 
 def money(value):
@@ -975,6 +1006,7 @@ def build_game(row, grids=None, forms=None):
         ),
         "skip_reason": row.get("skip_reason"),
         "book_grid": build_book_grid(grids.get(game_id)),
+        **({"provisional": True} if row.get("provisional") else {}),
     }
 
 
@@ -1000,6 +1032,20 @@ def team_forms_for(teams, season, before_date):
     teams = sorted({t for t in teams if t})
     if not teams:
         return {}
+    if schema_v2_enabled():
+        try:
+            # One call to public.team_form (migration 0012) instead of paging a season of games.
+            wanted = set(teams)
+            rows = records(call_rpc("team_form", {"p_season": season, "p_before": before_date}))
+            return {
+                r["tricode"]: {
+                    "record": record_text(as_int(r.get("wins")), as_int(r.get("losses"))),
+                    "l10": (r.get("last10") or "")[::-1],  # the function lists newest first
+                }
+                for r in rows if r.get("tricode") in wanted
+            }
+        except DatabaseError as exc:
+            app.logger.warning("team_form unavailable (%s); reading games directly", type(exc).__name__)
     rows = records(read_v2_rows(
         "games",
         columns="GAME_DATE,TEAM_ABBREVIATION,WL",
@@ -1085,6 +1131,51 @@ def slate_phase(games, day, today, latest_date):
     return "no_games"
 
 
+def add_availability_summaries(games):
+    """Player data: availability_summary per slate game (3-4 reads, constant in slate size); null when the
+    game has no injury data yet."""
+    if not games or not schema_v2_enabled():
+        return
+    ids = [x["game_id"] for x in games]
+    sides = {x["game_id"]: (x["home"]["tricode"], x["away"]["tricode"]) for x in games}
+    avail = api_availability.availability_by_game(availability_read, ids, sides)
+    inputs = api_availability.availability_inputs(availability_read, ids)
+    for x in games:
+        a = avail.get(x["game_id"], {"home": [], "away": []})
+        inp = inputs.get(x["game_id"])
+        has_data = bool(a["home"] or a["away"] or inp)
+        flag = bool(inp and safe_float(inp.get("status_changed_after_pred"), 0.0))
+        x["availability_summary"] = api_availability.summary(a, status_changed=flag) if has_data else None
+
+
+def unpredicted_today(rows, day):
+    """Today's games with no predictions row yet, shaped as predictions rows so build_game lists them. The games
+    come from schedule (written by the predict stage); a game the 6 AM run made a temporary pick for also
+    carries that pick and its price, flagged provisional. Picks post about an hour before each tip, so until then
+    the slate would otherwise be empty."""
+    have = {normalize_game_id(r.get("game_id")) for r in rows}
+    games = {}
+    for s in records(read_v2_rows(
+            "schedule", columns="game_id,home_team,away_team,tip_time_utc",
+            filters=[("game_date", "eq", day)], order_by="game_id")):
+        games[normalize_game_id(s["game_id"])] = {
+            "game_id": normalize_game_id(s["game_id"]), "game_date": day, "home_team": s["home_team"],
+            "away_team": s["away_team"], "tip_time_utc": s.get("tip_time_utc"), "status": "scheduled"}
+    for p in records(read_v2_rows(
+            "provisional_predictions",
+            columns="game_id,home_team,away_team,home_win_prob,away_win_prob,predicted_winner,odds,bookmaker,"
+                    "implied_prob,edge",
+            filters=[("game_date", "eq", day)], order_by="game_id")):
+        game_id = normalize_game_id(p["game_id"])
+        base = games.setdefault(game_id, {
+            "game_id": game_id, "game_date": day, "home_team": p["home_team"], "away_team": p["away_team"],
+            "tip_time_utc": None, "status": "scheduled"})
+        base.update({k: p.get(k) for k in ("home_win_prob", "away_win_prob", "predicted_winner", "odds",
+                                           "bookmaker", "implied_prob", "edge")}, provisional=True)
+    return [g for gid, g in games.items()
+            if gid not in have and g["home_team"] in TEAMS and g["away_team"] in TEAMS]
+
+
 @app.route("/api/slate")
 def api_slate():
     today = today_et()
@@ -1094,16 +1185,21 @@ def api_slate():
         return bad_request("date must look like 2026-04-12")
     day = day.isoformat()
 
-    rows = records(read_predictions(filters=[("game_date", "eq", day)], order_by="game_id"))
+    rows = [] if is_hidden_day(day) else records(
+        read_predictions(filters=[("game_date", "eq", day)], order_by="game_id"))
     latest_date = latest_prediction_date_before(day)
     season = season_for(day)
-    grids = book_grids_for(r["game_id"] for r in rows) if rows else {}
+    unpredicted = [] if is_hidden_day(day) or day != today.isoformat() else unpredicted_today(rows, day)
+    grids = book_grids_for(r["game_id"] for r in rows + unpredicted) if rows or unpredicted else {}
     forms = team_forms_for(
-        [t for r in rows for t in (r.get("home_team"), r.get("away_team"))], season, day
-    ) if rows else {}
-    games = sorted((build_game(r, grids, forms) for r in rows), key=tip_order_key)
+        [t for r in rows + unpredicted for t in (r.get("home_team"), r.get("away_team"))], season, day
+    ) if rows or unpredicted else {}
+    games = sorted((build_game(r, grids, forms) for r in rows + unpredicted), key=tip_order_key)
+    add_availability_summaries(games)
 
     phase = slate_phase(games, day, today, latest_date)
+    if unpredicted and not rows:
+        phase = "before_predictions"  # every game is a "pick pending" placeholder
     is_past = day < today.isoformat()
     settled_bets = [r for r in rows if is_settled(r) and bet_amount(r) > 0]
     days_since_last = (
@@ -1133,6 +1229,70 @@ def api_slate():
         "recap": night_recap(rows, day) if rows and (is_past or phase == "all_final") else None,
     }
     return api_response(payload, CACHE_PAST if is_past else CACHE_SLATE_TODAY)
+
+
+# One snapshot per process, shared by every request (src/live_scores.py caches for 15 s).
+LIVE_SCOREBOARD = live_scores.LiveScoreboard()
+
+
+def slate_live_game(row):
+    """A predictions row as a LIVE_SCORES game, for nights the live feed doesn't cover."""
+    status = prediction_status(row)
+    final = status == "final"
+    return {
+        "game_id": normalize_game_id(row.get("game_id")),
+        "status": "postponed" if status in ("postponed", "void") else status,
+        "period": None,
+        "clock": "Final" if final else None,
+        "home_score": as_int(row.get("home_score")) if final else None,
+        "away_score": as_int(row.get("away_score")) if final else None,
+        "postponed": status in ("postponed", "void"),
+    }
+
+
+def live_response(payload, cache_control):
+    # LIVE_SCORES is the one envelope without migration_pending (tests/contract_shapes.py).
+    response = jsonify({"generated_at": live_scores.utc_now_iso(), **payload})
+    response.headers["Cache-Control"] = cache_control
+    return response
+
+
+@app.route("/api/live-scores")
+def api_live_scores():
+    today = today_et()
+    raw = (request.args.get("date") or "").strip()
+    day = parse_iso_date(raw) if raw else today
+    if day is None:
+        return bad_request("date must look like 2026-04-12")
+
+    # The feed is "today" by the NBA's clock, which rolls over in the ET morning, so it can
+    # only ever cover today or yesterday. Other dates never touch the upstream.
+    if day in (today, today - timedelta(days=1)):
+        snapshot, stale = LIVE_SCOREBOARD.get()
+        if snapshot is not None and snapshot["game_date"] == day.isoformat():
+            return live_response({
+                "fetched_at": snapshot["fetched_at"],
+                "stale": stale,
+                "source": snapshot["source"],
+                "games": snapshot["games"],
+            }, CACHE_LIVE)
+        if snapshot is None and day == today:
+            return error_response(503, "live_scores_unavailable")
+
+    # Not on the feed: answer from the slate (finals and postponements), never an error.
+    try:
+        rows = [] if is_hidden_day(day.isoformat()) else records(read_predictions(
+            filters=[("game_date", "eq", day.isoformat())], order_by="game_id"))
+    except DatabaseError as exc:
+        app.logger.warning("live-scores slate fallback unavailable: %s", type(exc).__name__)
+        rows = []
+    payload = {
+        "fetched_at": live_scores.utc_now_iso(),
+        "stale": False,
+        "source": "slate",
+        "games": [slate_live_game(r) for r in rows if r.get("game_id") is not None],
+    }
+    return live_response(payload, CACHE_PAST if day < today else CACHE_LIVE)
 
 
 def tape_block(ctx, elo):
@@ -1171,6 +1331,8 @@ def api_game(game_id):
         return error_response(404, "not_found")
     row = rows[0]
     day = str(row.get("game_date"))[:10]
+    if is_hidden_day(day):
+        return error_response(404, "not_found")
     home_team, away_team = row.get("home_team"), row.get("away_team")
 
     grids = book_grids_for([row["game_id"]])
@@ -1201,8 +1363,83 @@ def api_game(game_id):
         "predicted_at": row.get("predicted_at"),
         "model_name": row.get("model_name"),
         "result": result,
+        **game_availability_block(game, row.get("model_name")),
     }
     return api_response(payload, CACHE_PAST if day < today_et().isoformat() else CACHE_GAME)
+
+
+@app.route("/api/injuries")
+def api_injuries():
+    """Latest injury-report status per game of a date, grouped by team (player-data spec sec10)."""
+    raw = (request.args.get("date") or "").strip()
+    day = parse_iso_date(raw) if raw else today_et()
+    if day is None:
+        return bad_request("date must look like 2026-04-12")
+    day = day.isoformat()
+    payload = {"date": day, "report_time": None, "games": []}
+    if not schema_v2_enabled():
+        pending_migration()
+        return api_response(payload, CACHE_SLATE_TODAY)
+    try:
+        heads = select_rows("injury_snapshots", columns="game_id,matchup,report_time",
+                            filters=[("game_date", "eq", day), ("game_id", "not_is", "null")],
+                            order_by=["report_time", "snapshot_id"])
+    except (MissingTableError, MissingColumnError):
+        pending_migration()
+        return api_response(payload, CACHE_SLATE_TODAY)
+    if heads.empty:
+        return api_response(payload, CACHE_PAST if day < today_et().isoformat() else CACHE_SLATE_TODAY)
+    sides = {}
+    for r in records(heads):
+        matchup = str(r.get("matchup") or "")
+        if "@" in matchup:
+            away, home = matchup.split("@", 1)
+            sides[normalize_game_id(r["game_id"])] = (home.strip(), away.strip())
+    ids = sorted(sides)
+    avail = api_availability.availability_by_game(availability_read, ids, sides)
+    payload["report_time"] = max(api_availability._iso(t) for t in heads["report_time"])
+    payload["games"] = [{
+        "game_id": gid,
+        "home": {"tricode": sides[gid][0], "players": api_availability.public(avail[gid]["home"])},
+        "away": {"tricode": sides[gid][1], "players": api_availability.public(avail[gid]["away"])},
+    } for gid in ids]
+    return api_response(payload, CACHE_PAST if day < today_et().isoformat() else CACHE_SLATE_TODAY)
+
+
+def game_availability_block(game, model_name):
+    """Player data for the game drawer: injury lists, rest, scenarios, probability range and factors.
+    Empty lists and nulls until the tables exist and hold data; never an error."""
+    block = {"availability": {"home": [], "away": []}, "rest": None, "scenarios": [], "prob_range": None,
+             "factors": []}
+    if not schema_v2_enabled():
+        return block
+    gid = game["game_id"]
+    sides = (game["home"]["tricode"], game["away"]["tricode"])
+    avail = api_availability.availability_by_game(availability_read, [gid], {gid: sides})[gid]
+    block["availability"] = {side: api_availability.public(avail[side]) for side in ("home", "away")}
+    block["rest"] = api_availability.rest_for_game(availability_read, gid, sides)
+    scenarios, factors = api_availability.scenarios_and_factors(availability_read, gid, model_name)
+    block["scenarios"], block["factors"] = scenarios, factors
+    inp = api_availability.availability_inputs(availability_read, [gid]).get(gid)
+    if inp and inp.get("model_name") == model_name:
+        low, high = safe_float(inp.get("prob_range_low")), safe_float(inp.get("prob_range_high"))
+        if low is not None and high is not None:
+            block["prob_range"] = {"low": low, "high": high}
+    return block
+
+
+def nightly_totals(dates):
+    """Per-night totals from the v_nightly view (migration 0012), by date; None when the view
+    isn't there (before the migration) so the caller reads predictions directly."""
+    if not schema_v2_enabled():
+        return None
+    try:
+        # select_rows, not read_rows: a missing view must raise so the caller can fall back.
+        rows = records(select_rows("v_nightly", filters=[("game_date", "in", dates)]))
+    except DatabaseError as exc:
+        app.logger.warning("v_nightly unavailable (%s); reading predictions directly", type(exc).__name__)
+        return None
+    return {str(r.get("game_date"))[:10]: r for r in rows}
 
 
 @app.route("/api/days")
@@ -1219,7 +1456,21 @@ def api_days():
     all_dates = sorted(set(d for d in _prediction_dates() if d <= end.isoformat()), reverse=True)
     dates = all_dates[:n]
     days = []
-    if dates:
+    nightly = nightly_totals(dates) if dates else None
+    if nightly is not None:
+        for day in dates:
+            row = nightly.get(day, {})
+            games = as_int(row.get("games")) or 0
+            won, lost = as_int(row.get("picks_won")) or 0, as_int(row.get("picks_lost")) or 0
+            days.append({
+                "date": day,
+                "games": games,
+                "picks": record_text(won, lost),
+                "bets": record_text(as_int(row.get("bets_won")) or 0, as_int(row.get("bets_lost")) or 0),
+                "net_pl": money(safe_float(row.get("net_pl"), 0.0) or 0.0),
+                "pending": games - won - lost,
+            })
+    elif dates:
         rows = records(read_rows(
             "predictions",
             columns="game_date,correct,bet_amount,profit_loss",
@@ -1354,7 +1605,7 @@ def api_performance():
     staked = sum(bet_amount(r) for r in bets)
     net = sum(safe_float(r.get("profit_loss"), 0.0) or 0.0 for r in bets)
     picks_w, picks_l = win_loss(settled)
-    bankroll = series[-1]["bankroll"] if series else None
+    bankroll = series[-1]["bankroll"] if series else money(start_balance)  # no picks yet: the starting bankroll
     streaks = longest_streaks(settled)
 
     kpis = {
@@ -1378,10 +1629,18 @@ def api_performance():
         "edge": split_rows(bets, lambda r: edge_bucket(prediction_edge(r)),
                            ["<0", "0-3", "3-6", "6-10", "10+"]),
     }
+    if schema_v2_enabled():
+        # Player data: bets on nights a top-2 player (either team) was out at prediction time.
+        star = api_availability.star_out_by_game(availability_read)
+        splits["star_out"] = split_rows(
+            bets, lambda r: None if normalize_game_id(r["game_id"]) not in star else (
+                "star_out" if star[normalize_game_id(r["game_id"])] else "no_star_out"),
+            ["star_out", "no_star_out"])
     recent = ["W" if r.get("correct") == 1 else "L" for r in bets][-RECENT_BETS:]
     payload = {
         "season": season,
         "seasons": seasons,
+        "beta_seasons": [s for s in seasons if is_beta_season(s)],
         "kpis": kpis,
         "series": series,
         "splits": splits,
@@ -1530,7 +1789,12 @@ def latest_model_run():
         pending_migration()
         return None
     try:
-        df = select_rows("model_runs", columns=MODEL_RUN_COLUMNS + ",training", **kwargs)
+        try:
+            # Player data (migration 0006): candidates + feature_set_version, optional.
+            df = select_rows("model_runs", columns=MODEL_RUN_COLUMNS + ",training,candidates,feature_set_version",
+                             **kwargs)
+        except MissingColumnError:
+            df = select_rows("model_runs", columns=MODEL_RUN_COLUMNS + ",training", **kwargs)
     except MissingColumnError:
         pending_migration()
         df = read_rows("model_runs", columns=MODEL_RUN_COLUMNS, **kwargs)
@@ -1539,6 +1803,40 @@ def latest_model_run():
         return None
     rows = records(df)
     return rows[0] if rows else None
+
+
+def model_candidates(raw):
+    """model_runs.candidates (written by scripts/evaluate_availability.py --write-candidates) as API rows."""
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            return []
+    models = raw.get("rows") if isinstance(raw, dict) else raw
+    if not isinstance(models, list):
+        return []
+    return [{
+        "model": str(item.get("model")),
+        "feature_set": item.get("feature_set") if isinstance(item.get("feature_set"), str) else None,
+        "accuracy": safe_float(item.get("accuracy")),
+        "log_loss": safe_float(item.get("log_loss")),
+        "brier_score": safe_float(item.get("brier_score")),
+        "roc_auc": safe_float(item.get("roc_auc")),
+        "test_games": as_int(item.get("test_games")),
+        "promoted": False,
+    } for item in models if isinstance(item, dict) and item.get("model")]
+
+
+def availability_read(table, **kwargs):
+    """Read a player-data table for the additive availability fields. Before the v2 schema or the
+    player-data migrations exist this reads as empty WITHOUT flagging migration_pending, so existing
+    payloads look exactly as before; /api/injuries flags it instead."""
+    if not schema_v2_enabled():
+        return pd.DataFrame()
+    try:
+        return select_rows(table, **kwargs)
+    except (MissingTableError, MissingColumnError):
+        return pd.DataFrame()
 
 
 def feature_label(feature):
@@ -1644,6 +1942,17 @@ def api_model():
         "leaderboard": leaderboard,
         "elo": dict(ELO_PARAMS),
     }
+    # Player data: candidates are listed, never promoted automatically.
+    payload["feature_set_version"] = (run or {}).get("feature_set_version") if isinstance(
+        (run or {}).get("feature_set_version"), str) else None
+    payload["candidates"] = model_candidates((run or {}).get("candidates"))
+    if run is None:
+        payload["model_status"] = "migration_pending"
+    elif not payload["candidates"]:
+        payload["model_status"] = "artifact_pending"
+    else:
+        payload["model_status"] = "ready"
+    payload["availability_gate"] = bool(player_config.AVAILABILITY_GATE)
     if mine_signal:
         payload["feature_importance"] = mine_signal
     if isinstance(training, dict):
@@ -1655,8 +1964,9 @@ def api_model():
 def api_featured_pick():
     """B4: the Model page's walkthrough subject: the largest-edge settled bet of the most recent
     night that had one, else the most recent settled pick, else null."""
+    live_only = [("game_date", "gte", player_config.LIVE_START_DATE)] if hide_beta() else []
     settled = [r for r in records(read_predictions(
-        filters=[("correct", "not_is", "null")],
+        filters=[("correct", "not_is", "null"), *live_only],
         order_by=["game_date", "game_id"], descending=True, limit=FEATURED_PICK_WINDOW,
     )) if is_settled(r) and r.get("game_id") is not None]
     bets = [r for r in settled if bet_amount(r) > 0 and bet_result(r) in ("hit", "miss")]
@@ -1814,3 +2124,4 @@ if __name__ == "__main__":
     port = int(os.getenv("FLASK_PORT", 5000))
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
     app.run(host=host, port=port, debug=debug)
+
