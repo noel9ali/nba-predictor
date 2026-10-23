@@ -49,6 +49,10 @@ function stampInfo(g) {
     const p = money(pl(g), true), word = hit ? 'Cashed' : 'Lost';
     return { cls: hit ? 'cash' : 'lost', word, small: p + (g.official ? '' : ' · unofficial'), label: word + ' ' + p };
   }
+  if (g.provisional) {
+    const w = (hit ? '\u2713' : '\u2717') + ' Temp pick';
+    return { cls: 'pass', word: w, small: 'Not bet', label: 'Temporary pick ' + (hit ? 'right' : 'wrong') + ', not bet' };
+  }
   const word = 'Pick ' + (hit ? 'right' : 'wrong');
   return { cls: 'pass', word, small: 'No bet', label: word + ', no bet' };
 }
@@ -167,7 +171,7 @@ function linesHTML(g) {
     return '<dl class="lines"><dt>Temporary pick</dt><dd><b>' + esc(g.pick) + (g.pick_prob != null ? ' ' + esc(fmt.pct(g.pick_prob)) : '') + '</b></dd>' +
       '<dt>Moneyline</dt><dd>' + (g.odds != null ? '<b>' + esc(fmt.odds(g.odds)) + '</b>' + (g.bookmaker ? ' · ' + esc(g.bookmaker) : '') : 'No odds yet') + '</dd>' +
       (g.implied_prob != null ? '<dt>Model · market</dt><dd>' + esc(fmt.pct(g.pick_prob)) + ' vs ' + esc(fmt.pct(g.implied_prob)) + edge + '</dd>' : '') +
-      '<dt>Status</dt><dd>Temporary 6 AM pick. The final pick and any bet post about an hour before the first tip</dd></dl>';
+      '<dt>Status</dt><dd>' + (g.state === 'final' ? 'Temporary pick \u00b7 not bet. The final pick never posted, so this game is graded only' : 'Temporary 6 AM pick. The final pick and any bet post about an hour before the first tip') + '</dd></dl>';
   }
   if (g.pick == null && !g.skip_reason) {
     return '<dl class="lines"><dt>Pick</dt><dd>Pending</dd><dt>Status</dt><dd>Picks post about an hour before the first tip</dd></dl>';
