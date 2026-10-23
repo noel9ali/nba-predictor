@@ -55,6 +55,7 @@ function onSlate() {
   if (!ribbonMounted) { mountRibbon(); ribbonMounted = true; }
   updateRibbon(s);
   setPageDate(store.slate, store.games.some(g => g.provisional));
+  const tix = $('#h-tix'); if (tix) tix.textContent = store.isPast ? "That night's tickets" : "Tonight's tickets";
   seasonOnBatch([{ type: 'slate' }]);
   if (firstSlate) {
     firstSlate = false;

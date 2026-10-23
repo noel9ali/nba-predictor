@@ -48,7 +48,7 @@ function isOfficial() {
 
 export function boardCells(s) {
   if (s.bets === 0) {
-    return [{ label: 'Tonight', value: 'No bets tonight' }];
+    return [store.isPast ? { label: 'That night', value: 'No bets that night' } : { label: 'Tonight', value: 'No bets tonight' }];
   }
   const cells = [
     { label: 'At risk', value: fmt.money(s.staked) },
@@ -65,7 +65,7 @@ export function boardCells(s) {
 
 function sentence(s) {
   const phase = phaseOf();
-  if (phase === 'no_games') return 'No games tonight';
+  if (phase === 'no_games') return store.isPast ? 'No games that night' : 'No games tonight';
   if (phase === 'offseason') return 'Offseason';
   if (phase === 'before_predictions') {
     return store.games.some(g => g.provisional)
@@ -82,9 +82,9 @@ function sentence(s) {
       return 'Night over. Bets went ' + n(rec) + ' for ' + n(fmt.money(money, true), signCls(money)) +
         (off ? '.' : ', unofficial until the 6 AM settle.');
     }
-    return 'Night over. No bets tonight.' + (s.pickW + s.pickL > 0 ? ' Picks went ' + n(s.pickW + '–' + s.pickL) + '.' : '');
+    return 'Night over. No bets ' + (store.isPast ? 'that night.' : 'tonight.') + (s.pickW + s.pickL > 0 ? ' Picks went ' + n(s.pickW + '–' + s.pickL) + '.' : '');
   }
-  if (s.bets === 0) return 'The model found no bets in ' + n(String(s.games)) + ' ' + (s.games === 1 ? 'game' : 'games') + ' tonight.';
+  if (s.bets === 0) return 'The model found no bets in ' + n(String(s.games)) + ' ' + (s.games === 1 ? 'game' : 'games') + (store.isPast ? ' that night.' : ' tonight.');
   const found = 'The model found ' + n(String(s.bets)) + ' ' + (s.bets === 1 ? 'bet' : 'bets') + ' in ' + n(String(s.games)) + ' ' + (s.games === 1 ? 'game' : 'games') + '.';
   const nu = nextUp();
   if (!nu) return pendingBets() ? found : 'Every bet has tipped. If it ended now: ' + n(fmt.money(s.ifEnded, true), signCls(s.ifEnded)) + '.';

@@ -487,7 +487,7 @@ class DbViewTests(ApiTestCase):
         self.assertEqual(calls, [("team_form", {"p_season": "2025-26", "p_before": "2026-04-10"})])
         # No season of games is paged for records; the only games read is the day's own final scores.
         self.assertEqual([f for table, f in self.db.calls if table == "games"],
-                         [[("GAME_DATE", "eq", "2026-04-10")]])
+                         [[("GAME_DATE", "in", ["2026-04-10"])]])
 
     def test_slate_falls_back_to_reading_games_when_the_function_is_missing(self):
         self.patch_rpc(error=DatabaseError("Calling team_form failed (PGRST202)"))
@@ -673,7 +673,7 @@ class GradedTemporaryPickTests(ApiTestCase):
 
     def test_the_day_picker_and_last_slate_date_include_the_day(self):
         days = {d["date"]: d for d in self.get("/api/days?n=31").get_json()["days"]}
-        self.assertEqual(days[self.DAY], {"date": self.DAY, "games": 2, "picks": "0-0", "bets": "0-0",
+        self.assertEqual(days[self.DAY], {"date": self.DAY, "games": 3, "picks": "0-0", "bets": "0-0",
                                           "net_pl": 0.0, "pending": 0})
         self.assert_shape(self.get("/api/days?n=31").get_json(), DAYS)
         self.assertEqual(self.slate("2026-09-23")["last_slate_date"], self.DAY)
@@ -687,6 +687,36 @@ class GradedTemporaryPickTests(ApiTestCase):
         for a, b, url in zip(with_picks, without, urls):
             a.pop("generated_at", None), b.pop("generated_at", None)
             self.assertEqual(a, b, url)
+
+    def test_a_past_provisional_only_day_with_no_final_games_stays_off_the_picker(self):
+        self.db.tables["games"] = [r for r in self.db.tables["games"] if r.get("GAME_DATE") != self.DAY]
+        dates = [d["date"] for d in self.get("/api/days?n=31").get_json()["days"]]
+        self.assertNotIn(self.DAY, dates)
+        self.assertNotEqual(self.slate("2026-09-23")["last_slate_date"], self.DAY)
+        self.assertEqual(self.slate()["games"], [])
+
+    def test_a_past_night_with_temporary_picks_is_only_cached_long_once_settled(self):
+        long_cache = self.get(f"/api/slate?date={self.DAY}").headers["Cache-Control"]
+        self.assertEqual(long_cache, dashboard.CACHE_PAST)  # all final and not recent
+        with patch.object(dashboard, "today_et", lambda: date(2026, 9, 23)):  # now it is yesterday's slate
+            self.assertEqual(self.get(f"/api/slate?date={self.DAY}").headers["Cache-Control"],
+                             dashboard.CACHE_SLATE_TODAY)
+
+    def test_a_failing_temporary_picks_table_degrades_to_no_temporary_picks(self):
+        self.db.errors["provisional_predictions"] = DatabaseError("Reading provisional_predictions failed")
+        games = self.slate()["games"]  # still 200: the played games are listed with their scores only
+        self.assertTrue(games and all("provisional" not in g and g["pick"] is None for g in games))
+        self.get("/api/days")
+
+    def test_the_game_drawer_loads_a_temporary_pick_and_a_score_only_game(self):
+        body = self.get("/api/game/0022600006").get_json()
+        self.assert_shape(body, GAME_DETAIL)
+        self.assertTrue(body["game"]["provisional"])
+        self.assertEqual((body["game"]["result"], body["game"]["bet"]), ("miss", None))
+        self.assertEqual(body["result"], {"winner": "PHI", "home_score": 114, "away_score": 106, "correct": 0})
+        score_only = self.get("/api/game/0022600008").get_json()
+        self.assertIsNone(score_only["game"]["pick"])
+        self.get("/api/game/0022699999", status=404)
 
     def test_a_mixed_day_keeps_real_predictions_and_adds_graded_temporary_picks(self):
         day = "2026-04-10"  # three real predictions already

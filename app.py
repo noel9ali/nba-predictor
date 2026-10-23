@@ -213,18 +213,25 @@ def _provisional_rows():
                     if not is_hidden_day(str(r["game_date"])[:10])]
             except (MissingTableError, MissingColumnError):
                 pass
+            except DatabaseError as exc:  # a failing side table must not take every slate and day down
+                app.logger.warning("provisional_predictions unavailable (%s); no temporary picks", type(exc).__name__)
         g._provisional_rows = rows
     return rows
 
 
 def _provisional_days():
     """{game_date: game count} for days with temporary picks. Those picks are never bets, so they only put a day
-    on the picker and the slate; no record or bankroll reads this."""
-    days = {}
+    on the picker and the slate; no record or bankroll reads this. A finished provisional-only day counts the
+    games the slate lists (finals), and is left out when none finished, so it never points at an empty slate."""
+    raw = {}
     for r in _provisional_rows():
         day = str(r["game_date"])[:10]
-        days[day] = days.get(day, 0) + 1
-    return days
+        raw[day] = raw.get(day, 0) + 1
+    pred_days, today = set(_prediction_dates()), today_et().isoformat()
+    past_only = [d for d in raw if d < today and d not in pred_days]
+    finals = finals_by_day(past_only)
+    return {d: (len(finals[d]) if d in finals else n) for d, n in raw.items()
+            if d not in finals or finals[d]}
 
 
 def _slate_dates():
@@ -1183,28 +1190,35 @@ def add_availability_summaries(games):
         x["availability_summary"] = api_availability.summary(a, status_changed=flag) if has_data else None
 
 
+def finals_by_day(days):
+    """{day: {game_id: (home, away, home_pts, away_pts, home_won)}} for the days' finished games, from the per-team
+    rows in games. A game is final only once both of its team rows carry a W/L. One read for all days not yet read
+    this request; empty when the table is missing (scores are a bonus: a slate without them is still right)."""
+    cache = g.setdefault("_finals", {})
+    todo = sorted({d for d in days if d not in cache})
+    if todo and schema_v2_enabled():
+        try:
+            rows = records(select_rows("games", columns="GAME_ID,GAME_DATE,TEAM_ABBREVIATION,MATCHUP,PTS,WL",
+                                       filters=[("GAME_DATE", "in", todo)], order_by="GAME_ID"))
+        except (MissingTableError, MissingColumnError):
+            rows = []
+        teams = {}
+        for r in rows:
+            teams.setdefault((str(r.get("GAME_DATE"))[:10], normalize_game_id(r.get("GAME_ID"))), []).append(r)
+        for d in todo:
+            cache[d] = {}
+        for (d, game_id), pair in teams.items():
+            home = next((r for r in pair if "vs." in str(r.get("MATCHUP"))), None)
+            away = next((r for r in pair if "@" in str(r.get("MATCHUP"))), None)
+            if not home or not away or home.get("WL") not in ("W", "L") or away.get("WL") not in ("W", "L"):
+                continue
+            cache[d][game_id] = (home.get("TEAM_ABBREVIATION"), away.get("TEAM_ABBREVIATION"),
+                                 as_int(home.get("PTS")), as_int(away.get("PTS")), home.get("WL") == "W")
+    return {d: cache.get(d, {}) for d in days}
+
+
 def final_scores_for(day):
-    """{game_id: (home, away, home_pts, away_pts, home_won)} for the day's finished games, from the per-team rows
-    in games. A game is final only once both of its team rows carry a W/L."""
-    teams = {}
-    if not schema_v2_enabled():
-        return {}
-    try:
-        rows = records(select_rows("games", columns="GAME_ID,TEAM_ABBREVIATION,MATCHUP,PTS,WL",
-                                   filters=[("GAME_DATE", "eq", day)], order_by="GAME_ID"))
-    except (MissingTableError, MissingColumnError):
-        return {}  # scores are a bonus here; a slate without them is still right
-    for r in rows:
-        teams.setdefault(normalize_game_id(r.get("GAME_ID")), []).append(r)
-    out = {}
-    for game_id, pair in teams.items():
-        home = next((r for r in pair if "vs." in str(r.get("MATCHUP"))), None)
-        away = next((r for r in pair if "@" in str(r.get("MATCHUP"))), None)
-        if not home or not away or home.get("WL") not in ("W", "L") or away.get("WL") not in ("W", "L"):
-            continue
-        out[game_id] = (home.get("TEAM_ABBREVIATION"), away.get("TEAM_ABBREVIATION"),
-                        as_int(home.get("PTS")), as_int(away.get("PTS")), home.get("WL") == "W")
-    return out
+    return finals_by_day([day])[day]
 
 
 def unpredicted_games(rows, day, is_today):
@@ -1236,7 +1250,8 @@ def unpredicted_games(rows, day, is_today):
         base = games.setdefault(game_id, {
             "game_id": game_id, "game_date": day, "home_team": home, "away_team": away,
             "tip_time_utc": None, "status": "scheduled"})
-        base.update(status="final", home_score=home_pts, away_score=away_pts)
+        base.update(status="final", home_score=home_pts, away_score=away_pts,
+                    actual_winner=home if home_won else away)
         if base.get("provisional") and base.get("predicted_winner") in (home, away):
             base["correct"] = int(base["predicted_winner"] == (home if home_won else away))
     return [g for gid, g in games.items()
@@ -1297,7 +1312,10 @@ def api_slate():
         "games": games,
         "recap": night_recap(rows, day) if rows and (is_past or phase == "all_final") else None,
     }
-    return api_response(payload, CACHE_PAST if is_past else CACHE_SLATE_TODAY)
+    # A past night still showing unfinished or temporary games (yesterday before the morning ingest) may change.
+    settled_for_good = is_past and not (unpredicted and (
+        any(x["status"] != "final" for x in games) or day >= (today - timedelta(days=1)).isoformat()))
+    return api_response(payload, CACHE_PAST if settled_for_good else CACHE_SLATE_TODAY)
 
 
 # One snapshot per process, shared by every request (src/live_scores.py caches for 15 s).
@@ -1389,6 +1407,28 @@ def tape_better(home, away):
     return better
 
 
+def unpredicted_game_row(game_id):
+    """A predictions-shaped row for a game that has no prediction yet (or ever), for the game drawer: a temporary
+    pick, or a game known from schedule or games. None when the id is unknown."""
+    today = today_et().isoformat()
+    day = next((str(r["game_date"])[:10] for r in _provisional_rows() if normalize_game_id(r["game_id"]) == game_id),
+               None)
+    if day is None:
+        sched = records(read_v2_rows("schedule", columns="game_id,game_date",
+                                     filters=[("game_id", "eq", game_id)], order_by="game_id", limit=1))
+        day = str(sched[0]["game_date"])[:10] if sched else None
+    if day is None and schema_v2_enabled():
+        try:
+            found = records(select_rows("games", columns="GAME_ID,GAME_DATE", filters=[("GAME_ID", "eq", game_id)],
+                                        order_by="GAME_ID", limit=1))
+        except (MissingTableError, MissingColumnError):
+            found = []
+        day = str(found[0]["GAME_DATE"])[:10] if found else None
+    if day is None or day > today or is_hidden_day(day):
+        return None
+    return next((r for r in unpredicted_games([], day, day == today) if r["game_id"] == game_id), None)
+
+
 @app.route("/api/game/<game_id>")
 def api_game(game_id):
     if not GAME_ID_PATTERN.match(game_id):
@@ -1396,9 +1436,9 @@ def api_game(game_id):
     rows = records(read_predictions(
         filters=[("game_id", "eq", game_id_filter_value(game_id))], order_by="game_id", limit=1,
     ))
-    if not rows:
+    row = rows[0] if rows else unpredicted_game_row(game_id)
+    if row is None:
         return error_response(404, "not_found")
-    row = rows[0]
     day = str(row.get("game_date"))[:10]
     if is_hidden_day(day):
         return error_response(404, "not_found")
@@ -1419,7 +1459,8 @@ def api_game(game_id):
     home_tape = tape_block(home_ctx, team_elo(home_ctx))
     away_tape = tape_block(away_ctx, team_elo(away_ctx))
     result = None
-    if is_settled(row) or prediction_status(row) in ("void", "postponed"):
+    if is_settled(row) or prediction_status(row) in ("void", "postponed") or (
+            row.get("provisional") and row.get("status") == "final"):
         result = {
             "winner": row.get("actual_winner"),
             "home_score": as_int(row.get("home_score")),
