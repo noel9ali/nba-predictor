@@ -3,7 +3,7 @@
 // A port of the prototype's common.js without its simulation. The DOM is touched only inside
 // init() and the timers (html[data-feed]); the pure helpers import cleanly under Node.
 import { api, ApiError, SAMPLE, SCENE, sampleNowIso, sampleTonight, sampleReplayStep } from './api.js';
-import { fmt, dateET } from './format.js';
+import { fmt, slateDateET } from './format.js';
 
 export const POLL_MS = 30000, WINDOW_MS = 15 * 60000, DOWN_MS = 5 * 60000, TICK_MS = 60000;
 const SLATE_BACKOFF = [5000, 15000, 30000];
@@ -178,7 +178,7 @@ export function now() {
   if (lastLive && lastLive.fetched_at && !Number.isNaN(Date.parse(lastLive.fetched_at))) return Date.parse(lastLive.fetched_at);
   return Date.parse(sampleNowIso() || (store.slate && store.slate.generated_at) || new Date().toISOString());
 }
-export function todayIso() { return SAMPLE ? sampleTonight() : dateET(new Date()); }
+export function todayIso() { return SAMPLE ? sampleTonight() : slateDateET(new Date()); }
 
 // ---------- lifecycle ----------
 const allDone = () => store.games.length > 0 && store.games.every(g => ['final', 'postponed', 'void'].includes(g.state));
