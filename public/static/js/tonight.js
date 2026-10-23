@@ -11,6 +11,7 @@ import { mountToolbar, updateToolbar } from './tonight/toolbar.js';
 import { initDrawer, openDetail, openFromHash } from './tonight/drawer.js';
 import { initToasts } from './tonight/toasts.js';
 import { mountRibbon, updateRibbon } from './tonight/ribbon.js';
+import { renderDaySummary, setDayBankroll } from './tonight/daysummary.js';
 import { mountSeason, seasonOnBatch, mountModelCard, seasonError, modelError } from './tonight/season.js';
 
 const $ = s => document.querySelector(s);
@@ -34,6 +35,7 @@ function renderPageStates() {
   const phase = phaseOf();
   const noTickets = store.status === 'error' || phase === 'no_games' || phase === 'offseason';
   $('[data-tix-section]').hidden = noTickets;
+  renderDaySummary();
   $('[data-toolbar]').hidden = noTickets || !store.games.length;
   const pb = $('[data-pred-banner]');
   pb.hidden = phase !== 'prediction_failed';
@@ -110,6 +112,7 @@ const perfP = api.performance(season).then(async perf => {
     try { perf = await api.performance(store.slate.season); } catch { /* keep the first answer */ }
   }
   mountSeason(perf);
+  setDayBankroll(perf.kpis && perf.kpis.bankroll);
 }).catch(() => { seasonError(() => api.performance(season).then(mountSeason)); });
 const modelP = api.model().then(m => mountModelCard(m)).catch(() => { modelError(() => api.model().then(mountModelCard)); });
 
