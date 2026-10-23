@@ -11,11 +11,7 @@ cd /d "%~dp0.."
 if not exist logs mkdir logs
 
 :: If the log can't be opened, fail loudly instead of running blind.
-echo ==== %DATE% %TIME% morning stage >> logs\morning.log
-if errorlevel 1 (
-    echo ERROR: cannot open logs\morning.log 1>&2
-    exit /b 1
-)
+echo ==== %DATE% %TIME% morning stage >> logs\morning.log || (echo ERROR: cannot open logs\morning.log 1>&2 & exit /b 1)
 
 :: Marker so the predict stage can skip while this runs (it ignores a marker older than 2 hours).
 echo %DATE% %TIME% > logs\morning.running

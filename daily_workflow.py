@@ -32,7 +32,7 @@ from config import LIVE_START_DATE  # noqa: E402
 from database import DatabaseError, MissingTableError, insert_rows, select_rows  # noqa: E402
 
 # Must run before any print(): stdout/stderr aren't always a real UTF-8
-# console (redirected to logs\workflow.log, or piped by subprocess.run).
+# console (redirected to logs\morning.log / logs\predict.log, or piped by subprocess.run).
 force_utf8_stdio()
 
 load_dotenv()

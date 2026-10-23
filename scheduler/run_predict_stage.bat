@@ -12,9 +12,9 @@ if not exist logs mkdir logs
 powershell -NoProfile -Command "if ((Test-Path 'logs\morning.running') -and (((Get-Date) - (Get-Item 'logs\morning.running').LastWriteTime).TotalHours -lt 2)) { exit 1 } else { exit 0 }"
 if errorlevel 1 exit /b 0
 
-call venv\Scripts\activate
+:: If the log can't be opened, fail loudly instead of running blind (redirect-aware; ignores stale errorlevel).
+echo ==== %DATE% %TIME% predict stage >> logs\predict.log || (echo ERROR: cannot open logs\predict.log 1>&2 & exit /b 1)
 
-echo ==== %DATE% %TIME% predict stage >> logs\predict.log
-if errorlevel 1 exit /b 1
+call venv\Scripts\activate
 python daily_workflow.py --stage predict >> logs\predict.log 2>&1
 exit /b %errorlevel%

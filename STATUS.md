@@ -55,7 +55,7 @@ Rosters for the projection now come from today's `CommonAllPlayers` (not last se
 - [ ] ~18:00-18:15 PHI@NYK (7:00 PM); ~20:15-20:30 OKC@SAS (9:30 PM); each with a picks push; `book_odds` rows for each
 - [ ] 3 predictions total for the slate; no `skip_reason` unless an odds gap
 - [ ] `injury_snapshot.log` shows rows with matched players once teams submit
-- [ ] If anything fails: `logs\workflow.log`; to fall back, delete `NBA_PRODUCTION_MODEL` from `.env`
+- [ ] If anything fails: `logs\morning.log` and `logs\predict.log`; to fall back, delete `NBA_PRODUCTION_MODEL` from `.env`
 
 ## Model tuning (done, offline; see docs/model-tuning-2026-10-19.md)
 Keep `lr-calibrated-availability-v1` live. Tuned logistic, GB, RF, xgboost and an ensemble are all within noise of it
