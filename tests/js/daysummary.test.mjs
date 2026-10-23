@@ -52,8 +52,25 @@ test('settled and open bets are split, not double counted', () => {
   assert.equal(d.openReturn, 90);
   const v = dayView(d, { isPast: false, bankroll: 1000 });
   assert.equal(v.cells.length, 4);
-  assert.equal(v.cells[1].value, '$30.00');
+  assert.equal(v.cells[1].value, '$180.00');                // the whole day's stake, settled + open
+  assert.equal(v.cells[2].value, '$290.00');                // 200 returned + 0 returned + 90 if the open bet wins
+  assert.match(v.cells[2].small, /^\+\$110\.00 profit/);   // 290 - 180
   assert.equal(v.cells[3].value, '+$50.00');
+  assert.equal(v.cells[3].small, '2 of 3 bets');
+});
+
+test('bankroll label follows bet.result, not the final score', () => {
+  const lbl = games => dayView(daySummary(games), { isPast: false, bankroll: 1 }).cells[0].small;
+  assert.equal(lbl([G('1', { bet: bet(10) })]), 'before tonight');
+  assert.equal(lbl([G('1', { status: 'final', result: 'hit', bet: bet(10) })]), 'before tonight');   // final but not yet settled
+  assert.equal(lbl([G('1', { status: 'final', result: 'hit', bet: bet(10, { result: 'win' }) })]), 'after tonight');
+  assert.equal(lbl([G('1', { provisional: true })]), 'before tonight');
+});
+
+test('waiting note counts only unfinished temp or pick-less games', () => {
+  const v = dayView(daySummary([G('1', { bet: bet(10) }), G('2', { provisional: true }), G('3', { pick: null }),
+    G('4', { status: 'final', provisional: true, result: 'hit' })]), { isPast: false, bankroll: 1 });
+  assert.equal(v.note, '2 games still waiting on a final pick.');
 });
 
 test('everything settled: result state', () => {

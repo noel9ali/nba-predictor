@@ -11,7 +11,7 @@ import { mountToolbar, updateToolbar } from './tonight/toolbar.js';
 import { initDrawer, openDetail, openFromHash } from './tonight/drawer.js';
 import { initToasts } from './tonight/toasts.js';
 import { mountRibbon, updateRibbon } from './tonight/ribbon.js';
-import { renderDaySummary, setDayBankroll } from './tonight/daysummary.js';
+import { renderDaySummary, setDayBankroll, dayIsOfficial } from './tonight/daysummary.js';
 import { mountSeason, seasonOnBatch, mountModelCard, seasonError, modelError } from './tonight/season.js';
 
 const $ = s => document.querySelector(s);
@@ -27,7 +27,7 @@ const modelLink = $('[data-model-link]');
 if (modelLink && sampleQuery()) modelLink.href = '/model?' + sampleQuery();
 
 let firstSlate = true, toolbarMounted = false, ribbonMounted = false, toastsOn = false;
-let pending = [], frame = 0;
+let pending = [], frame = 0, bankRefreshed = false;
 
 function phaseOf() { return (store.slate && (store.slate.offseason ? 'offseason' : store.slate.phase)) || null; }
 
@@ -50,6 +50,10 @@ function onSlate() {
   const s = summary();
   renderLede(s);
   renderCourts(openDetail);
+  if (!store.isPast && !bankRefreshed && dayIsOfficial()) {   // the settle landed: the bankroll now includes tonight
+    bankRefreshed = true;
+    api.performance(season).then(p => setDayBankroll(p.kpis && p.kpis.bankroll)).catch(() => { /* keep the old figure */ });
+  }
   renderPageStates();
   if (!toolbarMounted && store.games.length) { mountToolbar({ renderGrid }); toolbarMounted = true; }
   else if (toolbarMounted) updateToolbar();

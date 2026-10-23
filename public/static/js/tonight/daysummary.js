@@ -1,5 +1,5 @@
 // The day's money: bankroll, what's at stake, what it pays if every bet wins. Real bets only; a temporary pick is never a bet.
-import { fmt } from '../format.js';
+import { fmt, MINUS } from '../format.js';
 import { renderBoard, signCls } from '../board.js';
 import { store, pl, pickSide } from '../state.js';
 
@@ -13,27 +13,28 @@ const stakeOf = g => (g.bet && !g.provisional && g.bet.amount > 0 ? g.bet.amount
 // Pure: totals for a list of normalized games. Postponed/void bets are returned, so they count nowhere.
 export function daySummary(games) {
   const d = { bets: 0, staked: 0, open: 0, openStake: 0, openReturn: 0, openProfit: 0, payoutKnown: true,
-    settled: 0, settledStake: 0, settledPL: 0, settledReturn: 0, official: true, waiting: 0 };
+    settled: 0, settledStake: 0, settledPL: 0, settledReturn: 0, official: true, waiting: 0 };   // official: every bet carries bet.result
   for (const g of games) {
     const amt = stakeOf(g);
     if (!amt) {
       // no bet yet: a temporary pick or a game with no pick at all is waiting on its final pick
-      if (!g.bet && g.state === 'scheduled' && (g.provisional || pickSide(g) == null)) d.waiting++;
+      if (!g.bet && (g.state === 'scheduled' || g.state === 'live') && (g.provisional || pickSide(g) == null)) d.waiting++;
       continue;
     }
     if (g.state === 'postponed' || g.state === 'void') continue;
     d.bets++; d.staked += amt;
+    if (g.bet.result == null) d.official = false;
     const p = g.state === 'final' ? pl(g) : null;
     if (p != null) {
       d.settled++; d.settledStake += amt; d.settledPL += p; d.settledReturn += amt + p;
-      if (g.bet.result == null) d.official = false;
     } else {
       d.open++; d.openStake += amt;
       if (g.odds == null) d.payoutKnown = false;
       else { d.openProfit += fmt.payout(amt, g.odds); d.openReturn += amt + fmt.payout(amt, g.odds); }
-      d.official = false;
     }
   }
+  d.payout = d.settledReturn + d.openReturn;           // the whole day's return if every open bet wins
+  d.profit = d.payout - d.staked;
   return d;
 }
 
@@ -41,13 +42,15 @@ export function daySummary(games) {
 export function dayView(d, { isPast, bankroll: br, recap }) {
   const money = v => fmt.money(v), signed = v => ({ value: fmt.money(v, true), cls: signCls(v) });
   const when = isPast ? 'that night' : 'tonight';
-  const waitNote = d.waiting > 0 ? plural(d.waiting, 'game') + (d.waiting === 1 ? ' is' : ' are') + ' still waiting on a final pick, so ' + (d.waiting === 1 ? 'its' : 'any') + ' bet is not counted yet.' : '';
+  const waitNote = d.waiting > 0 ? plural(d.waiting, 'game') + ' still waiting on a final pick.' : '';
+  // the bankroll table only moves at the morning settle, which stamps bet.result on each bet
+  const bankSmall = d.bets > 0 && d.official ? 'after tonight' : 'before tonight';
   if (d.bets === 0) {
     if (isPast) return { mode: 'none', cells: [], note: 'No bets ' + when + '.' };
     const note = d.waiting > 0
       ? 'No bets yet. Final picks come about an hour before each tip.'
       : 'No bets ' + when + '. The model found nothing worth a stake.';
-    return { mode: 'bank', cells: [{ label: 'Current bankroll', value: money(br), small: 'before tonight', testid: 'day-bankroll' }], note };
+    return { mode: 'bank', cells: [{ label: 'Current bankroll', value: money(br), small: bankSmall, testid: 'day-bankroll' }], note };
   }
   if (isPast || d.open === 0) {
     const off = !!recap && d.open === 0;               // the server's own numbers once the night is settled
@@ -56,10 +59,10 @@ export function dayView(d, { isPast, bankroll: br, recap }) {
     const has = d.settled > 0;
     const cells = [
       { label: 'Staked', value: money(staked), testid: 'day-stake' },
-      { label: 'Returned', value: has ? money(staked + net) : '—', testid: 'day-returned' },
+      { label: 'Returned', value: has ? money(off ? staked + net : d.settledReturn) : '—', testid: 'day-returned' },
       Object.assign({ label: 'Net P/L', testid: 'day-pl' }, has ? signed(net) : { value: '—' })
     ];
-    if (!isPast) cells.unshift({ label: 'Current bankroll', value: money(br), small: d.official ? 'settled' : 'before tonight', testid: 'day-bankroll' });
+    if (!isPast) cells.unshift({ label: 'Current bankroll', value: money(br), small: bankSmall, testid: 'day-bankroll' });
     const notes = [];
     if (d.open > 0) notes.push(plural(d.open, 'bet') + ' of ' + d.bets + ' still open.');
     else if (!d.official && !isPast) notes.push('Unofficial until the 6 AM settle.');
@@ -67,11 +70,11 @@ export function dayView(d, { isPast, bankroll: br, recap }) {
     return { mode: isPast ? 'past' : 'done', cells, note: notes.join(' ') };
   }
   const cells = [
-    { label: 'Current bankroll', value: money(br), small: 'before tonight', testid: 'day-bankroll' },
-    { label: 'At stake today', value: money(d.openStake), small: d.settled > 0 ? plural(d.open, 'open bet') + ' of ' + d.bets : plural(d.open, 'bet'), testid: 'day-stake' },
-    { label: 'Potential payout', value: d.payoutKnown ? money(d.openReturn) : '—', small: d.payoutKnown ? '+' + money(d.openProfit).replace(/^−?/, '') + ' profit' : 'odds missing', testid: 'day-payout' }
+    { label: 'Current bankroll', value: money(br), small: bankSmall, testid: 'day-bankroll' },
+    { label: 'At stake today', value: money(d.staked), small: plural(d.bets, 'bet'), testid: 'day-stake' },
+    { label: 'Potential payout', value: d.payoutKnown ? money(d.payout) : '—', small: d.payoutKnown ? (d.profit < 0 ? MINUS : '+') + money(Math.abs(d.profit)) + ' profit' : 'odds missing', testid: 'day-payout' }
   ];
-  if (d.settled > 0) cells.push(Object.assign({ label: 'Settled so far', small: plural(d.settled, 'bet'), testid: 'day-pl' }, signed(d.settledPL)));
+  if (d.settled > 0) cells.push(Object.assign({ label: 'Settled so far', small: d.settled + ' of ' + plural(d.bets, 'bet'), testid: 'day-pl' }, signed(d.settledPL)));
   return { mode: 'open' + cells.length, cells, note: waitNote };
 }
 
@@ -95,3 +98,6 @@ export function renderDaySummary() {
   note.hidden = !v.note;
   if (note.textContent !== v.note) note.textContent = v.note;
 }
+
+// True once the morning settle has stamped every bet of a live night (the bankroll then includes it).
+export const dayIsOfficial = () => { const d = daySummary(store.games); return d.bets > 0 && d.official; };
