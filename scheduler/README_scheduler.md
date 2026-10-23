@@ -100,7 +100,7 @@ back to `python daily_workflow.py`).
    ```
 3. Add a line (runs at 6 AM server time):
    ```
-   0 6 * * * cd /path/to/nba-predictor && source venv/bin/activate && python daily_workflow.py >> logs/workflow.log 2>&1
+   0 6 * * * cd /path/to/nba-predictor && source venv/bin/activate && python daily_workflow.py >> logs/morning.log 2>&1
    ```
 
 ---

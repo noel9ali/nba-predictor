@@ -21,13 +21,17 @@ if (-not (Test-Path $logsDir)) {
 }
 
 # Build the scheduled task
-$action  = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"$batPath`""
+$vbsPath    = Join-Path $scriptDir "run_hidden.vbs"
+$action  = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "//B //Nologo `"$vbsPath`" `"$batPath`"" -WorkingDirectory $repoRoot
 $trigger = New-ScheduledTaskTrigger -Daily -At "06:00AM"
 $settings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Hours 2) `
     -RestartCount 1 `
     -RestartInterval (New-TimeSpan -Minutes 30) `
     -StartWhenAvailable `
+    -WakeToRun `
+    -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries `
     -RunOnlyIfNetworkAvailable
 
 # Register (or update) the task
@@ -42,7 +46,7 @@ if ($existingTask) {
         -Trigger   $trigger `
         -Settings  $settings `
         -RunLevel  Highest `
-        -Description "NBA Predictor: runs pipeline + predictions + SMS summary daily at 6 AM"
+        -Description "NBA Predictor: runs pipeline + predictions + notifications daily at 6 AM"
     Write-Host "✓ Registered new Task Scheduler job: $taskName"
 }
 
@@ -51,7 +55,7 @@ Write-Host "Task details:"
 Write-Host "  Name    : $taskName"
 Write-Host "  Trigger : Daily at 06:00 AM"
 Write-Host "  Action  : $batPath"
-Write-Host "  Log     : $logsDir\workflow.log"
+Write-Host "  Log     : $logsDir\morning.log"
 Write-Host ""
 Write-Host "To run immediately for testing:"
 Write-Host "  Start-ScheduledTask -TaskName '$taskName'"
