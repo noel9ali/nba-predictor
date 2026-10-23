@@ -1,7 +1,7 @@
 // App shell: tab hrefs and aria-current, the run-status pill, the "Sample data" tag and the
 // migration note. Tabs are plain links; nothing here takes input.
 import { api, onEnvelope, SAMPLE, sampleQuery, sampleTonight } from './api.js';
-import { fmt, dateET } from './format.js';
+import { fmt, slateDateET } from './format.js';
 
 const $ = s => document.querySelector(s);
 let opts = null;
@@ -17,7 +17,7 @@ function withQuery(path, extra) {
 }
 
 function yesterdayET() {
-  const today = SAMPLE ? sampleTonight() : dateET(new Date());
+  const today = SAMPLE ? sampleTonight() : slateDateET(new Date());
   const d = new Date(today + 'T12:00:00Z');
   d.setUTCDate(d.getUTCDate() - 1);
   return d.toISOString().slice(0, 10);

@@ -130,7 +130,9 @@ function mathSection(g) {
     row(modelLabel + ' (temporary)', fmt.pct(g.pick_prob));
     row('Market: ' + (o == null ? 'no odds yet' : fmt.odds(o) + (g.bookmaker ? ' ' + g.bookmaker : '')), o == null ? '—' : fmt.pct(g.implied_prob));
     row('Edge', o == null ? '—' : fmt.pts(g.edge) + ' pts', true);
-    why('Temporary pick from the 6 AM run, using the morning odds. It can change. No bet is placed until the final pick posts about an hour before the first tip.');
+    why(g.state === 'final'
+      ? 'Temporary pick from the 6 AM run, using the morning odds. The final pick never posted, so no bet was placed. Graded for reference only; it is not in the record or the bankroll.'
+      : 'Temporary pick from the 6 AM run, using the morning odds. It can change. No bet is placed until the final pick posts about an hour before the first tip.');
     return dl;
   }
   if (!b) {

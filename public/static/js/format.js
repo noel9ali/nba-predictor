@@ -64,6 +64,10 @@ export function dateET(d) {
     .formatToParts(d).map(x => [x.type, x.value]));
   return p.year + '-' + p.month + '-' + p.day;
 }
+// The night the main page shows: the previous night until the 6 AM ET morning run.
+export function slateDateET(d) {
+  return dateET(new Date(d.getTime() - 6 * 3600 * 1000));
+}
 // NBA season label of a date: Oct–Dec -> YYYY-(YY+1), Jan–Sep -> (YYYY-1)-YY.
 export function seasonOf(iso) {
   const y = Number(iso.slice(0, 4)), m = Number(iso.slice(5, 7));

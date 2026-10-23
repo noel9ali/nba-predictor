@@ -3,7 +3,7 @@
 // A port of the prototype's common.js without its simulation. The DOM is touched only inside
 // init() and the timers (html[data-feed]); the pure helpers import cleanly under Node.
 import { api, ApiError, SAMPLE, SCENE, sampleNowIso, sampleTonight, sampleReplayStep } from './api.js';
-import { fmt, dateET } from './format.js';
+import { fmt, slateDateET } from './format.js';
 
 export const POLL_MS = 30000, WINDOW_MS = 15 * 60000, DOWN_MS = 5 * 60000, TICK_MS = 60000;
 const SLATE_BACKOFF = [5000, 15000, 30000];
@@ -114,7 +114,7 @@ export function summarize(games) {
     if (g.state === 'scheduled') s.upcoming++; else if (g.state === 'live') s.live++;
     else if (g.state === 'final') s.final++; else s.postponed++;
     const r = result(g);
-    if (g.state === 'final') { if (r === 'hit') s.pickW++; else if (r === 'miss') s.pickL++; }
+    if (g.state === 'final' && !g.provisional) { if (r === 'hit') s.pickW++; else if (r === 'miss') s.pickL++; }  // a temporary pick is graded, never counted
     if (hasBet(g) && g.state !== 'postponed' && g.state !== 'void') {
       s.bets++; s.staked += g.bet.amount;
       if (g.state === 'final') { s.settled += pl(g) || 0; if (r === 'hit') s.betW++; else if (r === 'miss') s.betL++; }
@@ -178,7 +178,7 @@ export function now() {
   if (lastLive && lastLive.fetched_at && !Number.isNaN(Date.parse(lastLive.fetched_at))) return Date.parse(lastLive.fetched_at);
   return Date.parse(sampleNowIso() || (store.slate && store.slate.generated_at) || new Date().toISOString());
 }
-export function todayIso() { return SAMPLE ? sampleTonight() : dateET(new Date()); }
+export function todayIso() { return SAMPLE ? sampleTonight() : slateDateET(new Date()); }
 
 // ---------- lifecycle ----------
 const allDone = () => store.games.length > 0 && store.games.every(g => ['final', 'postponed', 'void'].includes(g.state));
