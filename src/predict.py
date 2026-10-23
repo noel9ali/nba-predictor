@@ -589,9 +589,9 @@ def run():
             saved += 1
 
     if provisional:
-        print(f"Saved {saved} temporary prediction(s).")     # worded so the workflow's picks-SMS check ignores it
+        print(f"Saved {saved} temporary prediction(s).")     # worded so the workflow's picks-push check ignores it
         return
-    # the workflow reads this line: no new predictions means no picks SMS
+    # the workflow reads this line: no new predictions means no picks push
     print(f"Saved {saved} prediction(s).")
 
 if __name__ == '__main__':

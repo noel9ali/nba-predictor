@@ -1,4 +1,4 @@
-"""Temporary 6 AM picks: status probabilities, earlier-report carry-forward, the tentative SMS (offline)."""
+"""Temporary 6 AM picks: status probabilities, earlier-report carry-forward, the tentative summary (offline)."""
 
 import os
 import sys
@@ -78,7 +78,7 @@ class ProvisionalPPlayTests(unittest.TestCase):
         self.assertEqual(p, {1: config.PROVISIONAL_P_PLAY["doubtful"]})
 
 
-class TentativeSmsTests(unittest.TestCase):
+class TentativeSummaryTests(unittest.TestCase):
     PICKS = [
         {"home_team": "DET", "away_team": "BOS", "home_win_prob": 0.4, "away_win_prob": 0.6,
          "predicted_winner": "BOS", "odds": 120, "bookmaker": "FanDuel"},
@@ -87,18 +87,18 @@ class TentativeSmsTests(unittest.TestCase):
     ]
 
     def test_morning_text_lists_temporary_picks_with_a_tentative_disclaimer(self):
-        sms = daily_workflow.format_sms([], [], {}, include_today=False, temporary_picks=self.PICKS)
-        self.assertIn("TENTATIVE picks", sms)
-        self.assertIn("BOS @ DET — BOS (60%) | +120 (FanDuel)", sms)
-        self.assertIn("NYK (70%) | no odds yet", sms)
-        self.assertIn("tentative", sms)
-        self.assertIn("can change", sms)
-        self.assertNotIn("Bet:", sms)                  # never a stake in a temporary pick
+        summary = daily_workflow.format_summary([], [], {}, include_today=False, temporary_picks=self.PICKS)
+        self.assertIn("TENTATIVE picks", summary)
+        self.assertIn("BOS @ DET — BOS (60%) | +120 (FanDuel)", summary)
+        self.assertIn("NYK (70%) | no odds yet", summary)
+        self.assertIn("tentative", summary)
+        self.assertIn("can change", summary)
+        self.assertNotIn("Bet:", summary)                  # never a stake in a temporary pick
 
     def test_morning_text_without_temporary_picks_is_unchanged(self):
-        sms = daily_workflow.format_sms([], [], {}, include_today=False, temporary_picks=[])
-        self.assertIn("Today's picks follow later", sms)
-        self.assertNotIn("TENTATIVE", sms)
+        summary = daily_workflow.format_summary([], [], {}, include_today=False, temporary_picks=[])
+        self.assertIn("Today's picks follow later", summary)
+        self.assertNotIn("TENTATIVE", summary)
 
 
 if __name__ == "__main__":

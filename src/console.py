@@ -1,6 +1,6 @@
 """Force UTF-8 stdio so operator-facing console/log output (checkmarks,
 arrows, emoji) never crashes when stdout/stderr aren't a real console --
-e.g. redirected to a file (scheduler/run_daily.bat's `>> logs\\workflow.log`)
+e.g. redirected to a file (scheduler/run_daily.bat's `>> logs\\morning.log`)
 or piped through subprocess.run(capture_output=True).
 """
 

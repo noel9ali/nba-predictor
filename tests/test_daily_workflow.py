@@ -17,8 +17,20 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import daily_workflow  # noqa: E402  (daily_workflow.py adds src/ to sys.path itself)
 from database import DatabaseError, MissingTableError  # noqa: E402
 
-TWILIO_VARS = ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_API_SID", "TWILIO_CLIENT_SECRET",
-               "TWILIO_FROM", "TWILIO_TO")
+PICK = {"home_team": "DEN", "away_team": "LAL", "home_win_prob": 0.4, "away_win_prob": 0.6,
+        "predicted_winner": "LAL", "bet_placed": "LAL", "bet_amount": 10.0, "odds": 120}
+NTFY_ENV = {"NTFY_TOPIC": "test-topic", "NTFY_SERVER": "https://ntfy.invalid", "NTFY_TOKEN": "tok-SECRET"}
+SMTP_ENV = {"SMTP_HOST": "smtp.invalid", "SMTP_PORT": "587", "SMTP_USER": "me@example.invalid",
+            "SMTP_PASSWORD": "pw-SECRET", "ALERT_EMAIL_TO": "to@example.invalid", "ALERT_EMAIL_FROM": ""}
+
+
+def sent_result(channel, status="sent", detail=""):
+    return {"channel": channel, "status": status, "detail": detail}
+
+
+class FakeResponse:
+    def __init__(self, code):
+        self.status_code = code
 
 
 class LogRunTests(unittest.TestCase):
@@ -105,7 +117,7 @@ class LogRunTests(unittest.TestCase):
         self.assertEqual((result["status"], row["status"]), ("success", "success"))
         self.assertIn("temporary predictions failed", row["notes"])
 
-    def test_the_picks_sms_check_ignores_temporary_predictions(self):
+    def test_the_picks_push_check_ignores_temporary_predictions(self):
         self.assertEqual(daily_workflow.saved_predictions("Saved 3 temporary prediction(s).\n"), 0)
 
     def test_predict_stage_runs_only_predictions_and_logs_kind_predict(self):
@@ -131,30 +143,37 @@ class LogRunTests(unittest.TestCase):
         self.assertEqual(calls, ["run_pipeline.bat", "run_predict.bat"])
         self.assertEqual(row["kind"], "manual")
 
-    def test_predict_tick_with_nothing_saved_sends_no_sms_and_logs_nothing(self):
+    def test_predict_tick_with_nothing_saved_sends_no_push_and_logs_nothing(self):
         for out in ("No games today.\n", "No games inside the prediction window.\n", "Saved 0 prediction(s).\n",
                     "Odds request budget for today (12 calls) is used up; no odds fetched.\n", ""):
             with self.subTest(out=out), \
                     patch.object(daily_workflow, "run_bat", return_value=(0, out)), \
                     patch.object(daily_workflow, "insert_rows") as insert_rows, \
-                    patch.object(daily_workflow, "send_sms") as send_sms, \
+                    patch.object(daily_workflow, "send_ntfy") as send_ntfy, \
+                    patch.object(daily_workflow, "send_email") as send_email, \
                     contextlib.redirect_stdout(io.StringIO()):
                 result = daily_workflow.run_workflow(send_text=True, stage="predict")
             self.assertTrue(result["noop"])
             insert_rows.assert_not_called()
-            send_sms.assert_not_called()
+            send_ntfy.assert_not_called()
+            send_email.assert_not_called()
 
-    def test_predict_tick_that_saved_a_prediction_logs_and_texts(self):
-        with patch.object(daily_workflow, "run_bat", return_value=(0, "LAL @ DEN\nSaved 2 prediction(s).\n")), \
+    def test_predict_tick_that_saved_a_prediction_logs_and_pushes_the_pick(self):
+        with patch.object(daily_workflow, "run_bat", return_value=(0, "LAL @ DEN\nSaved 1 prediction(s).\n")), \
                 patch.object(daily_workflow, "insert_rows") as insert_rows, \
-                patch.object(daily_workflow, "get_todays_predictions", return_value=[]), \
+                patch.object(daily_workflow, "get_todays_predictions", return_value=[PICK]), \
                 patch.object(daily_workflow, "get_overall_stats", return_value={}), \
-                patch.object(daily_workflow, "send_sms", return_value=True) as send_sms, \
+                patch.object(daily_workflow, "_load_sent", return_value={}), \
+                patch.object(daily_workflow, "_save_sent"), \
+                patch.object(daily_workflow, "send_ntfy", return_value=sent_result("ntfy")) as send_ntfy, \
+                patch.object(daily_workflow, "send_email") as send_email, \
                 contextlib.redirect_stdout(io.StringIO()):
             result = daily_workflow.run_workflow(send_text=True, stage="predict")
         self.assertNotIn("noop", result)
-        insert_rows.assert_called_once()
-        send_sms.assert_called_once()
+        self.assertTrue(result["sms_sent"])
+        send_ntfy.assert_called_once()
+        send_email.assert_not_called()          # the daily summary is email-only, never in the picks stage
+        self.assertEqual(insert_rows.call_args.args[1][0]["notes"], "predict stage, ntfy 1 sent")
 
     def test_saved_predictions_counts_the_line(self):
         self.assertEqual(daily_workflow.saved_predictions("x\nSaved 3 prediction(s).\n"), 3)
@@ -166,20 +185,20 @@ class LogRunTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             daily_workflow.run_workflow(send_text=False, stage="evening")
 
-    def test_stage_sms_texts(self):
+    def test_stage_summary_texts(self):
         picks = [{"home_team": "LAL", "away_team": "BOS", "home_win_prob": 0.62, "away_win_prob": 0.38,
                   "predicted_winner": "LAL", "bet_placed": None, "bet_amount": 0, "odds": None}]
-        morning = daily_workflow.format_sms([], picks, {}, include_today=False)
+        morning = daily_workflow.format_summary([], picks, {}, include_today=False)
         self.assertIn("Today's picks follow later", morning)
         self.assertNotIn("LAL", morning)
-        evening = daily_workflow.format_sms([], picks, {}, include_yesterday=False)
+        evening = daily_workflow.format_summary([], picks, {}, include_yesterday=False)
         self.assertIn("NBA Picks", evening)
         self.assertNotIn("Yesterday", evening)
         self.assertIn("BOS @ LAL", evening)
 
 
-class QueryAndSmsTests(unittest.TestCase):
-    def test_format_sms_with_text_probabilities_and_odds(self):
+class QueryAndSummaryTests(unittest.TestCase):
+    def test_format_summary_with_text_probabilities_and_odds(self):
         rows = pd.DataFrame([
             {"home_team": "LAL", "away_team": "BOS", "home_win_prob": "0.62", "away_win_prob": "0.38",
              "predicted_winner": "LAL", "bet_placed": "LAL", "bet_amount": 25.0, "odds": "150"},
@@ -191,9 +210,9 @@ class QueryAndSmsTests(unittest.TestCase):
 
         self.assertIn(("game_date", "eq", daily_workflow.date.today().strftime("%Y-%m-%d")),
                       select_rows.call_args.kwargs["filters"])
-        sms = daily_workflow.format_sms([], predictions, {})
-        self.assertIn("BOS @ LAL — LAL (62%) | Bet: $25.00 @ +150", sms)
-        self.assertIn("PHX @ DEN — PHX (55%)", sms)
+        summary = daily_workflow.format_summary([], predictions, {})
+        self.assertIn("BOS @ LAL — LAL (62%) | Bet: $25.00 @ +150", summary)
+        self.assertIn("PHX @ DEN — PHX (55%)", summary)
 
     def test_yesterdays_results_handle_missing_profit_loss(self):
         rows = pd.DataFrame([
@@ -202,8 +221,8 @@ class QueryAndSmsTests(unittest.TestCase):
         ])
         with patch.object(daily_workflow, "select_rows", return_value=rows):
             results = daily_workflow.get_yesterdays_results()
-        sms = daily_workflow.format_sms(results, [], {})
-        self.assertIn("✓ BOS @ LAL — predicted LAL, actual LAL, P/L: +$0.00", sms)
+        summary = daily_workflow.format_summary(results, [], {})
+        self.assertIn("✓ BOS @ LAL — predicted LAL, actual LAL, P/L: +$0.00", summary)
 
     def test_overall_stats_fall_back_to_1000_without_bankroll_table(self):
         preds = pd.DataFrame([{"correct": 1, "profit_loss": 37.5}, {"correct": 0, "profit_loss": -20.0}])
@@ -218,48 +237,195 @@ class QueryAndSmsTests(unittest.TestCase):
         self.assertEqual(stats["bankroll"], 1000.0)
         self.assertEqual((stats["total"], stats["correct"], stats["total_pl"]), (2, 1, 17.5))
 
-    def test_send_sms_skips_without_credentials(self):
-        env = {name: "" for name in TWILIO_VARS}
-        with patch.dict(os.environ, env), contextlib.redirect_stdout(io.StringIO()) as output:
-            self.assertFalse(daily_workflow.send_sms("hello"))
-        self.assertIn("SMS skipped", output.getvalue())
-
-    def test_send_sms_prefers_the_api_key_over_the_auth_token(self):
-        env = {"TWILIO_ACCOUNT_SID": "AC" + "0" * 32, "TWILIO_AUTH_TOKEN": "token",
-               "TWILIO_API_SID": "SK" + "0" * 32, "TWILIO_CLIENT_SECRET": "secret",
-               "TWILIO_FROM": "+15550100000", "TWILIO_TO": "+15550100001"}
-        made = {}
-
-        class FakeClient:
-            def __init__(self, username, password, account_sid):
-                made["auth"] = (username, password, account_sid)
-                self.messages = self
-
-            def create(self, **kw):
-                made["sent"] = kw
-                return type("M", (), {"sid": "SMfake"})()
-
-        with patch.dict(os.environ, env), patch.dict(sys.modules, {
-                "twilio": type(sys)("twilio"), "twilio.rest": type(sys)("twilio.rest")}),                 contextlib.redirect_stdout(io.StringIO()):
-            sys.modules["twilio.rest"].Client = FakeClient
-            self.assertTrue(daily_workflow.send_sms("hello"))
-        self.assertEqual(made["auth"], ("SK" + "0" * 32, "secret", "AC" + "0" * 32))
-        self.assertEqual(made["sent"]["body"], "hello")
-
-    def test_redact_secrets_scrubs_twilio_identifiers(self):
+    def test_redact_secrets_scrubs_notification_credentials(self):
         # Obviously-fake values -- never read from .env.
-        fake = {
-            "TWILIO_ACCOUNT_SID": "AC" + "0" * 32,
-            "TWILIO_FROM": "+15550100000",
-            "TWILIO_TO": "+15550100001",
-        }
+        fake = {"NTFY_TOKEN": "tk_0000000000", "SMTP_PASSWORD": "pw-0000000000", "SMTP_USER": "user0000@example.invalid"}
         with patch.dict(os.environ, fake):
-            text = daily_workflow.redact_secrets(
-                f"sid={fake['TWILIO_ACCOUNT_SID']} from={fake['TWILIO_FROM']} to={fake['TWILIO_TO']}"
-            )
+            text = daily_workflow.redact_secrets(" ".join(f"{k}={v}" for k, v in fake.items()))
         for value in fake.values():
             self.assertNotIn(value, text)
-        self.assertEqual(text, "sid=<TWILIO_ACCOUNT_SID> from=<TWILIO_FROM> to=<TWILIO_TO>")
+        self.assertEqual(text, "NTFY_TOKEN=<NTFY_TOKEN> SMTP_PASSWORD=<SMTP_PASSWORD> SMTP_USER=<SMTP_USER>")
+
+
+class NtfyTests(unittest.TestCase):
+    def setUp(self):
+        self.sleeps = []
+        for patcher in (patch.dict(os.environ, NTFY_ENV), patch.object(daily_workflow, "_sleep", self.sleeps.append)):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def post(self, *codes):
+        outcomes = [c if isinstance(c, Exception) else FakeResponse(c) for c in codes]
+
+        def fake_post(url, **kw):
+            fake_post.calls.append((url, kw))
+            out = outcomes[len(fake_post.calls) - 1]
+            if isinstance(out, Exception):
+                raise out
+            return out
+        fake_post.calls = []
+        return patch("requests.post", side_effect=fake_post), fake_post
+
+    def test_delivered_on_the_first_try(self):
+        patcher, fake = self.post(200)
+        with patcher:
+            res = daily_workflow.send_ntfy("t", "m")
+        self.assertEqual(res["status"], "sent")
+        self.assertEqual(len(fake.calls), 1)
+        url, kw = fake.calls[0]
+        self.assertEqual((url, kw["json"]["topic"]), ("https://ntfy.invalid", "test-topic"))
+        self.assertEqual(kw["headers"], {"Authorization": "Bearer tok-SECRET"})
+        self.assertEqual(self.sleeps, [])
+
+    def test_transient_failure_then_success_backs_off_10_then_30(self):
+        import requests
+        patcher, fake = self.post(requests.ConnectionError("down"), 503, 200)
+        with patcher:
+            res = daily_workflow.send_ntfy("t", "m")
+        self.assertEqual(res["status"], "sent")
+        self.assertEqual(len(fake.calls), 3)
+        self.assertEqual(self.sleeps, [10, 30])
+
+    def test_429_is_retried_and_gives_up_after_three_attempts(self):
+        patcher, fake = self.post(429, 429, 429)
+        with patcher:
+            res = daily_workflow.send_ntfy("t", "m")
+        self.assertEqual((res["status"], res["detail"]), ("failed", "HTTP 429"))
+        self.assertEqual(len(fake.calls), 3)
+
+    def test_permanent_4xx_is_not_retried(self):
+        patcher, fake = self.post(403)
+        with patcher:
+            res = daily_workflow.send_ntfy("t", "m")
+        self.assertEqual((res["status"], res["detail"]), ("failed", "HTTP 403"))
+        self.assertEqual((len(fake.calls), self.sleeps), (1, []))
+
+    def test_picks_are_pushed_once(self):
+        state = {}
+        with patch.object(daily_workflow, "_load_sent", side_effect=lambda: dict(state)), \
+                patch.object(daily_workflow, "_save_sent", side_effect=state.update), \
+                patch.object(daily_workflow, "send_ntfy", return_value=sent_result("ntfy")) as send_ntfy:
+            first = daily_workflow.push_picks([PICK])
+            second = daily_workflow.push_picks([PICK])
+        self.assertEqual((len(first), second), (1, []))
+        title, message = send_ntfy.call_args.args[:2]
+        self.assertEqual(title, "Pick: LAL")
+        self.assertIn("LAL @ DEN: LAL (60%) @ +120, bet $10.00", message)
+        self.assertIn("21+", message)
+
+    def test_a_failed_push_is_retried_on_the_next_run(self):
+        state = {}
+        with patch.object(daily_workflow, "_load_sent", side_effect=lambda: dict(state)), \
+                patch.object(daily_workflow, "_save_sent", side_effect=state.update), \
+                patch.object(daily_workflow, "send_ntfy", return_value=sent_result("ntfy", "failed", "HTTP 500")):
+            daily_workflow.push_picks([PICK])
+        self.assertEqual(state, {})
+
+    def test_results_push_reports_wins_and_losses(self):
+        results = [
+            {"home_team": "DEN", "away_team": "LAL", "predicted_winner": "LAL", "actual_winner": "LAL",
+             "correct": 1, "bet_amount": 10.0, "odds": 120, "profit_loss": 12.0},
+            {"home_team": "NYK", "away_team": "BOS", "predicted_winner": "BOS", "actual_winner": "NYK",
+             "correct": 0, "bet_amount": 20.0, "odds": -110, "profit_loss": -20.0},
+        ]
+        with patch.object(daily_workflow, "_load_sent", return_value={}), \
+                patch.object(daily_workflow, "_save_sent"), \
+                patch.object(daily_workflow, "send_ntfy", return_value=sent_result("ntfy")) as send_ntfy:
+            daily_workflow.push_results(results)
+        title, message = send_ntfy.call_args.args[:2]
+        self.assertEqual(title, "Results 1-1, P/L -$8.00")
+        self.assertIn("✓ LAL @ DEN: picked LAL, won LAL (+$12.00)", message)
+        self.assertIn("✗ BOS @ NYK: picked BOS, won NYK (-$20.00)", message)
+
+
+class EmailTests(unittest.TestCase):
+    def setUp(self):
+        self.sleeps = []
+        patcher = patch.object(daily_workflow, "_sleep", self.sleeps.append)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_missing_variables_skip_the_email_and_say_so(self):
+        env = {name: "" for name in SMTP_ENV}
+        with patch.dict(os.environ, env), patch("smtplib.SMTP") as smtp:
+            res = daily_workflow.send_email("s", "b")
+        self.assertEqual((res["status"], res["detail"]), ("skipped", "SMTP not configured"))
+        smtp.assert_not_called()
+
+    def test_email_is_sent_over_starttls(self):
+        with patch.dict(os.environ, SMTP_ENV), patch("smtplib.SMTP") as smtp:
+            res = daily_workflow.send_email("Subject", "Body")
+        self.assertEqual(res["status"], "sent")
+        server = smtp.return_value
+        server.starttls.assert_called_once()
+        server.login.assert_called_once_with("me@example.invalid", "pw-SECRET")
+        msg = server.send_message.call_args.args[0]
+        self.assertEqual((msg["To"], msg["From"], msg["Subject"]),
+                         ("to@example.invalid", "me@example.invalid", "Subject"))
+
+    def test_login_rejection_is_permanent_and_not_retried(self):
+        import smtplib
+        with patch.dict(os.environ, SMTP_ENV), \
+                patch("smtplib.SMTP", side_effect=smtplib.SMTPAuthenticationError(535, b"no")) as smtp:
+            res = daily_workflow.send_email("s", "b")
+        self.assertEqual((res["status"], res["detail"]), ("failed", "SMTP login rejected"))
+        self.assertEqual((smtp.call_count, self.sleeps), (1, []))
+
+    def test_network_errors_are_retried(self):
+        with patch.dict(os.environ, SMTP_ENV), patch("smtplib.SMTP", side_effect=OSError("x")) as smtp:
+            res = daily_workflow.send_email("s", "b")
+        self.assertEqual(res["status"], "failed")
+        self.assertEqual((smtp.call_count, self.sleeps), (3, [10, 30]))
+
+
+class WorkflowNotificationTests(unittest.TestCase):
+    """The morning stage: results by ntfy, summary by email, outcome in workflow_log.notes."""
+
+    def run_morning(self, ntfy, email):
+        with patch.object(daily_workflow, "run_bat", return_value=(0, "out\n")), \
+                patch.object(daily_workflow, "insert_rows") as insert_rows, \
+                patch.object(daily_workflow, "get_yesterdays_results", return_value=[
+                    {"home_team": "DEN", "away_team": "LAL", "predicted_winner": "LAL", "actual_winner": "LAL",
+                     "correct": 1, "bet_amount": 0, "odds": None, "profit_loss": None}]), \
+                patch.object(daily_workflow, "get_overall_stats", return_value={}), \
+                patch.object(daily_workflow, "get_todays_temporary_picks", return_value=[]), \
+                patch.object(daily_workflow, "_load_sent", return_value={}), \
+                patch.object(daily_workflow, "_save_sent"), \
+                patch.object(daily_workflow, "send_ntfy", return_value=ntfy), \
+                patch.object(daily_workflow, "send_email", return_value=email), \
+                contextlib.redirect_stdout(io.StringIO()):
+            result = daily_workflow.run_workflow(send_text=True, stage="morning")
+        return result, insert_rows.call_args.args[1][0]
+
+    def test_everything_delivered_sets_the_flag(self):
+        result, row = self.run_morning(sent_result("ntfy"), sent_result("email"))
+        self.assertTrue(result["sms_sent"] and row["sms_sent"])
+        self.assertEqual(row["notes"], "morning stage, ntfy 1 sent; email 1 sent")
+
+    def test_email_not_configured_is_logged_and_the_flag_stays_false(self):
+        result, row = self.run_morning(sent_result("ntfy"), sent_result("email", "skipped", "SMTP not configured"))
+        self.assertFalse(row["sms_sent"])
+        self.assertIn("email 1 skipped (SMTP not configured)", row["notes"])
+        self.assertEqual(result["status"], "success")
+
+    def test_failed_channels_never_fail_the_stage(self):
+        result, row = self.run_morning(sent_result("ntfy", "failed", "HTTP 500"),
+                                       sent_result("email", "failed", "SMTP 421"))
+        self.assertEqual((result["status"], row["status"]), ("success", "success"))
+        self.assertIn("ntfy 1 failed (HTTP 500)", row["notes"])
+        self.assertIn("email 1 failed (SMTP 421)", row["notes"])
+
+    def test_an_unexpected_exception_in_a_channel_does_not_escape(self):
+        with patch.object(daily_workflow, "push_results", side_effect=RuntimeError("boom")):
+            result, row = self.run_morning(sent_result("ntfy"), sent_result("email"))
+        self.assertEqual(result["status"], "success")
+        self.assertIn("ntfy 1 failed (unexpected RuntimeError)", row["notes"])
+
+    def test_notes_redact_secrets(self):
+        with patch.dict(os.environ, {"NTFY_TOKEN": "tok-SECRET"}):
+            result, row = self.run_morning(sent_result("ntfy", "failed", "bad tok-SECRET"), sent_result("email"))
+        self.assertNotIn("tok-SECRET", row["notes"])
+        self.assertIn("<NTFY_TOKEN>", row["notes"])
 
 
 class ExceptionLoggingTests(unittest.TestCase):

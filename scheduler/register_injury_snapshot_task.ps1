@@ -21,7 +21,8 @@ param(
 $batPath = Join-Path $RepoRoot "scheduler\run_injury_snapshot.bat"
 if (-not (Test-Path $batPath)) { throw "Not found: $batPath" }
 
-$action  = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"$batPath`"" -WorkingDirectory $RepoRoot
+$vbsPath = Join-Path $RepoRoot "scheduler\run_hidden.vbs"
+$action  = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "//B //Nologo `"$vbsPath`" `"$batPath`"" -WorkingDirectory $RepoRoot
 $trigger = New-ScheduledTaskTrigger -Daily -At $Start
 $repeat  = New-ScheduledTaskTrigger -Once -At $Start `
     -RepetitionInterval (New-TimeSpan -Minutes $EveryMinutes) `
@@ -30,6 +31,9 @@ $trigger.Repetition = $repeat.Repetition
 $settings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 10) `
     -StartWhenAvailable `
+    -WakeToRun `
+    -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries `
     -RunOnlyIfNetworkAvailable `
     -MultipleInstances IgnoreNew
 

@@ -23,14 +23,15 @@ def _blocked(*args, **kwargs):
 # Child processes don't inherit the socket patch below, so fence them too.
 # load_dotenv() never overrides variables that are already set, so these dummy
 # values win over the local dotenv file for this process AND every child it
-# spawns: Supabase points at a dead local port; no real key, Odds or Twilio value.
-for _name in ("SUPABASE_SECRET_KEY", "ODDS_API_KEY", "TWILIO_ACCOUNT_SID",
-              "TWILIO_AUTH_TOKEN", "TWILIO_FROM", "TWILIO_TO"):
+# spawns: Supabase points at a dead local port; no real key, Odds, ntfy or SMTP value.
+for _name in ("SUPABASE_SECRET_KEY", "ODDS_API_KEY", "NTFY_TOKEN",
+              "SMTP_USER", "SMTP_PASSWORD", "ALERT_EMAIL_TO"):
     os.environ[_name] = "offline-test-dummy"
 os.environ["SUPABASE_URL"] = "http://127.0.0.1:9"
 # The odds archive must never write into the real data/odds_history during tests.
 import tempfile  # noqa: E402
 os.environ["NBA_ODDS_HISTORY_DB"] = os.path.join(tempfile.mkdtemp(prefix="nba_offline_odds_"), "odds_history.sqlite")
+os.environ["NTFY_SENT_PATH"] = os.path.join(tempfile.mkdtemp(prefix="nba_offline_ntfy_"), "ntfy_sent.json")
 os.environ.pop("ALLOW_RUN_WORKFLOW", None)
 os.environ["HIDE_BETA"] = "0"  # the fixtures are 2025-26 (beta) data; test_app.HideBetaTests turns hiding on
 
