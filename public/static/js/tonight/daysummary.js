@@ -47,7 +47,7 @@ export function dayView(d, { isPast, bankroll: br, recap }) {
     const note = d.waiting > 0
       ? 'No bets yet. Final picks come about an hour before each tip.'
       : 'No bets ' + when + '. The model found nothing worth a stake.';
-    return { mode: 'bank', cells: [{ label: 'Current bankroll', value: money(br), small: 'settled, before tonight', testid: 'day-bankroll' }], note };
+    return { mode: 'bank', cells: [{ label: 'Current bankroll', value: money(br), small: 'before tonight', testid: 'day-bankroll' }], note };
   }
   if (isPast || d.open === 0) {
     const off = !!recap && d.open === 0;               // the server's own numbers once the night is settled
@@ -59,7 +59,7 @@ export function dayView(d, { isPast, bankroll: br, recap }) {
       { label: 'Returned', value: has ? money(staked + net) : '—', testid: 'day-returned' },
       Object.assign({ label: 'Net P/L', testid: 'day-pl' }, has ? signed(net) : { value: '—' })
     ];
-    if (!isPast) cells.unshift({ label: 'Current bankroll', value: money(br), small: d.official ? 'settled' : 'settled, before tonight', testid: 'day-bankroll' });
+    if (!isPast) cells.unshift({ label: 'Current bankroll', value: money(br), small: d.official ? 'settled' : 'before tonight', testid: 'day-bankroll' });
     const notes = [];
     if (d.open > 0) notes.push(plural(d.open, 'bet') + ' of ' + d.bets + ' still open.');
     else if (!d.official && !isPast) notes.push('Unofficial until the 6 AM settle.');
@@ -67,9 +67,9 @@ export function dayView(d, { isPast, bankroll: br, recap }) {
     return { mode: isPast ? 'past' : 'done', cells, note: notes.join(' ') };
   }
   const cells = [
-    { label: 'Current bankroll', value: money(br), small: 'settled, before tonight', testid: 'day-bankroll' },
+    { label: 'Current bankroll', value: money(br), small: 'before tonight', testid: 'day-bankroll' },
     { label: 'At stake today', value: money(d.openStake), small: d.settled > 0 ? plural(d.open, 'open bet') + ' of ' + d.bets : plural(d.open, 'bet'), testid: 'day-stake' },
-    { label: 'Potential payout', value: d.payoutKnown ? money(d.openReturn) : '—', small: d.payoutKnown ? '+' + money(d.openProfit).replace(/^−?/, '') + ' profit if all win' : 'odds missing', testid: 'day-payout' }
+    { label: 'Potential payout', value: d.payoutKnown ? money(d.openReturn) : '—', small: d.payoutKnown ? '+' + money(d.openProfit).replace(/^−?/, '') + ' profit' : 'odds missing', testid: 'day-payout' }
   ];
   if (d.settled > 0) cells.push(Object.assign({ label: 'Settled so far', small: plural(d.settled, 'bet'), testid: 'day-pl' }, signed(d.settledPL)));
   return { mode: 'open' + cells.length, cells, note: waitNote };

@@ -12,6 +12,7 @@
 .daysum{margin-top:clamp(32px,4vw,48px)}
 .daysum .kick{margin:0 0 12px}
 .daysum .note{padding-top:12px}
+.daysum .board dd small{white-space:normal;overflow-wrap:anywhere}
 
 .courts{display:grid;gap:clamp(18px,2.4vw,26px);margin-top:clamp(32px,4vw,48px)}
 .courts__key{display:flex;flex-wrap:wrap;gap:10px 24px;font:500 12px/1.3 var(--body);color:var(--ink-2)}
