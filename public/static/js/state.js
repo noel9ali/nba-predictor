@@ -100,7 +100,7 @@ export function applyLive(games, resp, silent) {
     if (before.state === 'scheduled' && g.state === 'live') { changes.push({ type: 'tip', id: g.game_id }); any = true; }
     if (g.hs !== before.hs) { changes.push({ type: 'score', id: g.game_id, side: 'home' }); any = true; }
     if (g.as !== before.as) { changes.push({ type: 'score', id: g.game_id, side: 'away' }); any = true; }
-    if (before.state !== 'final' && g.state === 'final') { changes.push({ type: 'final', id: g.game_id, result: result(g), pl: pl(g) }); any = true; }
+    if (before.state !== 'final' && g.state === 'final') { changes.push({ type: 'final', id: g.game_id, result: result(g), pl: pl(g), settled: summarize(games).settled }); any = true; }
     if (!any && (g.clock !== before.clock || g.period !== before.period || g.state !== before.state)) changes.push({ type: 'clock', id: g.game_id });
   }
   return changes;
@@ -130,6 +130,11 @@ export function summarize(games) {
   }
   s.ifEnded += s.settled;
   return s;
+}
+// The ribbon's status line. "N of M bets ahead" only when a live game carries a bet.
+export function liveLine(s) {
+  if (s.live) return s.live + ' live' + (s.liveBets ? ' · ' + s.ahead + ' of ' + s.liveBets + ' bets ahead' : '');
+  return s.upcoming ? s.upcoming + ' to come' : s.games ? 'All final' : 'No games';
 }
 export const summary = () => summarize(store.games);
 

@@ -136,6 +136,12 @@ def v2_tables():
     return tables
 
 
+def no_rpc(function, params):
+    """Stand-in for call_rpc: never reach a real database. team_form falls back to the fake games
+    table, as it does when the function is missing. Tests of the RPC path patch call_rpc themselves."""
+    raise DatabaseError(f"Calling {function} failed (not stubbed in tests)")
+
+
 class ApiTestCase(unittest.TestCase):
     env = V2_OFF
 
@@ -143,7 +149,7 @@ class ApiTestCase(unittest.TestCase):
         self.client = dashboard.app.test_client()
         self.db = FakeDB(self.tables())
         for target, value in (("select_rows", self.db), ("today_et", lambda: TODAY),
-                              ("now_utc", lambda: NOW)):
+                              ("now_utc", lambda: NOW), ("call_rpc", no_rpc)):
             patcher = patch.object(dashboard, target, value)
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -915,6 +921,16 @@ class ModelExtrasTests(ApiTestCase):
                                   {"feature": "HOME_ELO", "label": "Home team's rating",
                                    "share": 0.25}])
 
+    def test_a_stored_top_five_keeps_its_own_shares(self):
+        # The run stores only the top five importances; they are shares of 1, not of their sum.
+        top5 = [{"feature": f, "importance": v} for f, v in [
+            ("ELO_DIFF", 0.7237), ("HOME_ELO", 0.0831), ("HOME_roll_PTS", 0.0384),
+            ("rest_diff", 0.0255), ("AWAY_roll_TOV", 0.0204)]]
+        shares = dashboard.feature_importance(top5)
+        self.assertEqual([r["share"] for r in shares], [0.7237, 0.0831, 0.0384, 0.0255, 0.0204, 0.1089])
+        self.assertEqual(shares[-1]["feature"], "other")
+        self.assertAlmostEqual(sum(r["share"] for r in shares), 1.0)
+
     def test_elo_constants_match_src_elo(self):
         import elo
         self.assertEqual(self.model()["elo"], {
@@ -1040,6 +1056,7 @@ class QueryBudgetTests(unittest.TestCase):
         env = {**(V2_ON if v2 else V2_OFF), "ALLOW_RUN_WORKFLOW": "false"}
         with patch.object(dashboard, "select_rows", counting), \
                 patch.object(dashboard, "today_et", lambda: TODAY), \
+                patch.object(dashboard, "call_rpc", no_rpc), \
                 patch.dict(os.environ, env):
             response = dashboard.app.test_client().get(url)
         self.assertEqual(response.status_code, 200, url)

@@ -127,10 +127,10 @@
 .chart[data-testid="bankroll"]{touch-action:pan-y}
 .js .chart.pre .ln{stroke-dashoffset:var(--len)}
 .js .chart.pre .ar,.js .chart.pre .pk,.js .chart.pre .lbl{opacity:0}
-.js .chart .ln{stroke-dasharray:var(--len);transition:stroke-dashoffset 1.6s cubic-bezier(.4,0,.2,1),opacity .5s}
-.js .chart .ar,.js .chart .pk,.js .chart .lbl{transition:opacity .5s 1.3s}
-.chart .ov{opacity:0;transition:opacity .5s}
-.chart[data-step="2"] .ov.dd,.chart[data-step="3"] .ov.tn,.chart[data-step="3"] .ov.pn{opacity:1}
+.js .chart .ln{stroke-dasharray:var(--len);transition:stroke-dashoffset 1s cubic-bezier(.4,0,.2,1),opacity .5s}
+.js .chart .ar,.js .chart .pk,.js .chart .lbl{transition:opacity .4s .7s}
+.chart .ov{opacity:0;visibility:hidden;transition:opacity .5s,visibility 0s .5s}
+.chart[data-step="2"] .ov.dd,.chart[data-step="3"] .ov.tn,.chart[data-step="3"] .ov.pn{opacity:1;visibility:visible;transition:opacity .5s}
 .chart[data-step="2"] .ln{opacity:.45}
 .chart .endg{transition:opacity .3s}
 .chart[data-step="3"] .endg{display:none}
@@ -152,13 +152,13 @@
 .wl i.W{background:var(--win)}
 .wl i.L{background:transparent;color:var(--loss);box-shadow:inset 0 0 0 2px var(--loss)}
 .js .wl.pre i{transform:scale(0)}
-.js .wl i{transition:transform .3s cubic-bezier(.2,.9,.3,1.4) calc(var(--k) * 28ms)}
+.js .wl i{transition:transform .3s cubic-bezier(.2,.9,.3,1.4) calc(min(var(--k), 24) * 28ms)}
 
 /* calibration card (T17) and model facts */
 [data-testid=calib] .calib-svg{max-width:420px;margin-inline:auto}
 .calib .dot{transform-box:fill-box;transform-origin:center}
 .js .calib.pre .dot{opacity:0;transform:scale(.3)}
-.js .calib .dot{transition:opacity .4s calc(var(--k) * 90ms),transform .4s cubic-bezier(.2,.9,.3,1.4) calc(var(--k) * 90ms)}
+.js .calib .dot{transition:opacity .4s calc(min(var(--k), 6) * 60ms),transform .4s cubic-bezier(.2,.9,.3,1.4) calc(min(var(--k), 6) * 60ms)}
 .mfacts{display:grid;grid-template-columns:1fr auto;margin:0;font:400 14px/2 var(--body)}
 .mfacts dt{color:var(--ink-2)}
 .mfacts dd{margin:0;text-align:right;font:500 14px/2 var(--mono);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
@@ -228,10 +228,14 @@ html.drawer-open{overflow:hidden}
 
 /* Reserve the courts and tickets while the slate loads, so the season section doesn't paint high
    and then jump down (layout shift). tonight.js removes .loading after the first slate render. */
-#tonight.loading .courts{min-height:calc(6 * (84px + clamp(18px,2.4vw,26px)) + 64px)}
+#tonight.loading .courts{min-height:calc(6 * (84px + clamp(18px,2.4vw,26px)) + 64px);align-content:start}
 #tonight.loading [data-testid=grid]{min-height:110vh}
 @media (max-width:760px){#tonight.loading .courts{min-height:900px}}
 #tonight.loading .lede h1{min-height:calc(3 * 1.14em)}
+/* The board is one, two or three rows of cells (about 53px of padding and label plus the number). */
+#tonight.loading .lede .board{--row:calc(53.2px + clamp(20px,2.4vw,28px));visibility:hidden;min-height:calc(6px + var(--row))}
+@media (max-width:960px){#tonight.loading .lede .board{min-height:calc(8px + 2 * var(--row))}}
+@media (max-width:520px){#tonight.loading .lede .board{min-height:calc(10px + 3 * var(--row))}}
 .lede .kick{min-height:12px}
 .lede .kick .kp{white-space:nowrap}
 @media (max-width:600px){.lede .kick{min-height:24px}}

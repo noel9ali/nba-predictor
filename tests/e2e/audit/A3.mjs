@@ -64,7 +64,7 @@ for (const w of WIDTHS) {
     const el = document.querySelector('#ch3 .step[data-step="4"]');
     return el ? el.textContent : null;
   });
-  check(`${w}: Step 4 contains "gradient-boosted"`, step4Text?.toLowerCase().includes('gradient-boosted'), step4Text);
+  check(`${w}: Step 4 contains "boosted decision trees"`, step4Text?.toLowerCase().includes("boosted decision trees"), step4Text);
 
   // Check #ch5 (leaderboard/features section)
   const ch5Why = await pModel.evaluate(() => {

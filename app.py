@@ -1974,24 +1974,31 @@ def feature_importance(signal):
             signal = json.loads(signal)
         except ValueError:
             return []
-    weights = []
+    weights, all_importance = [], True
     for item in signal if isinstance(signal, list) else []:
         if not isinstance(item, dict) or not item.get("feature"):
             continue
-        value = next((safe_float(item[k]) for k in ("importance", "coefficient", "value")
-                      if k in item and safe_float(item[k]) is not None), None)
-        if value is not None:
-            weights.append((str(item["feature"]), abs(value)))
+        key = next((k for k in ("importance", "coefficient", "value")
+                    if k in item and safe_float(item[k]) is not None), None)
+        if key is not None:
+            all_importance = all_importance and key == "importance"
+            weights.append((str(item["feature"]), abs(safe_float(item[key]))))
     total = sum(w for _, w in weights)
     if not weights or total <= 0:
         return []
+    # The training run stores only its top five importances, already shares of 1. Dividing by
+    # their sum would inflate every bar and drop the rest of the inputs, so when importances add
+    # up to 1 or less they are used as they are and the remainder becomes "other".
+    already_shares = all_importance and total <= 1.0 + 1e-6
+    denom = 1.0 if already_shares else total
     weights.sort(key=lambda fw: fw[1], reverse=True)
-    top = [{"feature": f, "label": feature_label(f), "share": round(w / total, 4)}
+    top = [{"feature": f, "label": feature_label(f), "share": round(w / denom, 4)}
            for f, w in weights[:FEATURE_IMPORTANCE_TOP]]
     rest = len(weights) - len(top)
-    if rest > 0:
-        top.append({"feature": "other", "label": f"The other {rest} inputs",
-                    "share": round(max(0.0, 1 - sum(r["share"] for r in top)), 4)})
+    remainder = round(max(0.0, 1 - sum(r["share"] for r in top)), 4)
+    if rest > 0 or (already_shares and remainder >= 0.005):
+        top.append({"feature": "other", "label": f"The other {rest} inputs" if rest > 0 else "The other inputs",
+                    "share": remainder})
     return top
 
 

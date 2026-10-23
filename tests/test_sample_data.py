@@ -291,69 +291,72 @@ class SampleHardwoodModelTests(unittest.TestCase):
     def setUp(self):
         self.model = load("model")
 
-    def test_hero_numbers_are_the_production_models_gradient_boosting(self):
+    def test_hero_numbers_are_the_production_models_0_6788(self):
         m = self.model
         self.assertEqual(m["production_model"], "gradient-boosting-gridsearch")
-        self.assertEqual(m["trained_at"], "2026-10-07T05:09:34Z")
+        self.assertEqual(m["trained_at"], "2026-10-21T10:54:44Z")
         self.assertEqual(m["cutoff_date"], "2025-02-25")
-        self.assertEqual(m["test"], {"games": 1596, "accuracy": 0.6792, "brier": 0.2094,
-                                     "log_loss": 0.6075, "roc_auc": 0.7295,
-                                     "baseline_home_win_rate": 0.5501})
+        self.assertEqual(m["test"], {"games": 1597, "accuracy": 0.6788, "brier": 0.2096,
+                                     "log_loss": 0.608, "roc_auc": 0.7289,
+                                     "baseline_home_win_rate": 0.5498})
 
     def test_leaderboard_has_six_models_with_the_b1_extras(self):
         board = self.model["leaderboard"]
         self.assertEqual([r["model"] for r in board],
-                         ["gradient-boosting", "calibrated-xgboost", "current-xgboost", "lstm",
-                          "random-forest", "logistic"])
-        want = {"gradient-boosting": (0.6792, 0.2094, 0.6075, 0.7295, 0.035),
-                "calibrated-xgboost": (0.6779, 0.2099, 0.6085, 0.7250, 0.031),
-                "current-xgboost": (0.6736, 0.2100, 0.6086, 0.7244, 0.026),
-                "lstm": (0.6805, 0.2098, 0.6087, 0.7258, 0.027),
-                "random-forest": (0.6817, 0.2102, 0.6092, 0.7285, 0.042),
-                "logistic": (0.6811, 0.2091, 0.6325, 0.7293, 0.031)}
+                         ["gradient-boosting-gridsearch", "current-xgboost", "lstm-gridsearch",
+                          "random-forest-gridsearch", "calibrated-xgboost",
+                          "legacy-calibrated-logistic"])
+        want = {"gradient-boosting-gridsearch": (0.6788, 0.2096, 0.608, 0.7289, 0.034),
+                "current-xgboost": (0.6769, 0.2101, 0.609, 0.7246, 0.029),
+                "lstm-gridsearch": (0.6825, 0.2102, 0.6095, 0.7247, 0.028),
+                "random-forest-gridsearch": (0.6763, 0.2103, 0.6095, 0.7274, 0.034),
+                "calibrated-xgboost": (0.6738, 0.2106, 0.61, 0.7237, 0.027),
+                "legacy-calibrated-logistic": (0.6794, 0.2092, 0.6326, 0.7288, 0.031)}
         for row in board:
             with self.subTest(model=row["model"]):
                 got = (row["accuracy"], row["brier_score"], row["log_loss"], row["roc_auc"],
                        row["calibration_ece"])
                 self.assertEqual(got, want[row["model"]])
-                self.assertEqual(row["test_games"], 1596)
-                self.assertEqual(row["is_production"], row["model"] == "gradient-boosting")
+                self.assertEqual(row["test_games"], 1597)
+                self.assertEqual(row["is_production"], row["model"] == "gradient-boosting-gridsearch")
         # the production row's numbers are the headline test numbers
         prod = board[0]
         test = self.model["test"]
         self.assertEqual((prod["accuracy"], prod["brier_score"], prod["log_loss"], prod["roc_auc"]),
                          (test["accuracy"], test["brier"], test["log_loss"], test["roc_auc"]))
 
-        # the bump chart's expectation: production ranks 4th on accuracy, 2nd on brier, 1st on log loss, 1st on auc
+        # the bump chart's expectation: production ranks 3rd, 2nd, 1st and 1st
         def rank(key, reverse):
             return sorted(board, key=lambda r: r[key], reverse=reverse).index(prod) + 1
 
         self.assertEqual((rank("accuracy", True), rank("brier_score", False),
-                          rank("log_loss", False), rank("roc_auc", True)), (4, 2, 1, 1))
+                          rank("log_loss", False), rank("roc_auc", True)), (3, 2, 1, 1))
 
     def test_feature_importance_adds_up(self):
         fi = self.model["feature_importance"]
         self.assertEqual([r["feature"] for r in fi],
-                         ["ELO_DIFF", "HOME_ELO", "HOME_roll_PTS", "rest_diff", "AWAY_roll_TOV"])
-        # Normalized from the raw importances
+                         ["ELO_DIFF", "HOME_ELO", "HOME_roll_PTS", "rest_diff", "AWAY_roll_TOV", "other"])
+        self.assertEqual([r["share"] for r in fi], [0.7237, 0.0831, 0.0384, 0.0255, 0.0204, 0.1089])
+        self.assertEqual(fi[-1]["label"], "The other 11 inputs")
         self.assertAlmostEqual(sum(r["share"] for r in fi), 1.0, places=9)
 
     def test_training_block_adds_up(self):
         t = self.model["training"]
         self.assertEqual((t["first_game_date"], t["cutoff_date"], t["last_game_date"]),
-                         ("2019-11-22", "2025-02-25", "2026-04-12"))
-        self.assertEqual((t["games_total"], t["train_games"], t["test_games"]), (7979, 6383, 1596))
+                         ("2019-11-22", "2025-02-25", "2026-10-20"))
+        self.assertEqual((t["games_total"], t["train_games"], t["test_games"]), (7982, 6385, 1597))
         self.assertEqual(t["games_total"], t["train_games"] + t["test_games"])
-        self.assertEqual((t["home_win_rate"], t["rolling_window"]), (0.5501, 10))
+        self.assertEqual((t["home_win_rate"], t["rolling_window"]), (0.55, 10))
         seasons = t["seasons"]
         self.assertEqual([s["season"] for s in seasons],
-                         ["2019-20", "2020-21", "2021-22", "2022-23", "2023-24", "2024-25", "2025-26"])
+                         ["2019-20", "2020-21", "2021-22", "2022-23", "2023-24", "2024-25", "2025-26",
+                          "2026-27"])
         self.assertEqual(sum(s["games"] for s in seasons), t["games_total"])
         self.assertEqual(sum(s["train"] for s in seasons), t["train_games"])
         self.assertEqual(sum(s["test"] for s in seasons), t["test_games"])
         for s in seasons:
             self.assertEqual(s["games"], s["train"] + s["test"], s["season"])
-        self.assertEqual((seasons[5]["train"], seasons[5]["test"]), (854, 371))
+        self.assertEqual((seasons[5]["train"], seasons[5]["test"]), (856, 369))
         self.assertEqual((seasons[0]["games"], seasons[6]["games"]), (759, 1225))
 
     def test_elo_constants(self):
