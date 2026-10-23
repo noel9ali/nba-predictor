@@ -485,7 +485,9 @@ class DbViewTests(ApiTestCase):
         self.assertEqual(game["home"]["record"], "8-4")
         self.assertEqual(game["home"]["l10"], "LWLWWLWWLW")  # oldest first, as before
         self.assertEqual(calls, [("team_form", {"p_season": "2025-26", "p_before": "2026-04-10"})])
-        self.assertNotIn("games", [table for table, _ in self.db.calls])
+        # No season of games is paged for records; the only games read is the day's own final scores.
+        self.assertEqual([f for table, f in self.db.calls if table == "games"],
+                         [[("GAME_DATE", "eq", "2026-04-10")]])
 
     def test_slate_falls_back_to_reading_games_when_the_function_is_missing(self):
         self.patch_rpc(error=DatabaseError("Calling team_form failed (PGRST202)"))
@@ -592,6 +594,124 @@ class SchedulePendingTests(ApiTestCase):
              "tip_time_utc": None}]
         ids = [g["game_id"] for g in self.get("/api/slate?date=2026-04-10").get_json()["games"]]
         self.assertNotIn("0022600001", ids)
+
+
+def final_game_rows(game_id, day, home, away, home_pts, away_pts):
+    """The two per-team rows the games table holds for one finished game."""
+    return [
+        {"GAME_ID": game_id, "GAME_DATE": day, "TEAM_ABBREVIATION": home, "MATCHUP": f"{home} vs. {away}",
+         "PTS": home_pts, "WL": "W" if home_pts > away_pts else "L", "SEASON": "2026-27"},
+        {"GAME_ID": game_id, "GAME_DATE": day, "TEAM_ABBREVIATION": away, "MATCHUP": f"{away} @ {home}",
+         "PTS": away_pts, "WL": "W" if away_pts > home_pts else "L", "SEASON": "2026-27"},
+    ]
+
+
+class GradedTemporaryPickTests(ApiTestCase):
+    """Days whose games only ever got temporary picks: graded for reference, never bet, never counted."""
+    env = V2_ON
+    DAY = "2026-09-22"
+
+    def setUp(self):
+        super().setUp()
+        # Hermetic: never reach a live team_form RPC (a .env found above the checkout would let it).
+        patcher = patch.object(dashboard, "call_rpc", side_effect=DatabaseError("no network in tests"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def tables(self):
+        tables = v2_tables()
+        tables["games"] += (
+            final_game_rows("0022600006", self.DAY, "PHI", "CLE", 114, 106)
+            + final_game_rows("0022600007", self.DAY, "OKC", "DEN", 96, 84)
+            + final_game_rows("0022600008", self.DAY, "NYK", "MIA", 101, 99))  # played, no pick of any kind
+        tables["provisional_predictions"] = [
+            {"game_id": "0022600006", "game_date": self.DAY, "home_team": "PHI", "away_team": "CLE",
+             "home_win_prob": 0.4, "away_win_prob": 0.6, "predicted_winner": "CLE", "odds": 128,
+             "bookmaker": "BetRivers", "implied_prob": 0.4386, "edge": 0.16},
+            {"game_id": "0022600007", "game_date": self.DAY, "home_team": "OKC", "away_team": "DEN",
+             "home_win_prob": 0.8, "away_win_prob": 0.2, "predicted_winner": "OKC", "odds": -320,
+             "bookmaker": "FanDuel", "implied_prob": 0.76, "edge": 0.04}]
+        return tables
+
+    def slate(self, day=None):
+        return self.get(f"/api/slate?date={day or self.DAY}").get_json()
+
+    def test_a_past_provisional_only_day_is_listed_and_graded(self):
+        body = self.slate()
+        self.assert_shape(body, SLATE)
+        by_id = {g["game_id"]: g for g in body["games"]}
+        self.assertEqual(sorted(by_id), ["0022600006", "0022600007", "0022600008"])
+        wrong, right, score_only = by_id["0022600006"], by_id["0022600007"], by_id["0022600008"]
+        for game in (wrong, right):
+            self.assertTrue(game["provisional"])
+            self.assertIsNone(game["bet"])
+            self.assertEqual(game["status"], "final")
+        self.assertEqual((wrong["pick"], wrong["odds"], wrong["bookmaker"], wrong["result"]),
+                         ("CLE", 128, "BetRivers", "miss"))
+        self.assertEqual((wrong["home"]["score"], wrong["away"]["score"]), (114, 106))
+        self.assertAlmostEqual(wrong["pick_prob"], 0.6)
+        self.assertEqual((right["pick"], right["odds"], right["bookmaker"], right["result"]),
+                         ("OKC", -320, "FanDuel", "hit"))
+        self.assertNotIn("provisional", score_only)
+        self.assertIsNone(score_only["pick"])
+        self.assertIsNone(score_only["result"])
+        self.assertEqual((score_only["home"]["score"], score_only["away"]["score"]), (101, 99))
+        self.assertEqual(body["phase"], "all_final")
+        self.assertFalse(body["offseason"])
+        self.assertEqual(body["summary"]["games"], 3)
+        self.assertEqual((body["summary"]["bets_placed"], body["summary"]["staked"],
+                          body["summary"]["settled_pl"]), (0, 0.0, 0.0))
+        self.assertIsNone(body["recap"])
+
+    def test_a_provisional_pick_on_an_unfinished_past_game_is_not_listed(self):
+        self.db.tables["provisional_predictions"].append(
+            {"game_id": "0022600009", "game_date": self.DAY, "home_team": "LAL", "away_team": "GSW",
+             "home_win_prob": 0.5, "away_win_prob": 0.5, "predicted_winner": "LAL", "odds": None,
+             "bookmaker": None, "implied_prob": None, "edge": None})
+        ids = [g["game_id"] for g in self.slate()["games"]]
+        self.assertNotIn("0022600009", ids)
+
+    def test_the_day_picker_and_last_slate_date_include_the_day(self):
+        days = {d["date"]: d for d in self.get("/api/days?n=31").get_json()["days"]}
+        self.assertEqual(days[self.DAY], {"date": self.DAY, "games": 2, "picks": "0-0", "bets": "0-0",
+                                          "net_pl": 0.0, "pending": 0})
+        self.assert_shape(self.get("/api/days?n=31").get_json(), DAYS)
+        self.assertEqual(self.slate("2026-09-23")["last_slate_date"], self.DAY)
+
+    def test_temporary_picks_never_reach_the_record_or_the_bankroll(self):
+        urls = ["/api/ytd-summary?season=2026-27", "/api/bankroll-series?season=2026-27",
+                "/api/performance?season=2026-27", "/api/ytd-summary", "/api/performance?season=all"]
+        with_picks = [self.get(u).get_json() for u in urls]
+        self.db.tables["provisional_predictions"] = []
+        without = [self.get(u).get_json() for u in urls]
+        for a, b, url in zip(with_picks, without, urls):
+            a.pop("generated_at", None), b.pop("generated_at", None)
+            self.assertEqual(a, b, url)
+
+    def test_a_mixed_day_keeps_real_predictions_and_adds_graded_temporary_picks(self):
+        day = "2026-04-10"  # three real predictions already
+        self.db.tables["games"] += final_game_rows("0022601000", day, "HOU", "UTA", 90, 100)
+        self.db.tables["provisional_predictions"] = [
+            {"game_id": "0022601000", "game_date": day, "home_team": "HOU", "away_team": "UTA",
+             "home_win_prob": 0.7, "away_win_prob": 0.3, "predicted_winner": "HOU", "odds": -200,
+             "bookmaker": "FanDuel", "implied_prob": 0.66, "edge": 0.04},
+            # has a real prediction too: the real one wins and the temporary row is ignored
+            {"game_id": "0022501100", "game_date": day, "home_team": "SAC", "away_team": "GSW",
+             "home_win_prob": 0.1, "away_win_prob": 0.9, "predicted_winner": "GSW", "odds": 100,
+             "bookmaker": "X", "implied_prob": 0.5, "edge": 0.4}]
+        body = self.slate(day)
+        by_id = {g["game_id"]: g for g in body["games"]}
+        self.assertEqual(len(by_id), 4)
+        temp = by_id["0022601000"]
+        self.assertTrue(temp["provisional"])
+        self.assertEqual((temp["result"], temp["bet"]), ("miss", None))
+        real = by_id["0022501100"]
+        self.assertNotIn("provisional", real)
+        self.assertEqual((real["pick"], real["bet"]["amount"], real["result"]), ("SAC", 55.58, "hit"))
+        self.assertEqual(body["summary"]["bets_placed"], 2)
+        self.assertEqual(body["summary"]["settled_pl"], 27.93)
+        self.assertEqual(body["recap"]["picks"], "2-1")   # the recap counts predictions only
+        self.assertEqual(body["recap"]["bets"], "1-1")
 
 
 class PostMigrationTests(ApiTestCase):
@@ -877,11 +997,12 @@ class QueryBudgetTests(unittest.TestCase):
                     "/api/model": 2, "/api/workflow-status": 0}
     # Post-M adds book_odds and games (slate, game) and bankroll (recap, performance); the
     # game drawer's 7 is the accepted API-F20 shape: constant, bounded and CDN-cached.
+    # Temporary picks add provisional_predictions (slate, days) and the day's final scores from games (slate).
     # Player data adds (constant, bounded) reads: slate +3 (injury_snapshots, player_minutes_projection,
     # prediction_availability_inputs; +player_ratings when a report exists), game +4 (those three and
     # team_availability_features; +ratings and scenarios/factors when they apply), performance +1.
-    BUDGET_POST_M = {"/api/slate?date=2026-04-10": 8, "/api/game/0022501300": 11,
-                     "/api/days": 2, "/api/performance": 4, "/api/predictions": 2,
+    BUDGET_POST_M = {"/api/slate?date=2026-04-10": 10, "/api/game/0022501300": 11,
+                     "/api/days": 3, "/api/performance": 4, "/api/predictions": 2,
                      "/api/model": 3, "/api/workflow-status": 1}
 
     def count(self, url, n_games, v2):

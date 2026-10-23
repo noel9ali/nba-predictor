@@ -197,6 +197,41 @@ def _prediction_dates():
     return dates
 
 
+def _provisional_rows():
+    """Every temporary pick, one read per request (the table holds a dozen rows a night). Read quietly: before
+    its migration it is simply empty, and it never marks a payload migration_pending."""
+    rows = g.get("_provisional_rows")
+    if rows is None:
+        rows = []
+        if schema_v2_enabled():
+            try:
+                rows = [r for r in records(select_rows(
+                    "provisional_predictions",
+                    columns="game_id,game_date,home_team,away_team,home_win_prob,away_win_prob,predicted_winner,"
+                            "odds,bookmaker,implied_prob,edge",
+                    filters=[("game_date", "not_is", "null")], order_by=["game_date", "game_id"]))
+                    if not is_hidden_day(str(r["game_date"])[:10])]
+            except (MissingTableError, MissingColumnError):
+                pass
+        g._provisional_rows = rows
+    return rows
+
+
+def _provisional_days():
+    """{game_date: game count} for days with temporary picks. Those picks are never bets, so they only put a day
+    on the picker and the slate; no record or bankroll reads this."""
+    days = {}
+    for r in _provisional_rows():
+        day = str(r["game_date"])[:10]
+        days[day] = days.get(day, 0) + 1
+    return days
+
+
+def _slate_dates():
+    """Every date that has something to show: predictions or temporary picks."""
+    return sorted(set(_prediction_dates()) | set(_provisional_days()), reverse=True)
+
+
 def current_season():
     return season_for(date.today())
 
@@ -1113,7 +1148,7 @@ def tip_order_key(game):
 
 
 def latest_prediction_date_before(day):
-    earlier = [d for d in _prediction_dates() if d < day]
+    earlier = [d for d in _slate_dates() if d < day]
     return max(earlier) if earlier else None
 
 
@@ -1148,32 +1183,65 @@ def add_availability_summaries(games):
         x["availability_summary"] = api_availability.summary(a, status_changed=flag) if has_data else None
 
 
-def unpredicted_today(rows, day):
-    """Today's games with no predictions row yet, shaped as predictions rows so build_game lists them. The games
+def final_scores_for(day):
+    """{game_id: (home, away, home_pts, away_pts, home_won)} for the day's finished games, from the per-team rows
+    in games. A game is final only once both of its team rows carry a W/L."""
+    teams = {}
+    if not schema_v2_enabled():
+        return {}
+    try:
+        rows = records(select_rows("games", columns="GAME_ID,TEAM_ABBREVIATION,MATCHUP,PTS,WL",
+                                   filters=[("GAME_DATE", "eq", day)], order_by="GAME_ID"))
+    except (MissingTableError, MissingColumnError):
+        return {}  # scores are a bonus here; a slate without them is still right
+    for r in rows:
+        teams.setdefault(normalize_game_id(r.get("GAME_ID")), []).append(r)
+    out = {}
+    for game_id, pair in teams.items():
+        home = next((r for r in pair if "vs." in str(r.get("MATCHUP"))), None)
+        away = next((r for r in pair if "@" in str(r.get("MATCHUP"))), None)
+        if not home or not away or home.get("WL") not in ("W", "L") or away.get("WL") not in ("W", "L"):
+            continue
+        out[game_id] = (home.get("TEAM_ABBREVIATION"), away.get("TEAM_ABBREVIATION"),
+                        as_int(home.get("PTS")), as_int(away.get("PTS")), home.get("WL") == "W")
+    return out
+
+
+def unpredicted_games(rows, day, is_today):
+    """Games on the day with no predictions row, shaped as predictions rows so build_game lists them. Today's
     come from schedule (written by the predict stage); a game the 6 AM run made a temporary pick for also
     carries that pick and its price, flagged provisional. Picks post about an hour before each tip, so until then
-    the slate would otherwise be empty."""
+    the slate would otherwise be empty. A game that has finished (games table) carries its score, and a temporary
+    pick on it is graded (correct) but never bet: bet_amount stays absent, so no bankroll, P/L or record reads it.
+    On a past day only finished games are listed (a played game with no pick shows its score alone)."""
     have = {normalize_game_id(r.get("game_id")) for r in rows}
     games = {}
-    for s in records(read_v2_rows(
-            "schedule", columns="game_id,home_team,away_team,tip_time_utc",
-            filters=[("game_date", "eq", day)], order_by="game_id")):
-        games[normalize_game_id(s["game_id"])] = {
-            "game_id": normalize_game_id(s["game_id"]), "game_date": day, "home_team": s["home_team"],
-            "away_team": s["away_team"], "tip_time_utc": s.get("tip_time_utc"), "status": "scheduled"}
-    for p in records(read_v2_rows(
-            "provisional_predictions",
-            columns="game_id,home_team,away_team,home_win_prob,away_win_prob,predicted_winner,odds,bookmaker,"
-                    "implied_prob,edge",
-            filters=[("game_date", "eq", day)], order_by="game_id")):
+    if is_today:
+        for s in records(read_v2_rows(
+                "schedule", columns="game_id,home_team,away_team,tip_time_utc",
+                filters=[("game_date", "eq", day)], order_by="game_id")):
+            games[normalize_game_id(s["game_id"])] = {
+                "game_id": normalize_game_id(s["game_id"]), "game_date": day, "home_team": s["home_team"],
+                "away_team": s["away_team"], "tip_time_utc": s.get("tip_time_utc"), "status": "scheduled"}
+    for p in (r for r in _provisional_rows() if str(r["game_date"])[:10] == day):
         game_id = normalize_game_id(p["game_id"])
         base = games.setdefault(game_id, {
             "game_id": game_id, "game_date": day, "home_team": p["home_team"], "away_team": p["away_team"],
             "tip_time_utc": None, "status": "scheduled"})
         base.update({k: p.get(k) for k in ("home_win_prob", "away_win_prob", "predicted_winner", "odds",
                                            "bookmaker", "implied_prob", "edge")}, provisional=True)
+    for game_id, (home, away, home_pts, away_pts, home_won) in final_scores_for(day).items():
+        if game_id in have or (is_today and game_id not in games):
+            continue  # today's list comes from schedule; a stray games row is not a game tonight
+        base = games.setdefault(game_id, {
+            "game_id": game_id, "game_date": day, "home_team": home, "away_team": away,
+            "tip_time_utc": None, "status": "scheduled"})
+        base.update(status="final", home_score=home_pts, away_score=away_pts)
+        if base.get("provisional") and base.get("predicted_winner") in (home, away):
+            base["correct"] = int(base["predicted_winner"] == (home if home_won else away))
     return [g for gid, g in games.items()
-            if gid not in have and g["home_team"] in TEAMS and g["away_team"] in TEAMS]
+            if gid not in have and g["home_team"] in TEAMS and g["away_team"] in TEAMS
+            and (is_today or g["status"] == "final")]
 
 
 @app.route("/api/slate")
@@ -1189,7 +1257,8 @@ def api_slate():
         read_predictions(filters=[("game_date", "eq", day)], order_by="game_id"))
     latest_date = latest_prediction_date_before(day)
     season = season_for(day)
-    unpredicted = [] if is_hidden_day(day) or day != today.isoformat() else unpredicted_today(rows, day)
+    unpredicted = [] if is_hidden_day(day) or day > today.isoformat() else unpredicted_games(
+        rows, day, day == today.isoformat())
     grids = book_grids_for(r["game_id"] for r in rows + unpredicted) if rows or unpredicted else {}
     forms = team_forms_for(
         [t for r in rows + unpredicted for t in (r.get("home_team"), r.get("away_team"))], season, day
@@ -1198,7 +1267,7 @@ def api_slate():
     add_availability_summaries(games)
 
     phase = slate_phase(games, day, today, latest_date)
-    if unpredicted and not rows:
+    if unpredicted and not rows and not any(x["status"] == "final" for x in games):
         phase = "before_predictions"  # every game is a "pick pending" placeholder
     is_past = day < today.isoformat()
     settled_bets = [r for r in rows if is_settled(r) and bet_amount(r) > 0]
@@ -1212,7 +1281,7 @@ def api_slate():
         "phase": phase,
         "offseason": phase == "no_games" and (
             days_since_last > 30 if days_since_last is not None
-            else not any(d > day for d in _prediction_dates())
+            else not any(d > day for d in _slate_dates())
         ),
         "last_slate_date": latest_date,
         "summary": {
@@ -1435,7 +1504,7 @@ def nightly_totals(dates):
         return None
     try:
         # select_rows, not read_rows: a missing view must raise so the caller can fall back.
-        rows = records(select_rows("v_nightly", filters=[("game_date", "in", dates)]))
+        rows = records(select_rows("v_nightly", filters=[("game_date", "in", dates)], order_by="game_date"))
     except DatabaseError as exc:
         app.logger.warning("v_nightly unavailable (%s); reading predictions directly", type(exc).__name__)
         return None
@@ -1453,7 +1522,7 @@ def api_days():
         return bad_request("n must be a whole number from 1 to 31")
     n = int(raw_n)
 
-    all_dates = sorted(set(d for d in _prediction_dates() if d <= end.isoformat()), reverse=True)
+    all_dates = [d for d in _slate_dates() if d <= end.isoformat()]
     dates = all_dates[:n]
     days = []
     nightly = nightly_totals(dates) if dates else None
@@ -1492,6 +1561,12 @@ def api_days():
                                     for r in bets if is_settled(r))),
                 "pending": sum(1 for r in night if not is_settled(r)),
             })
+    pred_days = set(_prediction_dates())
+    today_iso = today_et().isoformat()
+    for entry in days:
+        if entry["date"] not in pred_days:  # temporary picks only: nothing bet, nothing counted
+            count = _provisional_days().get(entry["date"], 0)
+            entry.update(games=count, pending=count if entry["date"] >= today_iso else 0)
     return api_response({"days": days, "has_earlier": len(all_dates) > n})
 
 

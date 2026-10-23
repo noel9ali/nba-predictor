@@ -82,7 +82,7 @@ function sentence(s) {
       return 'Night over. Bets went ' + n(rec) + ' for ' + n(fmt.money(money, true), signCls(money)) +
         (off ? '.' : ', unofficial until the 6 AM settle.');
     }
-    return 'Night over. No bets tonight. Picks went ' + n(s.pickW + '–' + s.pickL) + '.';
+    return 'Night over. No bets tonight.' + (s.pickW + s.pickL > 0 ? ' Picks went ' + n(s.pickW + '–' + s.pickL) + '.' : '');
   }
   if (s.bets === 0) return 'The model found no bets in ' + n(String(s.games)) + ' ' + (s.games === 1 ? 'game' : 'games') + ' tonight.';
   const found = 'The model found ' + n(String(s.bets)) + ' ' + (s.bets === 1 ? 'bet' : 'bets') + ' in ' + n(String(s.games)) + ' ' + (s.games === 1 ? 'game' : 'games') + '.';
@@ -154,6 +154,7 @@ function stateHTML(g) {
   if (g.state === 'final') {
     const r = result(g), tail = '<small>' + esc(g.clock || 'Final') + (g.official ? '' : ' · unofficial') + '</small>';
     if (pending || r == null) return '<span>Final</span>' + tail;
+    if (g.provisional) return '<span>' + (r === 'hit' ? '\u2713' : '\u2717') + ' Temp pick</span><small>Not bet \u00b7 ' + esc(g.clock || 'Final') + '</small>';
     if (g.bet) return '<span class="' + (r === 'hit' ? 'pos' : 'neg') + '">' + (r === 'hit' ? 'Hit ' : 'Miss ') + esc(fmt.money(pl(g), true)) + '</span>' + tail;
     return '<span>' + (r === 'hit' ? 'Pick right' : 'Pick wrong') + '</span>' + tail;
   }
@@ -168,7 +169,7 @@ function rowLabel(g) {
   const ps = pickSide(g), A = g.away.tricode, H = g.home.tricode;
   if (!ps) return A + ' at ' + H + '. Pick pending. Open details';
   if (g.provisional) return A + ' at ' + H + '. Temporary pick ' + g.pick + ', ' + fmt.pct(g.pick_prob) +
-    (g.odds != null ? ', ' + fmt.odds(g.odds) : '') + '. Not final, no bet yet. Open details';
+    (g.odds != null ? ', ' + fmt.odds(g.odds) : '') + (g.state === 'final' ? '. ' + (result(g) === 'hit' ? 'Right' : 'Wrong') + ', not bet. Open details' : '. Not final, no bet yet. Open details');
   const m = g.implied_prob;
   return A + ' at ' + H + '. Model ' + fmt.pct(g.pick_prob) + ' for ' + g.pick +
     (m != null ? ', market ' + fmt.pct(m) + ', edge ' + fmt.pts(g.edge) + ' points' : '') + '. ' +
@@ -186,7 +187,7 @@ function labHTML(g) {
   if (g.provisional) {
     return '<span class="who">Temporary pick</span><b>' + esc(g.pick) + ' <em class="' + (g.edge > 0 ? 'pe' : 'ne') + '">' + esc(em) + '</em></b>' +
       '<span class="sub">' + (ps === 'away' ? 'at ' : 'vs ') + esc(opp) + ' · ' +
-      (g.odds != null ? esc(fmt.odds(g.odds)) + (g.bookmaker ? ' ' + esc(g.bookmaker) : '') : 'no odds yet') + ' · not final</span>';
+      (g.odds != null ? esc(fmt.odds(g.odds)) + (g.bookmaker ? ' ' + esc(g.bookmaker) : '') : 'no odds yet') + (g.state === 'final' ? ' · not bet' : ' · not final') + '</span>';
   }
   return '<span class="who">' + (g.bet ? 'Bet on' : 'Pick · no bet') + '</span>' +
     '<b>' + esc(g.pick) + ' <em class="' + (g.edge > 0 ? 'pe' : 'ne') + '">' + esc(em) + '</em></b>' +

@@ -114,7 +114,7 @@ export function summarize(games) {
     if (g.state === 'scheduled') s.upcoming++; else if (g.state === 'live') s.live++;
     else if (g.state === 'final') s.final++; else s.postponed++;
     const r = result(g);
-    if (g.state === 'final') { if (r === 'hit') s.pickW++; else if (r === 'miss') s.pickL++; }
+    if (g.state === 'final' && !g.provisional) { if (r === 'hit') s.pickW++; else if (r === 'miss') s.pickL++; }  // a temporary pick is graded, never counted
     if (hasBet(g) && g.state !== 'postponed' && g.state !== 'void') {
       s.bets++; s.staked += g.bet.amount;
       if (g.state === 'final') { s.settled += pl(g) || 0; if (r === 'hit') s.betW++; else if (r === 'miss') s.betL++; }
