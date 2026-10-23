@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { fmt, pct1, wl, seasonOf } from '../../public/static/js/format.js';
+import { fmt, pct1, wl, seasonOf, slateDateET } from '../../public/static/js/format.js';
 import { clampCenter, labelWidth, fitAnchor, nudgeClear } from '../../public/static/js/labels.js';
 import { normalize, applyLive, summarize, nextUpOf, visibleOf, countsOf, pl, result, pickMargin, marginLabel, liveLine } from '../../public/static/js/state.js';
 import { courtGeometry } from '../../public/static/js/court.js';
@@ -167,4 +167,9 @@ test('nextUpOf respects tip time', () => {
   ];
   const nuOnlyNoTip = nextUpOf(onlyNoTip, T);
   assert.equal(nuOnlyNoTip.game_id, 'x', 'a scheduled bet with no tip time is a valid next-up candidate');
+});
+
+test('slateDateET stays on the previous night until 6 AM ET', () => {
+  assert.equal(slateDateET(new Date('2026-10-23T07:00:00Z')), '2026-10-22'); // 03:00 EDT
+  assert.equal(slateDateET(new Date('2026-10-23T11:00:00Z')), '2026-10-23'); // 07:00 EDT
 });

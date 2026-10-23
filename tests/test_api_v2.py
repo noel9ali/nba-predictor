@@ -149,7 +149,7 @@ class ApiTestCase(unittest.TestCase):
         self.client = dashboard.app.test_client()
         self.db = FakeDB(self.tables())
         for target, value in (("select_rows", self.db), ("today_et", lambda: TODAY),
-                              ("now_utc", lambda: NOW), ("call_rpc", no_rpc)):
+                              ("calendar_today_et", lambda: TODAY), ("now_utc", lambda: NOW), ("call_rpc", no_rpc)):
             patcher = patch.object(dashboard, target, value)
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -1353,6 +1353,36 @@ class LiveScoresSlateFallbackPreMigrationTests(ApiTestCase):
         self.assertTrue(body["games"])
         for g in body["games"]:
             self.assertEqual((g["status"], g["home_score"]), ("final", None))
+
+
+class SlateNightTests(unittest.TestCase):
+    """today_et() is the night: it stays on the previous date until the 6 AM ET run."""
+
+    def at(self, utc_iso):
+        moment = datetime.fromisoformat(utc_iso)
+
+        class Frozen(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return moment if tz is None else moment.astimezone(tz)
+
+        return patch.object(dashboard, "datetime", Frozen)
+
+    def test_before_the_morning_run_is_still_last_night(self):
+        with self.at("2026-10-23T07:00:00+00:00"):  # 03:00 EDT
+            self.assertEqual(dashboard.today_et(), date(2026, 10, 22))
+            self.assertEqual(dashboard.calendar_today_et(), date(2026, 10, 23))
+
+    def test_after_the_morning_run_is_today(self):
+        with self.at("2026-10-23T11:00:00+00:00"):  # 07:00 EDT
+            self.assertEqual(dashboard.today_et(), date(2026, 10, 23))
+            self.assertEqual(dashboard.calendar_today_et(), date(2026, 10, 23))
+
+    def test_boundary_is_six_am_eastern(self):
+        with self.at("2026-10-23T09:59:00+00:00"):  # 05:59 EDT
+            self.assertEqual(dashboard.today_et(), date(2026, 10, 22))
+        with self.at("2026-10-23T10:00:00+00:00"):  # 06:00 EDT
+            self.assertEqual(dashboard.today_et(), date(2026, 10, 23))
 
 
 if __name__ == "__main__":

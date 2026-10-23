@@ -848,14 +848,25 @@ def bad_request(detail):
     return error_response(400, "bad_request", detail=detail)
 
 
-def today_et():
-    """Today's date on the US East Coast, where the NBA schedules its nights."""
+def calendar_today_et():
+    """Today's calendar date on the US East Coast, where the NBA schedules its nights."""
     try:
         from zoneinfo import ZoneInfo
 
         return datetime.now(ZoneInfo(EASTERN)).date()
     except Exception:  # no tz database: fall back to a fixed UTC-5 offset
         return (datetime.now(timezone.utc) - timedelta(hours=5)).date()
+
+
+def today_et():
+    """The night the site treats as today: it stays on the previous night until the 6 AM ET morning run."""
+    now = datetime.now(timezone.utc) - timedelta(hours=MORNING_RUN_HOUR_ET)
+    try:
+        from zoneinfo import ZoneInfo
+
+        return now.astimezone(ZoneInfo(EASTERN)).date()
+    except Exception:  # no tz database: fall back to a fixed UTC-5 offset
+        return (now - timedelta(hours=5)).date()
 
 
 def parse_iso_date(value):
@@ -2159,7 +2170,7 @@ def api_workflow_status():
                 "predict_ok,sms_sent,notes",
         order_by="started_at", descending=True, limit=30,
     ))
-    now, today = now_utc(), today_et()
+    now, today = now_utc(), calendar_today_et()
     latest = {kind: None for kind in WORKFLOW_KINDS}
     for row in rows:
         kind = row.get("kind") if row.get("kind") in WORKFLOW_KINDS else "manual"
