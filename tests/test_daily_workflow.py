@@ -388,6 +388,8 @@ class WorkflowNotificationTests(unittest.TestCase):
                     {"home_team": "DEN", "away_team": "LAL", "predicted_winner": "LAL", "actual_winner": "LAL",
                      "correct": 1, "bet_amount": 0, "odds": None, "profit_loss": None}]), \
                 patch.object(daily_workflow, "get_overall_stats", return_value={}), \
+                patch.object(daily_workflow, "get_missed_games", return_value=[]), \
+                patch.object(daily_workflow, "morning_is_late", return_value=False), \
                 patch.object(daily_workflow, "get_todays_temporary_picks", return_value=[]), \
                 patch.object(daily_workflow, "_load_sent", return_value={}), \
                 patch.object(daily_workflow, "_save_sent"), \

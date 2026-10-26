@@ -1,6 +1,7 @@
 import pandas as pd
 from console import force_utf8_stdio
 from database import select_rows, upsert_rows
+from features import completed_games, home_flags
 
 # --- Config ---
 STARTING_ELO = 1500
@@ -44,14 +45,15 @@ def load_games():
 # compute_elo() loops through all games updating elo ratings
 def compute_elo():
     print("Loading games...")
-    df = load_games()
+    df = completed_games(load_games())
+    is_home = home_flags(df) == 1
 
     # pre-build away team lookup to avoid slow per-row filtering
-    away_df = df[df['MATCHUP'].str.contains('@')].drop_duplicates(subset='GAME_ID').set_index('GAME_ID')
+    away_df = df[~is_home].drop_duplicates(subset='GAME_ID').set_index('GAME_ID')
     away_lookup = away_df[['TEAM_ID', 'TEAM_ABBREVIATION']].to_dict('index')
 
     # get home games only sorted by date
-    home_games = df[df['MATCHUP'].str.contains('vs.')].copy()
+    home_games = df[is_home].copy()
 
     # initialize
     ratings = {}
@@ -142,7 +144,8 @@ def get_current_ratings(today=None):
         columns="GAME_ID,TEAM_ID,MATCHUP,WL",
         order_by=["GAME_ID", "TEAM_ID"],
     )
-    home_games = games[games["MATCHUP"].str.contains("vs.", na=False)]
+    games = completed_games(games)
+    home_games = games[home_flags(games) == 1]
     outcomes = home_games.set_index("GAME_ID")["WL"].to_dict()
 
     ratings = {}
@@ -151,10 +154,12 @@ def get_current_ratings(today=None):
         home_id = game["HOME_TEAM_ID"]
         away_id = game["AWAY_TEAM_ID"]
         game_id = game["GAME_ID"]
+        if game_id not in outcomes:
+            continue  # stale row for a game that isn't finished (or was never finished): no result to apply
         home_elo, away_elo = update_elo(
             game["HOME_ELO"],
             game["AWAY_ELO"],
-            outcomes.get(game_id) == "W",
+            outcomes[game_id] == "W",
         )
         ratings.setdefault(home_id, home_elo)
         ratings.setdefault(away_id, away_elo)
@@ -177,7 +182,13 @@ def get_last_elo_date():
 if __name__ == '__main__':
     force_utf8_stdio()
     final_ratings = compute_elo()
+    try:       # names are only for the printout; never let them fail the Elo step
+        abbrs = select_rows("games", columns="TEAM_ID,TEAM_ABBREVIATION",
+                            order_by=["GAME_ID", "TEAM_ID"], descending=True, limit=200).drop_duplicates("TEAM_ID")
+        abbr_for = dict(zip(abbrs["TEAM_ID"], abbrs["TEAM_ABBREVIATION"]))
+    except Exception:
+        abbr_for = {}
     print("\nCurrent team ratings:")
     sorted_ratings = sorted(final_ratings.items(), key=lambda x: x[1], reverse=True)
     for team_id, rating in sorted_ratings:
-        print(f"  {team_id}: {rating:.1f}")
+        print(f"  {abbr_for.get(team_id, team_id)}: {rating:.1f}")

@@ -112,7 +112,8 @@ class ArchiveStorageTests(ArchiveBase):
 
 
 class GetTonightsOddsArchiveTests(ArchiveBase):
-    def test_pricing_call_archives_all_books_and_returns_the_same_dict_as_before(self):
+    @patch.object(odds, "_has_started", return_value=False)
+    def test_pricing_call_archives_all_books_and_returns_the_same_dict_as_before(self, _not_started):
         payload = [_event()]
         with patch.object(odds.requests, "get", return_value=FakeResponse(payload)), \
              patch("market_odds.write_moneyline_rows"):
@@ -130,7 +131,8 @@ class GetTonightsOddsArchiveTests(ArchiveBase):
         self.assertEqual(self.rows("select count(distinct captured_at) from odds_snapshots"), [(2,)])
         self.assertEqual(self.rows("select purpose from odds_calls order by captured_at"), [("pricing",), ("closing",)])
 
-    def test_archive_failure_is_loud_but_does_not_stop_the_odds_call(self):
+    @patch.object(odds, "_has_started", return_value=False)
+    def test_archive_failure_is_loud_but_does_not_stop_the_odds_call(self, _not_started):
         buf = io.StringIO()
         with patch.object(odds.requests, "get", return_value=FakeResponse([_event()])), \
              patch("market_odds.write_moneyline_rows"), \

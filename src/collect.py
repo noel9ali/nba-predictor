@@ -55,7 +55,9 @@ def fetch_season(season, retries=3):
 
 def save_to_db(df, db_path=None):
     del db_path
-    df = df.copy()
+    # A game still in progress comes back with WL null and a partial score. Saving it would feed a fake
+    # home loss to Elo and training; the row is upserted by (GAME_ID, TEAM_ID) once the game is final.
+    df = df[df["WL"].isin(["W", "L"])].copy()
     df["GAME_ID"] = df["GAME_ID"].map(normalize_game_id)
     upsert_rows(
         "games",

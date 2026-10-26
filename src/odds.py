@@ -66,6 +66,14 @@ def _archive(events, response, stamp, purpose):
         print(f"ERROR: odds archive unavailable: {type(exc).__name__}: {exc}")
 
 
+def _has_started(commence_time):
+    """True when the event's commence_time (ISO, 'Z') is in the past. Missing or unreadable = not started."""
+    try:
+        return datetime.fromisoformat(str(commence_time).replace('Z', '+00:00')) <= datetime.now(timezone.utc)
+    except ValueError:
+        return False
+
+
 def get_tonights_odds(purpose='pricing'):
     """One Odds API credit returns the whole slate. Every response is also appended to the odds-history archive
     (src/odds_archive.py; zero extra credits, never fatal). purpose: 'pricing' | 'closing' | 'debug'."""
@@ -95,12 +103,12 @@ def get_tonights_odds(purpose='pricing'):
         home_team = game['home_team']
         away_team = game['away_team']
 
-        # grab the first bookmaker available
         if not game['bookmakers']:
             continue
 
-        bookmaker = game['bookmakers'][0]
-        markets = bookmaker['markets'][0]
+        # A game that has already tipped carries in-play prices, which must never be read as a pregame line.
+        # (Its rows still go to the history below; only the pregame dictionary leaves it out.)
+        started = _has_started(game.get('commence_time'))
 
         best_home_odds = None
         best_away_odds = None
@@ -134,7 +142,9 @@ def get_tonights_odds(purpose='pricing'):
                             best_away_odds = price
                             best_away_book = bookmaker['title']
 
-        if best_home_odds and best_away_odds:
+        # The API lists games in tip order. The same home/away pair can appear on several nights (rematches,
+        # Cup games); the next one is tonight's, so a later event must not overwrite it.
+        if best_home_odds and best_away_odds and not started and (home_team, away_team) not in odds_by_teams:
             odds_by_teams[(home_team, away_team)] = {
                 'home_odds': best_home_odds,
                 'away_odds': best_away_odds,

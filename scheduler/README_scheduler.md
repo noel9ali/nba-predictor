@@ -89,6 +89,22 @@ powershell -ExecutionPolicy Bypass -File scheduler\register_predict_task.ps1
 **Remove:** `Unregister-ScheduledTask -TaskName "NBA-Predictor-Predict" -Confirm:$false` (and change `run_daily.bat`
 back to `python daily_workflow.py`).
 
+### Power: why runs get missed on a laptop
+
+Oct 22-25, 2026: the 6 AM job and the pre-tip runs did not fire for two days. The laptop was on battery with "Allow
+wake timers" disabled on battery (`powercfg` RTCWAKE DC = 0) and it hibernated after a "Battery Budget Exceeded"
+standby. It also reports "Standby (S0 Low Power Idle) Network Disconnected": in Modern Standby there is no network,
+so even a woken task cannot reach NBA.com, the Odds API or Supabase.
+
+- Keep the laptop **plugged in on game days** (wake timers work on AC). This is the reliable fix.
+- On battery: `powercfg /setdcvalueindex SCHEME_CURRENT SUB_SLEEP RTCWAKE 1`, `... HIBERNATEIDLE 0`, then
+  `powercfg /setactive SCHEME_CURRENT`. That helps but Modern Standby can still ignore the wake.
+- To see why a run was skipped, enable the Task Scheduler history from an elevated prompt:
+  `wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true`.
+- A day with games but no picks is reported by the next morning run (ntfy "Missed N game(s)" and the email), and a
+  morning run that starts after 10:00 is flagged "morning run late" in `workflow_log.notes`.
+- If 6 AM must be dependable, move the scheduler to an always-on host (sections below).
+
 ---
 
 ## Migrating to Linux / macOS cron
