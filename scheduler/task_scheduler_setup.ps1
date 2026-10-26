@@ -21,7 +21,8 @@ if (-not (Test-Path $logsDir)) {
 }
 
 # Build the scheduled task
-$vbsPath    = Join-Path $scriptDir "run_hidden.vbs"
+$description = "NBA Predictor: 6 AM morning stage (collect, settle, features, temporary picks, results push and email)"
+$vbsPath   = Join-Path $scriptDir "run_hidden.vbs"
 $action  = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "//B //Nologo `"$vbsPath`" `"$batPath`"" -WorkingDirectory $repoRoot
 $trigger = New-ScheduledTaskTrigger -Daily -At "06:00AM"
 $settings = New-ScheduledTaskSettingsSet `
@@ -38,6 +39,10 @@ $settings = New-ScheduledTaskSettingsSet `
 $existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
 if ($existingTask) {
     Set-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings
+    # Set-ScheduledTask has no -Description parameter; it lives on the task object
+    $existingTask = Get-ScheduledTask -TaskName $taskName
+    $existingTask.Description = $description
+    Set-ScheduledTask -InputObject $existingTask | Out-Null
     Write-Host "✓ Updated existing Task Scheduler job: $taskName"
 } else {
     Register-ScheduledTask `
@@ -46,7 +51,7 @@ if ($existingTask) {
         -Trigger   $trigger `
         -Settings  $settings `
         -RunLevel  Highest `
-        -Description "NBA Predictor: runs pipeline + predictions + notifications daily at 6 AM"
+        -Description $description
     Write-Host "✓ Registered new Task Scheduler job: $taskName"
 }
 

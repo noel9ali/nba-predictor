@@ -83,8 +83,8 @@ Preview (Vercel login required): https://nba-predictor-git-hardwood-build-nubber
 ## Open items for Noel
 - NBA logo trademark sign-off before production goes public.
 - The Task Scheduler history log is on (enabled from an admin shell, Oct 25), so the next skipped run can be diagnosed from
-  Event Viewer > Task Scheduler > Operational. The registered `NBA-Predictor-Daily` task description still says "SMS"
-  (re-register to refresh it).
+  Event Viewer > Task Scheduler > Operational. The `NBA-Predictor-Daily` description was corrected in place on Oct 25 (it no
+  longer says "SMS"); `scheduler/task_scheduler_setup.ps1` now sets it on both the register and update paths.
 - If 6 AM must be dependable, move the scheduler to an always-on host.
 - Still open from the pipeline audit: no season-start Elo reversion check at predict time beyond `revert_stale_ratings`, silent
   failures in `odds.py`/`scheduler\run_daily.bat`. Supabase tables `team_availability_features`, `player_minutes_projection`,
