@@ -62,10 +62,31 @@ Preview (Vercel login required): https://nba-predictor-git-hardwood-build-nubber
   after a sonnet security review (PASS) and 291/291 offline Python tests. Production deployment
   `dpl_6fNLWt2Aguvfho4NzC9nJtfCdnB8` (from the main SHA, READY, aliased). Report: `design/hardwood/audit/FIXES-2026-10-07.md`.
 
+## Diagnostic fixes: DEPLOYED (Oct 25, 2026)
+- PR #7 merged to main as `ce2fb81`; production `dpl_2GND8VRE4TSufXHckew8nSm98VrB` (READY, aliased). 544 offline tests, security review clean.
+- Cause of Oct 22-25 missed runs: laptop on battery with wake timers off on battery (RTCWAKE DC=0), then Modern Standby has no network.
+  Wake timers on battery are now enabled locally; still plug in on game days. See `scheduler/README_scheduler.md` ("Power").
+- Predict-time rest days and rolling form now use the team's real recent games (`features.role_form`, `features.rest_days_before`,
+  rest capped at 7, same cap in training). The old per-role lookup gave ~190 rest days early season and the 69-92% "edges".
+- Live model is gradient boosting again (`NBA_PRODUCTION_MODEL` removed from the local `.env`; check the Vercel env too). The
+  selected model is refit on all completed games after holdout evaluation; each prediction stores `model_name`.
+- Finished games only in collect/Elo/features (in-progress rows were read as home losses); neutral-site games get a home row.
+- Odds: started games and reversed home/away pairs are never used; the next game of a repeated pair wins.
+- Bets: `MIN_EDGE` 3% and `NIGHTLY_STAKE_CAP` 15% of bankroll per slate date (first come, first served). Audit columns
+  (edge, implied_prob, bookmaker, tip_time_utc, bankroll_at_bet, predicted_at) are now written.
+- Settlement writes final scores; the 193 settled rows were backfilled from `games` on Oct 25.
+- Reporting: results settled late are pushed/emailed per date; the morning stage lists games that finished with no pick (ntfy +
+  email) and flags a morning run that starts after 10:00 ("morning run late" in `workflow_log.notes`).
+- Lost for good: Oct 22 and Oct 24 (no picks), most of Oct 20-21 and Oct 25.
+
 ## Open items for Noel
 - NBA logo trademark sign-off before production goes public.
-- Pipeline risks (from the pipeline-engineer audit, not built): predict-time rest-days/rolling-stat mismatch with training,
-  no season-start Elo reversion at predict time, silent failures in `collect.py`/`odds.py`/`scheduler\run_daily.bat`.
+- Task Scheduler history log is still off (needs an elevated `wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true`);
+  the registered `NBA-Predictor-Daily` task description still says "SMS" (re-register to refresh it).
+- If 6 AM must be dependable, move the scheduler to an always-on host.
+- Still open from the pipeline audit: no season-start Elo reversion check at predict time beyond `revert_stale_ratings`, silent
+  failures in `odds.py`/`scheduler\run_daily.bat`. Supabase tables `team_availability_features`, `player_minutes_projection`,
+  `injury_snapshots` 404 in production until the player-data migrations are applied.
 
 ## If Noel asks for more
 Follow-ups that aren't built: a date picker for Past nights (ruling 10), B5 factor build (optional).
