@@ -8,9 +8,54 @@ ROLLING_WINDOW = 10
 def load_games():
     return select_rows("games", order_by=["GAME_DATE", "GAME_ID", "TEAM_ID"])
 
+REST_CAP = 7  # days; a longer gap (season opener, All-Star break) is the same "fully rested" to the model
+
+def completed_games(df):
+    """Rows of finished games only. An in-progress game has WL null and a partial score; treating it as a
+    finished home loss would corrupt Elo, rolling stats and labels."""
+    return df[df['WL'].isin(['W', 'L'])].copy()
+
+def home_flags(df):
+    """1 for each game's home-team row, 0 for the away row. Neutral-site games (international / Cup games)
+    have '@' in both rows and no 'vs.' row; the matchup text doesn't say who is designated home, so the
+    lower TEAM_ID is made home, deterministically, rather than dropping the game."""
+    has_vs = df['MATCHUP'].str.contains('vs.', regex=False)
+    game_has_vs = has_vs.groupby(df['GAME_ID']).transform('any')
+    lowest = df['TEAM_ID'] == df.groupby('GAME_ID')['TEAM_ID'].transform('min')
+    return (has_vs | (~game_has_vs & lowest)).astype(int)
+
 def label_home_away(df):
-    df['HOME'] = df['MATCHUP'].apply(lambda x: 1 if 'vs.' in x else 0)
+    df['HOME'] = home_flags(df)
     return df
+
+def role_form(team_rows, prefix, window=ROLLING_WINDOW):
+    """A team's current rolling form: the mean over its last `window` completed games in the given role
+    (HOME or AWAY), newest included. Same definition as add_rolling_stats, which shifts by one game so
+    each training row only sees games before it; serving a future game sees every game so far.
+    `team_rows` is one team's rows from `games`. Returns None until the window is full."""
+    rows = completed_games(team_rows)
+    wanted = 'vs.' if prefix == 'HOME' else '@'
+    rows = rows[rows['MATCHUP'].str.contains(wanted, regex=False)].sort_values('GAME_DATE').tail(window)
+    if len(rows) < window:
+        return None
+    return {
+        f'{prefix}_roll_PTS': rows['PTS'].mean(),
+        f'{prefix}_roll_FG_PCT': rows['FG_PCT'].mean(),
+        f'{prefix}_roll_REB': rows['REB'].mean(),
+        f'{prefix}_roll_AST': rows['AST'].mean(),
+        f'{prefix}_roll_TOV': rows['TOV'].mean(),
+        f'{prefix}_roll_STOCKS': (rows['STL'] + rows['BLK']).mean(),
+    }
+
+def rest_days_before(team_rows, game_date):
+    """Days since the team's previous completed game (either role) before `game_date`, capped at REST_CAP.
+    Mirrors add_rest_days. None when the team has no earlier game."""
+    rows = completed_games(team_rows)
+    prior = pd.to_datetime(rows['GAME_DATE'])
+    prior = prior[prior < pd.Timestamp(game_date)]
+    if prior.empty:
+        return None
+    return min((pd.Timestamp(game_date) - prior.max()).days, REST_CAP)
 
 def make_game_rows(df):
     home = df[df['HOME'] == 1].copy()
@@ -70,7 +115,9 @@ def add_rest_days(df):
     # rows through the merge below -- collapse to one entry per (game, team)
     # before diffing/merging.
     team_games = team_games.drop_duplicates(subset=['GAME_ID', 'TEAM_ID']).sort_values(['TEAM_ID', 'GAME_DATE'])
-    team_games['rest_days'] = team_games.groupby('TEAM_ID')['GAME_DATE'].transform(lambda x: x.diff().dt.days)
+    team_games['rest_days'] = (
+        team_games.groupby('TEAM_ID')['GAME_DATE'].transform(lambda x: x.diff().dt.days).clip(upper=REST_CAP)
+    )
 
     for prefix in ['HOME', 'AWAY']:
         df = df.merge(
@@ -106,6 +153,8 @@ def add_elo(df):
 def run():
     print("Loading games...")
     df = load_games()
+
+    df = completed_games(df)
 
     print("Labelling home and away...")
     df = label_home_away(df)

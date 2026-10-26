@@ -111,8 +111,14 @@ def save_prediction(game_id, game_date, home_team, away_team,
 
 # kelly_bet() calculates bet size using the Kelly formula (quarter Kelly, 5% cap, MAX_DECIMAL_ODDS).
 #   Thin wrapper over the market-agnostic src/betting.py, kept for existing callers.
-def kelly_bet(prob, odds, bankroll, fraction=0.25):
-    return betting.stake(bankroll, prob, odds, fraction=fraction, max_decimal_odds=MAX_DECIMAL_ODDS)
+def kelly_bet(prob, odds, bankroll, fraction=0.25, exposure_left=None):
+    return betting.stake(bankroll, prob, odds, fraction=fraction, max_decimal_odds=MAX_DECIMAL_ODDS,
+                         exposure_left=exposure_left)
+
+# staked_on_date() totals what is already bet on a slate date (the pre-tip runs size bets one game at a time)
+def staked_on_date(game_date):
+    df = select_rows("predictions", columns="bet_amount", filters=[("game_date", "eq", game_date)])
+    return float(pd.to_numeric(df["bet_amount"], errors="coerce").fillna(0).sum()) if len(df) else 0.0
 
 # update_results() fetches results for every prediction still pending from
 #   before today (not just yesterday), updates the corresponding prediction
@@ -196,6 +202,10 @@ def update_results():
             else:
                 profit_loss = -bet_amount
 
+            # the final score, so past nights show it (None when a tricode doesn't match: the winner is still right)
+            by_team = dict(zip(game_teams['teamTricode'], scores))
+            home_score, away_score = by_team.get(pred['home_team']), by_team.get(pred['away_team'])
+
             # update prediction row
             update_rows(
                 "predictions",
@@ -203,6 +213,8 @@ def update_results():
                     "actual_winner": winner,
                     "correct": correct,
                     "profit_loss": profit_loss,
+                    "home_score": int(home_score) if home_score is not None else None,
+                    "away_score": int(away_score) if away_score is not None else None,
                 },
                 filters=[("game_id", "eq", pred_game_id)],
             )

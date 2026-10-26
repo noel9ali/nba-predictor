@@ -163,6 +163,8 @@ LIVE_START_DATE = "2026-09-01"   # first day of LIVE_FIRST_SEASON's window (app.
 KELLY_FRACTION = 0.25
 KELLY_CAP = 0.05                 # max stake as a fraction of bankroll
 MAX_DECIMAL_ODDS = 5.0           # never bet longer prices than this
+MIN_EDGE = 0.03                  # moneyline: no bet unless model prob beats the implied prob by this much
+NIGHTLY_STAKE_CAP = 0.15         # moneyline: total staked on one slate date, as a fraction of the bankroll
 
 # ---------------------------------------------------------------------------
 # Odds history (append-only archive of every Odds API response; src/odds_archive.py)

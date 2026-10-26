@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.join(REPO_ROOT, 'src'))
 
 from console import force_utf8_stdio  # noqa: E402
 from config import LIVE_START_DATE  # noqa: E402
-from database import DatabaseError, MissingTableError, insert_rows, select_rows  # noqa: E402
+from database import DatabaseError, MissingTableError, insert_rows, normalize_game_id, select_rows  # noqa: E402
 
 # Must run before any print(): stdout/stderr aren't always a real UTF-8
 # console (redirected to logs\morning.log / logs\predict.log, or piped by subprocess.run).
@@ -160,21 +160,50 @@ def _records(df, numeric_columns=()):
     return df.astype(object).where(df.notna(), None).to_dict('records')
 
 
+RESULTS_LOOKBACK_DAYS = 3     # older settled dates still get reported when a missed run settled them late
+
+
+def _yesterday_str():
+    return (date.today() - timedelta(days=1)).strftime('%Y-%m-%d')
+
+
 def get_yesterdays_results():
-    """Return a list of dicts for yesterday's completed predictions."""
-    yesterday = (date.today() - timedelta(days=1)).strftime('%Y-%m-%d')
+    """Completed predictions to report: yesterday's, plus any date in the last RESULTS_LOOKBACK_DAYS days that
+    settled late (a missed morning run) and has not been pushed yet. Each row carries its game_date."""
+    yesterday = _yesterday_str()
+    since = (date.today() - timedelta(days=RESULTS_LOOKBACK_DAYS)).strftime('%Y-%m-%d')
     try:
         df = select_rows(
             'predictions',
-            columns='home_team,away_team,predicted_winner,actual_winner,'
+            columns='game_date,home_team,away_team,predicted_winner,actual_winner,'
                     'correct,bet_placed,bet_amount,odds,profit_loss',
-            filters=[('game_date', 'eq', yesterday), ('actual_winner', 'not_is', 'null')],
-            order_by='game_id',
+            filters=[('game_date', 'gte', since), ('game_date', 'lt', date.today().strftime('%Y-%m-%d')),
+                     ('actual_winner', 'not_is', 'null')],
+            order_by=['game_date', 'game_id'],
         )
-        return _records(df, ('bet_amount', 'odds', 'profit_loss'))
+        rows = _records(df, ('bet_amount', 'odds', 'profit_loss'))
+        sent = _load_sent()
+        return [g for g in rows
+                if str(g.get('game_date') or yesterday)[:10] == yesterday
+                or f"results|{str(g.get('game_date'))[:10]}" not in sent]
     except Exception as exc:
         print(f"⚠ get_yesterdays_results failed: {type(exc).__name__}")
         return []
+
+
+def get_missed_games(game_date):
+    """'AWAY @ HOME' for each game finished on game_date that never got a final prediction (the predict runs
+    were missed, e.g. the laptop was asleep). [] when none, or when either read fails."""
+    try:
+        played = select_rows('games', columns='GAME_ID,MATCHUP', filters=[('GAME_DATE', 'eq', game_date)])
+        done = select_rows('predictions', columns='game_id', filters=[('game_date', 'eq', game_date)])
+    except Exception as exc:
+        print(f"⚠ get_missed_games failed: {type(exc).__name__}")
+        return []
+    have = {normalize_game_id(g) for g in done['game_id']} if len(done) else set()
+    home_rows = played[played['MATCHUP'].str.contains(' vs. ', regex=False, na=False)] if len(played) else played
+    return [f"{m.split(' vs. ')[1]} @ {m.split(' vs. ')[0]}"
+            for g, m in zip(home_rows['GAME_ID'], home_rows['MATCHUP']) if normalize_game_id(g) not in have]
 
 
 def get_todays_predictions():
@@ -265,19 +294,23 @@ def format_summary(yesterday_results, today_predictions, stats, include_yesterda
 
     lines = [f"🏀 NBA Daily Summary — {today_str}" if include_yesterday else f"🏀 NBA Picks — {today_str}", ""]
 
-    # Yesterday's results
-    if include_yesterday:
-        lines.append(f"Yesterday's Results ({yesterday}):")
+    # Yesterday's results, then any older date that settled late and was not reported yet
     if include_yesterday and yesterday_results:
-        for g in yesterday_results:
-            mark = '✓' if g['correct'] else '✗'
-            pl = g['profit_loss'] or 0
-            pl_str = f"+${pl:.2f}" if pl >= 0 else f"-${abs(pl):.2f}"
-            lines.append(
-                f"  {mark} {g['away_team']} @ {g['home_team']} "
-                f"— predicted {g['predicted_winner']}, actual {g['actual_winner']}, P/L: {pl_str}"
-            )
+        for game_date, rows in _group_by_date(yesterday_results).items():
+            if game_date == _yesterday_str():
+                lines.append(f"Yesterday's Results ({yesterday}):")
+            else:
+                lines.append(f"Results ({date.fromisoformat(game_date).strftime('%b %d')}, settled late):")
+            for g in rows:
+                mark = '✓' if g['correct'] else '✗'
+                pl = g['profit_loss'] or 0
+                pl_str = f"+${pl:.2f}" if pl >= 0 else f"-${abs(pl):.2f}"
+                lines.append(
+                    f"  {mark} {g['away_team']} @ {g['home_team']} "
+                    f"— predicted {g['predicted_winner']}, actual {g['actual_winner']}, P/L: {pl_str}"
+                )
     elif include_yesterday:
+        lines.append(f"Yesterday's Results ({yesterday}):")
         lines.append("  No completed results for yesterday.")
 
     if stats:
@@ -495,24 +528,51 @@ def push_picks(predictions):
     return results
 
 
+def _group_by_date(results):
+    """Results keyed by game date, oldest first. A row without a game_date counts as yesterday's."""
+    groups = {}
+    for g in results:
+        groups.setdefault(str(g.get('game_date') or _yesterday_str())[:10], []).append(g)
+    return dict(sorted(groups.items()))
+
+
 def push_results(yesterday_results):
-    """One push with yesterday's settled picks, wins and losses alike. Sent once per day."""
-    if not yesterday_results:
+    """One push per game date with its settled picks, wins and losses alike. Each date is sent once."""
+    sent, out = _load_sent(), []
+    for game_date, rows in _group_by_date(yesterday_results).items():
+        key = f"results|{game_date}"
+        if key in sent:
+            continue
+        wins = sum(1 for g in rows if g['correct'])
+        total_pl = sum(g['profit_loss'] or 0 for g in rows)
+        lines = []
+        for g in rows:
+            line = f"{'✓' if g['correct'] else '✗'} {g['away_team']} @ {g['home_team']}: picked {g['predicted_winner']}, won {g['actual_winner']}"
+            if g.get('bet_amount') and float(g['bet_amount']) > 0:
+                line += f" ({_money(g['profit_loss'] or 0)})"
+            lines.append(line)
+        title = f"Results {wins}-{len(rows) - wins}, P/L {_money(total_pl)}"
+        if game_date != _yesterday_str():
+            title += f" ({date.fromisoformat(game_date).strftime('%b %d')})"
+        res = send_ntfy(title, "\n".join(lines + [NTFY_DISCLAIMER]), tags=['chart_with_upwards_trend'])
+        out.append(res)
+        if res['status'] == 'sent':
+            sent[key] = date.today().strftime('%Y-%m-%d')
+            _save_sent(sent)
+    return out
+
+
+def push_missed(game_date, missed):
+    """One push per date listing games that finished with no final prediction. Sent once per date."""
+    if not missed:
         return []
-    key = f"results|{(date.today() - timedelta(days=1)).strftime('%Y-%m-%d')}"
+    key = f"missed|{game_date}"
     sent = _load_sent()
     if key in sent:
         return []
-    wins = sum(1 for g in yesterday_results if g['correct'])
-    total_pl = sum(g['profit_loss'] or 0 for g in yesterday_results)
-    lines = []
-    for g in yesterday_results:
-        line = f"{'✓' if g['correct'] else '✗'} {g['away_team']} @ {g['home_team']}: picked {g['predicted_winner']}, won {g['actual_winner']}"
-        if g.get('bet_amount') and float(g['bet_amount']) > 0:
-            line += f" ({_money(g['profit_loss'] or 0)})"
-        lines.append(line)
-    title = f"Results {wins}-{len(yesterday_results) - wins}, P/L {_money(total_pl)}"
-    res = send_ntfy(title, "\n".join(lines + [NTFY_DISCLAIMER]), tags=['chart_with_upwards_trend'])
+    label = date.fromisoformat(game_date).strftime('%b %d')
+    res = send_ntfy(f"Missed {len(missed)} game(s) on {label}",
+                    "No pick was made (the predict runs didn't happen):\n" + "\n".join(missed), tags=['warning'])
     if res['status'] == 'sent':
         sent[key] = date.today().strftime('%Y-%m-%d')
         _save_sent(sent)
@@ -536,7 +596,12 @@ def describe_outcomes(outcomes):
 # Main workflow
 # ---------------------------------------------------------------------------
 
+LATE_MORNING_HOUR = 10           # a morning stage starting at or after this local hour is flagged as late
 STAGES = ('full', 'morning', 'predict')
+
+
+def morning_is_late(now=None):
+    return (now or datetime.now()).hour >= LATE_MORNING_HOUR
 PREDICT_WINDOW_MINUTES = 75      # the predict stage prices a game once it tips within this long (runs every 15 min)
 # predict.py ends every run that got as far as pricing with "Saved N prediction(s)." (keep in sync with predict.run()).
 PREDICTIONS_SAVED = re.compile(r'Saved (\d+) prediction')
@@ -619,6 +684,7 @@ def run_workflow(send_text=True, trigger='schedule', stage='full'):
     # Step 3 — notifications
     notified = False
     outcomes = []
+    notes_extra = []
     if send_text:
         yesterday_results = get_yesterdays_results() if stage != 'predict' else []
         today_predictions = get_todays_predictions() if stage != 'morning' else []
@@ -628,6 +694,17 @@ def run_workflow(send_text=True, trigger='schedule', stage='full'):
         summary_body = format_summary(yesterday_results, today_predictions, stats,
                               include_yesterday=stage != 'predict', include_today=stage != 'morning',
                               temporary_picks=temporary_picks)
+        # A morning run that starts late, or a day with games but no picks, is worth saying out loud.
+        missed = get_missed_games(_yesterday_str()) if stage in ('full', 'morning') else []
+        late_morning = stage == 'morning' and morning_is_late()
+        if late_morning:
+            summary_body += (f"\n\nThis morning run started late ({datetime.now().strftime('%H:%M')}); "
+                             "games may have tipped before they were priced.")
+            notes_extra.append('morning run late')
+        if missed:
+            summary_body += (f"\n\nNo pick was made for {len(missed)} game(s) on "
+                             f"{date.today() - timedelta(days=1):%b %d}: " + "; ".join(missed))
+            notes_extra.append(f'{len(missed)} game(s) missed yesterday')
         print("📱 Daily summary:\n")
         print(summary_body)
         print()
@@ -638,6 +715,7 @@ def run_workflow(send_text=True, trigger='schedule', stage='full'):
                 outcomes += push_picks(today_predictions)
             if stage in ('full', 'morning'):
                 outcomes += push_results(yesterday_results)
+                outcomes += push_missed(_yesterday_str(), missed)
                 outcomes.append(send_email(f"NBA Daily Summary — {date.today().strftime('%b %d')}", summary_body))
         except Exception as exc:
             outcomes.append(_result('ntfy', 'failed', f'unexpected {type(exc).__name__}'))
@@ -659,6 +737,7 @@ def run_workflow(send_text=True, trigger='schedule', stage='full'):
         notes.append('predict failed')
     if not temp_ok:
         notes.append('temporary predictions failed')
+    notes += notes_extra
     if send_text:
         notes.append(describe_outcomes(outcomes) or 'no notifications sent')
 

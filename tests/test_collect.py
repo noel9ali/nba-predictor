@@ -23,8 +23,8 @@ class CollectTests(unittest.TestCase):
     def test_save_to_db_upserts_on_composite_key_with_normalized_ids(self):
         df = pd.DataFrame(
             [
-                {"GAME_ID": 22501186, "TEAM_ID": 7, "SEASON": "2025-26"},
-                {"GAME_ID": "22501186", "TEAM_ID": 8, "SEASON": "2025-26"},
+                {"GAME_ID": 22501186, "TEAM_ID": 7, "SEASON": "2025-26", "WL": "W"},
+                {"GAME_ID": "22501186", "TEAM_ID": 8, "SEASON": "2025-26", "WL": "W"},
             ]
         )
         captured = {}
@@ -46,7 +46,7 @@ class CollectTests(unittest.TestCase):
         self.assertTrue(all(len(game_id) == 10 for game_id in ids))
 
     def test_run_surfaces_composite_pk_hint_on_conflict_target_error(self):
-        df = pd.DataFrame([{"GAME_ID": "0022501186", "TEAM_ID": 7, "SEASON": "2025-26"}])
+        df = pd.DataFrame([{"GAME_ID": "0022501186", "TEAM_ID": 7, "SEASON": "2025-26", "WL": "W"}])
 
         with patch.object(collect, "fetch_season", return_value=df), \
              patch.object(
@@ -80,7 +80,7 @@ class CollectTests(unittest.TestCase):
 
     def test_empty_current_season_is_a_noop(self):
         from datetime import date
-        hist = pd.DataFrame([{"GAME_ID": "0022501186", "TEAM_ID": 7}])
+        hist = pd.DataFrame([{"GAME_ID": "0022501186", "TEAM_ID": 7, "WL": "W"}])
 
         def fake_fetch(season, retries=3):
             return pd.DataFrame() if season == "2026-27" else hist
@@ -98,7 +98,7 @@ class CollectTests(unittest.TestCase):
 
     def test_failed_season_raises_after_saving_the_rest(self):
         from datetime import date
-        hist = pd.DataFrame([{"GAME_ID": "0022501186", "TEAM_ID": 7}])
+        hist = pd.DataFrame([{"GAME_ID": "0022501186", "TEAM_ID": 7, "WL": "W"}])
 
         def fake_fetch(season, retries=3):
             return None if season == "2026-27" else hist

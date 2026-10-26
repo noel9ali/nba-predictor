@@ -131,9 +131,9 @@ class PredictDryRunTests(unittest.TestCase):
 
         slate = pd.DataFrame([{"gameId": GAME, "HOME_TEAM_ID": DEN, "HOME_TEAM_ABBREVIATION": "DEN",
                                "VISITOR_TEAM_ID": LAL, "VISITOR_TEAM_ABBREVIATION": "LAL"}])
-        stats = {p: pd.DataFrame([{f"{p}_roll_{s}": v for s, v in (("PTS", 112.0), ("FG_PCT", 0.47),
-                                                                       ("REB", 44.0), ("AST", 26.0), ("TOV", 13.0),
-                                                                       ("STOCKS", 12.0))}])
+        stats = {p: {f"{p}_roll_{s}": v for s, v in (("PTS", 112.0), ("FG_PCT", 0.47),
+                                                       ("REB", 44.0), ("AST", 26.0), ("TOV", 13.0),
+                                                       ("STOCKS", 12.0))}
                  for p in ("HOME", "AWAY")}
         calls = []
         with patch.object(predict, "load_model", return_value=(FakeProdModel(), IdentityScaler())), \
@@ -146,9 +146,11 @@ class PredictDryRunTests(unittest.TestCase):
                 patch.object(predict, "get_tonights_odds", return_value={}), \
                 patch.object(predict, "match_odds", return_value={"home_odds": -150, "away_odds": 130,
                                                                   "home_book": "fd", "away_book": "dk"}), \
-                patch.object(predict, "get_team_rolling_stats", side_effect=lambda t, p: stats[p]), \
+                patch.object(predict, "get_team_games", return_value=pd.DataFrame()), \
+                patch.object(predict, "get_team_rolling_stats", side_effect=lambda games, p: stats[p]), \
                 patch.object(predict, "get_rest_days", return_value=2), \
                 patch.object(predict, "get_current_bankroll", return_value=1000.0), \
+                patch.object(predict, "staked_on_date", return_value=0.0), \
                 patch.object(predict, "save_prediction", side_effect=lambda **kw: calls.append(kw)), \
                 patch("database.update_rows", return_value=[]), \
                 patch.dict(os.environ, env or {}, clear=False):
@@ -183,7 +185,9 @@ class PredictDryRunTests(unittest.TestCase):
         calls = self.run_predict()
         self.assertEqual(len(calls), 1)
         self.assertAlmostEqual(calls[0]["home_prob"], 0.6)                # the production model's number
-        self.assertIsNone(calls[0]["extra"])
+        self.assertNotIn("prob_range_low", calls[0]["extra"])             # candidate's range only when it serves
+        self.assertIn("edge", calls[0]["extra"])                          # audit columns are written
+        self.assertEqual(calls[0]["extra"]["bookmaker"], "fd")
         scen = player_store.read("prediction_scenarios")
         self.assertEqual(len(scen), 2)                                    # Jokić questionable: plays / out
         self.assertAlmostEqual(scen["weight"].sum(), 1.0)

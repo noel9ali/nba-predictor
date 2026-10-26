@@ -1,3 +1,4 @@
+import json
 import os
 
 import joblib
@@ -5,9 +6,11 @@ import pandas as pd
 from nba_api.stats.endpoints import scoreboardv3
 from datetime import date
 from console import force_utf8_stdio
-from track import setup_tables, save_prediction, kelly_bet, get_current_bankroll
+import config
+from track import setup_tables, save_prediction, kelly_bet, get_current_bankroll, staked_on_date
 from odds import get_tonights_odds
 from elo import get_current_ratings
+from features import REST_CAP, rest_days_before, role_form
 from database import select_rows, upsert_rows
 
 # --- Config ---
@@ -23,6 +26,14 @@ def load_model():
     model  = joblib.load('data/model.pkl')
     scaler = joblib.load('data/scaler.pkl')
     return model, scaler
+
+# load_model_name() names the model data/model.pkl was published as (model.py writes it to the metadata)
+def load_model_name():
+    try:
+        with open('data/model_metadata.json', encoding='utf-8') as fh:
+            return json.load(fh).get('production_model')
+    except (OSError, ValueError):
+        return None
 
 # games_from_scoreboard() builds one row per game from a ScoreboardV3 dict, taking home and away from the
 #   explicit homeTeam / awayTeam objects. The LineScore frame is NOT positional-safe: it lists the HOME team
@@ -152,40 +163,30 @@ def get_todays_games():
     board = scoreboardv3.ScoreboardV3(game_date=today)
     return games_from_scoreboard(board.get_dict())
 
-# get_team_rolling_stats() looks up rolling averages for a team's past 10 games
-def get_team_rolling_stats(team_id, prefix):
-    if prefix not in {"HOME", "AWAY"}:
-        raise ValueError("prefix must be HOME or AWAY")
-    columns = (
-        f"{prefix}_roll_PTS,{prefix}_roll_FG_PCT,{prefix}_roll_REB,"
-        f"{prefix}_roll_AST,{prefix}_roll_TOV,{prefix}_roll_STOCKS,GAME_DATE"
-    )
+# get_team_games() loads a team's recent game rows (newest first) for the serve-time features. 60 rows reach
+#   back across the offseason, so early-season windows still fill from last year's games, as in training.
+def get_team_games(team_id):
     return select_rows(
-        "features",
-        columns=columns,
-        filters=[(f"{prefix}_TEAM_ID", "eq", team_id)],
+        "games",
+        columns="GAME_DATE,MATCHUP,WL,PTS,FG_PCT,REB,AST,TOV,STL,BLK",
+        filters=[("TEAM_ID", "eq", team_id)],
         order_by="GAME_DATE",
         descending=True,
-        limit=1,
+        limit=60,
     )
 
-# get_rest_days() calculates the amount of days since last game for a given team
-def get_rest_days(team_id, prefix):
+# get_team_rolling_stats() returns the rolling averages for a team's last 10 games in the given role, including
+#   its most recent game (None when it has fewer than 10). Computed by features.role_form, the same definition
+#   the model trained on.
+def get_team_rolling_stats(team_games, prefix):
     if prefix not in {"HOME", "AWAY"}:
         raise ValueError("prefix must be HOME or AWAY")
-    df = select_rows(
-        "features",
-        columns="GAME_DATE",
-        filters=[(f"{prefix}_TEAM_ID", "eq", team_id)],
-        order_by="GAME_DATE",
-        descending=True,
-        limit=1,
-    )
-    if len(df) == 0:
-        return 2  # default if no data
-    last_game = pd.to_datetime(df['GAME_DATE'].iloc[0])
-    today = pd.Timestamp(date.today())
-    return (today - last_game).days
+    return role_form(team_games, prefix)
+
+# get_rest_days() is the days since the team's last game in either role, capped as in training
+def get_rest_days(team_games, today=None):
+    rest = rest_days_before(team_games, today or date.today())
+    return REST_CAP if rest is None else rest
 
 # match_odds() finds the odds for a given game from the odds dictionary
 #   using team abbreviations to match against full team names
@@ -198,22 +199,9 @@ def match_odds(home_abbr, away_abbr, odds_dict):
     if not home_full or not away_full:
         return None
 
-    # try normal order first
-    result = odds_dict.get((home_full, away_full))
-    if result:
-        return result
-
-    # try reversed order — if found, swap home and away odds
-    result = odds_dict.get((away_full, home_full))
-    if result:
-        return {
-            'home_odds': result['away_odds'],
-            'away_odds': result['home_odds'],
-            'home_book': result['away_book'],
-            'away_book': result['home_book']
-        }
-
-    return None
+    # Home/away order only. A reversed pair is a different game (the rematch at the other venue, usually weeks
+    # away), so its line must never stand in for tonight's.
+    return odds_dict.get((home_full, away_full))
 
 # implied_prob() converts american odds to implied probability (market-agnostic, src/betting.py)
 from betting import implied_prob  # noqa: E402
@@ -406,6 +394,7 @@ def run():
     # something to price: now load the model, the candidate and the Elo ratings
     print("Loading model...")
     model, scaler = load_model()
+    served_model_name = load_model_name()
     ap, candidate, player_names = _availability_setup()
     print("Loading Elo ratings...")
     elo_ratings = get_current_ratings()
@@ -451,18 +440,18 @@ def run():
         away_abbr = game['VISITOR_TEAM_ABBREVIATION'] if 'VISITOR_TEAM_ABBREVIATION' in game else away_id
 
         # get most recent rolling stats from the database
-        home_stats = get_team_rolling_stats(home_id, 'HOME')
-        away_stats = get_team_rolling_stats(away_id, 'AWAY')
+        home_games = get_team_games(home_id)
+        away_games = get_team_games(away_id)
+        home_stats = get_team_rolling_stats(home_games, 'HOME')
+        away_stats = get_team_rolling_stats(away_games, 'AWAY')
 
         # skip game if missing data for either team
-        if len(home_stats) == 0 or len(away_stats) == 0:
+        if home_stats is None or away_stats is None:
             print(f"{away_abbr} @ {home_abbr} — not enough data")
             continue
 
         # get rest days
-        home_rest = get_rest_days(home_id, 'HOME')
-        away_rest = get_rest_days(away_id, 'AWAY')
-        rest_diff = home_rest - away_rest
+        rest_diff = get_rest_days(home_games) - get_rest_days(away_games)
 
         # get elo ratings for both teams
         home_elo = elo_ratings.get(home_id, 1500)
@@ -471,18 +460,8 @@ def run():
 
         # assemble feature row to match format of training
         row = {
-            'HOME_roll_PTS':    home_stats['HOME_roll_PTS'].iloc[0],
-            'HOME_roll_FG_PCT': home_stats['HOME_roll_FG_PCT'].iloc[0],
-            'HOME_roll_REB':    home_stats['HOME_roll_REB'].iloc[0],
-            'HOME_roll_AST':    home_stats['HOME_roll_AST'].iloc[0],
-            'HOME_roll_TOV':    home_stats['HOME_roll_TOV'].iloc[0],
-            'HOME_roll_STOCKS': home_stats['HOME_roll_STOCKS'].iloc[0],
-            'AWAY_roll_PTS':    away_stats['AWAY_roll_PTS'].iloc[0],
-            'AWAY_roll_FG_PCT': away_stats['AWAY_roll_FG_PCT'].iloc[0],
-            'AWAY_roll_REB':    away_stats['AWAY_roll_REB'].iloc[0],
-            'AWAY_roll_AST':    away_stats['AWAY_roll_AST'].iloc[0],
-            'AWAY_roll_TOV':    away_stats['AWAY_roll_TOV'].iloc[0],
-            'AWAY_roll_STOCKS': away_stats['AWAY_roll_STOCKS'].iloc[0],
+            **home_stats,
+            **away_stats,
             'rest_diff':        rest_diff,
             'HOME_ELO':         home_elo,
             'AWAY_ELO':         away_elo,
@@ -543,9 +522,12 @@ def run():
             implied = implied_prob(bet_odds)
             edge = best_prob - implied
 
-            # only bet if model has a real edge over the market
+            # only bet when the edge clears MIN_EDGE, and never past the slate's stake cap (games are sized one
+            # at a time, so the cap is first come, first served)
             bankroll = get_current_bankroll()
-            bet_amount = kelly_bet(best_prob, bet_odds, bankroll) if edge > 0 else 0
+            exposure_left = max(0.0, config.NIGHTLY_STAKE_CAP * bankroll - staked_on_date(str(date.today())))
+            bet_amount = (kelly_bet(best_prob, bet_odds, bankroll, exposure_left=exposure_left)
+                          if edge >= config.MIN_EDGE else 0)
             if extra:
                 from scenarios import apply_gate
                 bet_amount, skip_reason = apply_gate(bet_amount, extra['prob_range_low'], extra['prob_range_high'])
@@ -583,7 +565,16 @@ def run():
             bet_placed       = bet_team,
             bet_amount       = bet_amount,
             odds             = bet_odds,
-            extra            = extra or None
+            extra            = {
+                'bookmaker': bet_book,
+                'implied_prob': float(implied),
+                'edge': float(edge),
+                'bankroll_at_bet': float(bankroll),
+                'tip_time_utc': game.get('TIP_UTC') if isinstance(game.get('TIP_UTC'), str) else None,
+                'predicted_at': pd.Timestamp.now(tz='UTC').isoformat(),
+                'model_name': served_model_name,
+                **extra,
+            }
         )
         if inserted is not False:     # a skipped duplicate returns False; anything else was stored
             saved += 1

@@ -538,11 +538,13 @@ def run():
         best_model_name = production_model_name
     elif production_model_name.startswith("lr-calibrated-availability-"):
         # Served at predict time from data/candidates (src/availability_predict.py); model.pkl stays the base model.
+        # The base model is pinned to the default, not whichever model ranks first today: a daily re-ranking
+        # must not swap the fallback model without a promotion decision.
         print(
             f"Production model '{production_model_name}' is an availability candidate applied at predict time; "
-            f"saving leaderboard best '{leaderboard_best}' as the base model."
+            f"saving '{DEFAULT_PRODUCTION_MODEL}' as the base model."
         )
-        best_model_name = leaderboard_best
+        best_model_name = DEFAULT_PRODUCTION_MODEL if DEFAULT_PRODUCTION_MODEL in fitted_lookup else leaderboard_best
     else:
         print(
             f"Configured production model '{production_model_name}' is unavailable. "
@@ -557,6 +559,11 @@ def run():
 
     print("\nEvaluating selected production model...")
     evaluate_model(best_model, scaler, test)
+
+    # The holdout above is for evaluation only. The model that serves picks is refit on every completed game so
+    # it knows the latest seasons; the metrics in the leaderboard stay the honest holdout ones.
+    print("Refitting selected production model on all games...")
+    best_model, scaler, _, _, _ = train_selected_model(df, best_model_name)
 
     print("Saving selected production model...")
     save_model(best_model, scaler)
