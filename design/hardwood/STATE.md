@@ -69,7 +69,8 @@ Preview (Vercel login required): https://nba-predictor-git-hardwood-build-nubber
 - Predict-time rest days and rolling form now use the team's real recent games (`features.role_form`, `features.rest_days_before`,
   rest capped at 7, same cap in training). The old per-role lookup gave ~190 rest days early season and the 69-92% "edges".
 - Live model is gradient boosting again (`NBA_PRODUCTION_MODEL` removed from the local `.env`; check the Vercel env too). The
-  selected model is refit on all completed games after holdout evaluation; each prediction stores `model_name`.
+  selected model is refit on all completed games after holdout evaluation; each prediction stores `model_name`. Checked Oct 25:
+  the Vercel project does not set `NBA_PRODUCTION_MODEL` (only `NBA_SCHEMA_V2`, `FLASK_SECRET_KEY`, `SUPABASE_*`).
 - Finished games only in collect/Elo/features (in-progress rows were read as home losses); neutral-site games get a home row.
 - Odds: started games and reversed home/away pairs are never used; the next game of a repeated pair wins.
 - Bets: `MIN_EDGE` 3% and `NIGHTLY_STAKE_CAP` 15% of bankroll per slate date (first come, first served). Audit columns
@@ -81,8 +82,9 @@ Preview (Vercel login required): https://nba-predictor-git-hardwood-build-nubber
 
 ## Open items for Noel
 - NBA logo trademark sign-off before production goes public.
-- Task Scheduler history log is still off (needs an elevated `wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true`);
-  the registered `NBA-Predictor-Daily` task description still says "SMS" (re-register to refresh it).
+- The Task Scheduler history log is on (enabled from an admin shell, Oct 25), so the next skipped run can be diagnosed from
+  Event Viewer > Task Scheduler > Operational. The registered `NBA-Predictor-Daily` task description still says "SMS"
+  (re-register to refresh it).
 - If 6 AM must be dependable, move the scheduler to an always-on host.
 - Still open from the pipeline audit: no season-start Elo reversion check at predict time beyond `revert_stale_ratings`, silent
   failures in `odds.py`/`scheduler\run_daily.bat`. Supabase tables `team_availability_features`, `player_minutes_projection`,
