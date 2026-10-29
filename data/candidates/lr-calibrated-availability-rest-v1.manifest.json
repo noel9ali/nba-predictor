@@ -1,7 +1,7 @@
 {
   "artifact_path": "data\\candidates\\lr-calibrated-availability-rest-v1.pkl",
-  "artifact_sha256": "ecf1dbb530fce0dbedb48d685d7934a1fad996e1dcd8960c96bc7aeeb4cba2cd",
-  "evaluated_at": "2026-10-12T23:28:40+00:00",
+  "artifact_sha256": "abc8b64dd74a6d5628b87cc1bd69c09c2cabe4f6024e08f51ab69cca6e33c55e",
+  "evaluated_at": null,
   "feature_hash": "155d74e151e78b6aa1f07b15bfc68c9fc040da64950e3cbf454bd51c8fac7eeb",
   "feature_set_version": "avail_v1+ratings:2026-10-10",
   "features": [
@@ -33,5 +33,5 @@
     "rapm:minutes_lost_diff"
   ],
   "model_name": "lr-calibrated-availability-rest-v1",
-  "trained_at": "2026-10-07T05:09:34.120013+00:00"
+  "trained_at": null
 }

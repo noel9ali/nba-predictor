@@ -1,7 +1,7 @@
 {
   "artifact_path": "data\\candidates\\lr-calibrated-availability-v1.pkl",
-  "artifact_sha256": "add63d9ee46b2cd14ceede6e654ef1f83d0eaf1840e5ae1eb3612019ec8ac5f6",
-  "evaluated_at": "2026-10-12T23:28:40+00:00",
+  "artifact_sha256": "1eb0a2d8fe6bc63e30559c1c8c27d55ed85949a9bf1485ba72448ddfe3721cfa",
+  "evaluated_at": null,
   "feature_hash": "f0bc9de8a77efc79ecf7efacc413c6a282fde0bf25285be537c978a5f2e8fb27",
   "feature_set_version": "avail_v1+ratings:2026-10-10",
   "features": [
@@ -29,5 +29,5 @@
     "rapm:minutes_lost_diff"
   ],
   "model_name": "lr-calibrated-availability-v1",
-  "trained_at": "2026-10-07T05:09:34.120013+00:00"
+  "trained_at": null
 }
