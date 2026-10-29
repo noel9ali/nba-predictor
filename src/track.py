@@ -117,7 +117,8 @@ def kelly_bet(prob, odds, bankroll, fraction=0.25, exposure_left=None):
 
 # staked_on_date() totals what is already bet on a slate date (the pre-tip runs size bets one game at a time)
 def staked_on_date(game_date):
-    df = select_rows("predictions", columns="bet_amount", filters=[("game_date", "eq", game_date)])
+    df = select_rows("predictions", columns="bet_amount", filters=[("game_date", "eq", game_date)],
+                     order_by="game_id")
     return float(pd.to_numeric(df["bet_amount"], errors="coerce").fillna(0).sum()) if len(df) else 0.0
 
 # update_results() fetches results for every prediction still pending from
