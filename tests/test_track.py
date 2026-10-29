@@ -811,6 +811,33 @@ class SavePredictionTests(unittest.TestCase):
         self.assertIn("already logged", output.getvalue())
 
 
+class StakedOnDateTests(unittest.TestCase):
+    def _strict_fake(self, rows):
+        inner = _fake_select_rows(rows)
+
+        def fake(table, **kwargs):
+            # Mirror database.select_rows: unbounded reads need a stable order.
+            if kwargs.get("limit") is None and kwargs.get("order_by") is None:
+                raise ValueError(f"Reading {table} requires a deterministic order when pagination is enabled")
+            return inner(table, **kwargs)
+
+        return fake
+
+    def test_sums_stakes_for_the_date_with_a_deterministic_order(self):
+        rows = [
+            {"game_id": "1", "game_date": "2026-10-28", "bet_amount": 20.0},
+            {"game_id": "2", "game_date": "2026-10-28", "bet_amount": None},
+            {"game_id": "3", "game_date": "2026-10-28", "bet_amount": 5.5},
+            {"game_id": "4", "game_date": "2026-10-27", "bet_amount": 99.0},
+        ]
+        with patch.object(track, "select_rows", side_effect=self._strict_fake(rows)):
+            self.assertEqual(track.staked_on_date("2026-10-28"), 25.5)
+
+    def test_no_rows_returns_zero(self):
+        with patch.object(track, "select_rows", side_effect=self._strict_fake([])):
+            self.assertEqual(track.staked_on_date("2026-10-28"), 0.0)
+
+
 class PrintSummaryTests(unittest.TestCase):
     """TH-F5: smoke test for print_summary() -- must not raise, and must
     print the key totals it reads from the database."""
