@@ -9,8 +9,8 @@
     "random-forest-gridsearch",
     "lstm-gridsearch"
   ],
-  "trained_at": "2026-10-26T01:35:38.836716+00:00",
-  "cutoff_date": "2025-03-02",
+  "trained_at": "2026-10-28T10:04:58.647108+00:00",
+  "cutoff_date": "2025-03-03",
   "features": [
     "HOME_roll_PTS",
     "HOME_roll_FG_PCT",
@@ -32,12 +32,12 @@
   "leaderboard_path": "data/model_leaderboard.csv",
   "training": {
     "first_game_date": "2019-11-22",
-    "cutoff_date": "2025-03-02",
-    "last_game_date": "2026-10-25",
-    "games_total": 8031,
-    "train_games": 6424,
-    "test_games": 1607,
-    "home_win_rate": 0.5494,
+    "cutoff_date": "2025-03-03",
+    "last_game_date": "2026-10-27",
+    "games_total": 8045,
+    "train_games": 6436,
+    "test_games": 1609,
+    "home_win_rate": 0.5498,
     "rolling_window": 10,
     "seasons": [
       {
@@ -73,8 +73,8 @@
       {
         "season": "2024-25",
         "games": 1230,
-        "train": 895,
-        "test": 335
+        "train": 907,
+        "test": 323
       },
       {
         "season": "2025-26",
@@ -84,9 +84,9 @@
       },
       {
         "season": "2026-27",
-        "games": 42,
+        "games": 56,
         "train": 0,
-        "test": 42
+        "test": 56
       }
     ]
   },
